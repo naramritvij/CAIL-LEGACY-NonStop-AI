@@ -50,7 +50,8 @@ if ($LASTEXITCODE -ne 0) { throw "Frontend TypeScript/Vite build failed." }
 $ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15 -UseBasicParsing
 if ($ui.StatusCode -ne 200) { throw "Frontend did not respond with HTTP 200." }
 
-$incidents = @(Invoke-RestMethod -Uri "$base/incidents" -TimeoutSec 10)
+$incidentResponse = Invoke-RestMethod -Uri "$base/incidents" -TimeoutSec 10
+$incidents = @($incidentResponse)
 if ($incidents.Count -lt 2) { throw "Synthetic incident catalog is incomplete." }
 if (@($incidents | Where-Object { $_.synthetic -ne $true }).Count -gt 0) {
     throw "Expected synthetic-only incident records."
