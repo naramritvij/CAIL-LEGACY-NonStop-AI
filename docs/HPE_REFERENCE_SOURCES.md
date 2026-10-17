@@ -16,3 +16,7 @@ The second user-supplied doc `sd00002149en_us` was not incorporated: its content
 - The prototype has no authenticated HPE API or HPE NonStop cluster access; synthetic IDs are not official EMS messages.
 - No HPE docs are reproduced in bulk or ingested from access-controlled content.
 - Before commercial/production work, obtain usage rights, check documentation currency and bind instructions to target RVU and operator privileges.
+
+## Challenge brief HPE reference — body not yet verified
+
+The user-provided HPE Support Center link (document ID a00099017en_us) is https://support.hpe.com/hpesc/public/docDisplay?docId=a00099017en_us&docLocale=en_US . Its body was not accessible through the research interface on 17 October 2026. **No command syntax, technical interpretation, or document title has been derived from its inaccessible contents.** The operator command center uses separate, readable HPE EMS and SCF references.
