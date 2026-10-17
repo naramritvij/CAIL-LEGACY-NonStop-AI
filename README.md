@@ -116,7 +116,7 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-Latest team-verified local baseline: **95 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **pending backend foundation review branch adds 12 pytest cases** (Legacy Tree plus Incident Workspace), targeting **107 tests**; this new total has not yet been verified on Windows. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
+Latest team-verified local baseline: **95 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **pending backend foundation review branch adds 13 pytest cases** (Legacy Tree plus Incident Workspace, including corrupted-source gating), targeting **108 tests**; this new total has not yet been verified on Windows. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
 
 ## 👩‍💻 Maggie's frontend development guide
 
