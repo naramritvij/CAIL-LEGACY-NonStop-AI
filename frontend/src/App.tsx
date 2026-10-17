@@ -8,13 +8,14 @@ type Incident = {
   synthetic: boolean; events: Event[]; metrics: Metric[]; hypotheses: string[]; unknowns: string[]
 };
 type Preview = { title?: string; allowed: boolean; status: string; reason: string; simulation_only: boolean; output?: unknown };
-type Answer = { status: string; answer: string; model: string | null; evidence_ids: string[] };
+type Answer = { status: string; model?: string; message?: string; claims: { text: string; citations: string[] }[]; source_registry: { id: string; kind: string; source_href?: string; source_url?: string }[]; missing_evidence: string[] };
 
 const API = '/api/v1';
 
 export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [active, setActive] = useState('INC-DISK-001');
+  const [release, setRelease] = useState('L23.08'); // Demo release filter, NOT verified on a real system.
   const [question, setQuestion] = useState('Why is disk $DATA03 approaching capacity, and what should I verify first?');
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -37,9 +38,9 @@ export default function App() {
   async function investigate() {
     setBusy(true); setAnswer(null); setError('');
     try {
-      const r = await fetch(API + '/investigate', {
+      const r = await fetch(API + '/investigate/grounded', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ incident_id: active, question })
+        body: JSON.stringify({ incident_id: active, question, release, max_chunks: 3 })
       });
       if (!r.ok) throw new Error('Investigation failed');
       setAnswer(await r.json() as Answer);
@@ -104,8 +105,30 @@ export default function App() {
           <div className="sectionhead"><h2>Ask CAIL/Nonstop AI Operations Assistant</h2><span>Local Ollama · Evidence-based explanation</span></div>
           <div className="askrow"><input aria-label="Investigation question" value={question} maxLength={500} onChange={e => setQuestion(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void investigate(); }} />
             <button className="primary" disabled={busy || question.length < 3} onClick={() => void investigate()}>{busy ? 'Investigating…' : 'Investigate →'}</button></div>
-          {answer && <div className="result"><div className="sectionhead"><strong>Evidence-aware response</strong><span>{answer.status} · {answer.model || 'fallback'}</span></div>
-            <p>{answer.answer}</p><small>Available source IDs: {answer.evidence_ids.join(', ')}. Model output is unverified; follow documented procedures.</small>
+          <div className="releasefilter">
+            <label htmlFor="training-release">Training release filter (not verified against any live NonStop)</label>
+            <input id="training-release" value={release} maxLength={40} onChange={e => setRelease(e.target.value)} />
+          </div>
+          {answer && <div className="result">
+            <div className="sectionhead"><strong>Evidence-bounded Qwen investigation</strong>
+              <span>{answer.status} · {answer.model || 'fallback'}</span></div>
+            {answer.claims.length ? answer.claims.map((claim, i) =>
+              <div key={i} className="grounded-claim">
+                <p>{claim.text}</p>
+                <div className="pills">{claim.citations.map(id => {
+                  const ref = answer.source_registry.find(s => s.id === id);
+                  const href = ref?.source_href || (
+                    ref?.source_url?.startsWith('https://support.hpe.com/') ? ref.source_url : null
+                  );
+                  return href
+                    ? <a key={id} href={href} target="_blank" rel="noopener noreferrer">{id} ↗</a>
+                    : <span key={id}>{id}</span>;
+                })}</div>
+              </div>) : <p>{answer.message || 'No acceptable evidence-backed claim was produced.'}</p>}
+            {answer.missing_evidence.length > 0 &&
+              <p>Still unknown: {answer.missing_evidence.join(' · ')}</p>}
+            <small>Valid citation IDs do not prove a claim is correct or its source authentic.
+              No actions were authorized or executed.</small>
           </div>}
         </section>
         <div className="grid">
