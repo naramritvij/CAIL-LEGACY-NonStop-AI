@@ -1,4 +1,4 @@
-"""LEGACY API: synthetic incidents, human-reviewed knowledge and read-only training.
+"""CAIL/Nonstop AI Operations Assistant API: synthetic incidents, human-reviewed knowledge and read-only training.
 
 The backend is intentionally NOT an HPE NonStop connector. All data is synthetic.
 """
@@ -17,7 +17,7 @@ from .security import require_role, require_either
 from .contract import LessonCreate, ReviewRequest, ReplayRequest
 from .ai import explain
 
-app = FastAPI(title='LEGACY NonStop Simulation API', version='0.2.0',
+app = FastAPI(title='CAIL/Nonstop AI Operations Assistant', version='0.2.0',
               description='Synthetic read-only training. Not certified for real systems.')
 app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
                    allow_credentials=False, allow_methods=['GET', 'POST'],
@@ -342,3 +342,66 @@ def incident_workspace(
     ),
 ):
     return build_workspace(incident_or_404(incident_id), question)
+
+
+# CAIL operator command center; synthetic source adapters, not a live HPE link.
+from .enterprise_bridge import (
+    overview as _operator_overview, registry as _operator_registry,
+    source as _operator_source, command_catalog as _operator_catalog,
+    command_preview as _operator_preview,
+)
+
+class OperatorCommandRequest(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=64)
+    command_id: str = Field(min_length=1, max_length=100)
+
+@app.get('/api/v1/operations/overview')
+def operator_overview():
+    return _operator_overview()
+
+@app.get('/api/v1/operations/tools')
+def operator_tools():
+    return _operator_registry()
+
+@app.get('/api/v1/operations/incidents/{incident_id}/sources/{tool_id}')
+def operator_source(incident_id: str, tool_id: str):
+    incident_or_404(incident_id)
+    result = _operator_source(incident_id, tool_id)
+    if result is None:
+        raise HTTPException(404, 'Unknown source')
+    return result
+
+@app.get('/api/v1/operations/incidents/{incident_id}/commands')
+def operator_commands(incident_id: str):
+    incident_or_404(incident_id)
+    return _operator_catalog(incident_id)
+
+@app.post('/api/v1/operations/commands/preview')
+def operator_command_preview(body: OperatorCommandRequest):
+    incident_or_404(body.incident_id)
+    return _operator_preview(body.incident_id, body.command_id)
+
+# Canonical Knowledge Tree name; keep former route for compatibility.
+@app.get('/api/v1/knowledge/knowledge-tree')
+def approved_knowledge_tree(incident_id: str | None = Query(default=None, min_length=1, max_length=64)):
+    return approved_legacy_tree(incident_id)
+
+from .corpus import create_transcript as _create_transcript
+
+class TranscriptIngest(BaseModel):
+    title: str = Field(min_length=5, max_length=160)
+    recording_reference: str = Field(min_length=3, max_length=120, pattern=r'^[A-Za-z0-9_. -]+$')
+    release: str = Field(min_length=3, max_length=40, pattern=r'^[A-Za-z0-9_. -]+$')
+    section: str = Field(min_length=3, max_length=120)
+    content: str = Field(min_length=80, max_length=12000)
+    acknowledged_authorization: bool
+    redaction_confirmed: bool
+
+@app.post('/api/v1/knowledge/transcripts', status_code=201)
+def transcript_intake(body: TranscriptIngest,
+                      x_legacy_expert_key: str | None = Header(default=None)):
+    require_role('expert', x_legacy_expert_key)
+    try:
+        return _create_transcript(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
