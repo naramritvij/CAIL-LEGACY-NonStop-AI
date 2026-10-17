@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './operator-command-center.css';
 
 type Color = 'green' | 'yellow' | 'red' | 'unknown';
@@ -24,6 +24,8 @@ const API = '/api/v1';
 const tools = ['asap', 'ems', 'scf'] as const;
 
 export default function OperatorCommandCenter({ incidentId }: { incidentId: string }) {
+  const selectedIncident = useRef(incidentId);
+  selectedIncident.current = incidentId;
   const [overview, setOverview] = useState<Overview | null>(null);
   const [commands, setCommands] = useState<OperatorCommand[]>([]);
   const [source, setSource] = useState<Source | null>(null);
@@ -57,8 +59,9 @@ export default function OperatorCommandCenter({ incidentId }: { incidentId: stri
         '/sources/' + encodeURIComponent(tool)
       );
       if (!response.ok) throw new Error('Evidence source unavailable');
-      setSource(await response.json() as Source);
-    } catch (e) { setError(String(e)); }
+      const data = await response.json() as Source;
+      if (selectedIncident.current === incidentId) setSource(data);
+    } catch (e) { if (selectedIncident.current === incidentId) setError(String(e)); }
   }
 
   async function runPreview(command: OperatorCommand) {
@@ -70,12 +73,12 @@ export default function OperatorCommandCenter({ incidentId }: { incidentId: stri
       });
       if (!response.ok) throw new Error('Safe preview unavailable');
       const result = await response.json();
-      setPreview(result);
+      if (selectedIncident.current === incidentId) setPreview(result);
       if (command.id.startsWith('open_')) {
         const tool = command.id.slice(5);
         if (tools.some(x => x === tool)) await viewSource(tool);
       }
-    } catch (e) { setError(String(e)); }
+    } catch (e) { if (selectedIncident.current === incidentId) setError(String(e)); }
   }
 
   return <section className="operator-center" aria-label="Operator command center">
