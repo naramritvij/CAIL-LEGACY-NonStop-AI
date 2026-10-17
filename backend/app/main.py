@@ -178,3 +178,31 @@ def shift_briefing():
         'next_step': 'Review event evidence, subsystem state and applicable approved procedures.',
         'approval_state': 'generated_from_synthetic_records_not_operator_signed'
     }
+
+
+# Sprint 2: source-backed documentation lookup and display-only command references.
+# Real NonStop connections and arbitrary command execution remain unsupported.
+from .references import source_list as _reference_sources, search_sources as _reference_search
+from .templates import list_templates as _diagnostic_templates, preview_template as _template_preview
+from .evidence import build_evidence_pack as _evidence_pack
+from .reference_contract import DocumentationSearch as _DocumentationSearch, TemplatePreview as _TemplatePreview
+
+@app.get('/api/v1/knowledge/sources')
+def reference_sources():
+    return {'sources': _reference_sources(), 'provenance': 'curated_offline_official_hpe_pointers'}
+
+@app.post('/api/v1/knowledge/search')
+def reference_search(body: _DocumentationSearch):
+    return _reference_search(body.query, body.limit)
+
+@app.get('/api/v1/diagnostics/templates')
+def source_templates():
+    return _diagnostic_templates()
+
+@app.post('/api/v1/diagnostics/templates/preview')
+def source_template_preview(body: _TemplatePreview):
+    return _template_preview(body.template_id, incident_or_404(body.incident_id))
+
+@app.get('/api/v1/incidents/{incident_id}/evidence-pack')
+def incident_evidence_pack(incident_id: str):
+    return _evidence_pack(incident_or_404(incident_id))

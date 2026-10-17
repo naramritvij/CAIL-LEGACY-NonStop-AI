@@ -37,3 +37,12 @@ Base URL: `http://localhost:8000/api/v1` (frontend Vite proxy `/api/v1`). All in
 3. Decision DNA: approved lessons appear in the public list; drafts may not be displayed publicly.
 4. Shift Passport: use `shift-briefing.unresolved` and `approval_state`; never label synthetic handovers as operator-signed.
 5. Retain simulated/read-only warning and model-unavailable handling.
+
+
+# Sprint 2 additional contracts (manual reference and evidence packs)
+- GET /knowledge/sources: attributed official HPE source pointers; no copied manual text.
+- POST /knowledge/search: {"query":"disk capacity","limit":4}; lexical source lookup, not embedding RAG. No invented exact event matching.
+- GET /incidents/{incident_id}/evidence-pack: independent synthetic incident findings and attributed HPE documentation pointers; "official_message_match":null until real subsystem/event metadata exist.
+- GET /diagnostics/templates: read-only reference catalog; no command execution.
+- POST /diagnostics/templates/preview: {"incident_id":"INC-DISK-001","template_id":"scf_kernel_status_lseries"}; shows scoped manual reference with "execution_allowed":false.
+Refer to docs/BACKEND_SPRINT2_API.md for response structure and security boundaries.
