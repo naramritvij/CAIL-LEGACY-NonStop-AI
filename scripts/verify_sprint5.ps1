@@ -13,6 +13,17 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+$branch = (& git branch --show-current).Trim()
+$localCommit = (& git rev-parse HEAD).Trim()
+$remoteRef = "refs/remotes/origin/$branch"
+& git show-ref --verify --quiet $remoteRef
+if ($LASTEXITCODE -eq 0) {
+    $remoteCommit = (& git rev-parse $remoteRef).Trim()
+    if ($localCommit -ne $remoteCommit) {
+        throw "Local branch differs from fetched origin branch. Synchronize your checkout before verification."
+    }
+}
+
 $python = Join-Path $root "backend\.venv\Scripts\python.exe"
 if (-not (Test-Path $python)) {
     throw "Missing backend virtual environment. Create backend\.venv and install requirements-dev.txt first."
