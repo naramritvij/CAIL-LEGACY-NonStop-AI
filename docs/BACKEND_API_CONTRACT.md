@@ -46,3 +46,7 @@ Base URL: `http://localhost:8000/api/v1` (frontend Vite proxy `/api/v1`). All in
 - GET /diagnostics/templates: read-only reference catalog; no command execution.
 - POST /diagnostics/templates/preview: {"incident_id":"INC-DISK-001","template_id":"scf_kernel_status_lseries"}; shows scoped manual reference with "execution_allowed":false.
 Refer to docs/BACKEND_SPRINT2_API.md for response structure and security boundaries.
+
+## Sprint 3: Retrieval and Transfer
+
+See [Sprint 3 API contract](BACKEND_SPRINT3_API.md) for approved-only retrieval, deterministic evidence claims, knowledge transfer training endpoints, limitations, and examples. These additions do not change earlier routes.

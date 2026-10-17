@@ -78,7 +78,9 @@ def counterfactual_replay(body: ReplayRequest):
 def investigate(body: InvestigationRequest):
     incident = incident_or_404(body.incident_id)
     lessons = list_lessons(incident_id=body.incident_id, status='approved')
-    return explain(body.question, incident, lessons[:3])
+    matching = retrieve_approved(body.question, incident, lessons)
+    selected_ids = {x['id'] for x in matching['approved_lessons']}
+    return explain(body.question, incident, [x for x in lessons if x['id'] in selected_ids][:3])
 
 
 @app.get('/api/v1/knowledge/example')
@@ -206,3 +208,47 @@ def source_template_preview(body: _TemplatePreview):
 @app.get('/api/v1/incidents/{incident_id}/evidence-pack')
 def incident_evidence_pack(incident_id: str):
     return _evidence_pack(incident_or_404(incident_id))
+
+
+# Sprint 3: approved-only retrieval, deterministic claim-to-evidence briefing, and
+# human-knowledge-transfer training over changed synthetic scenarios.
+from fastapi import Query
+from .retrieval import retrieve_approved
+from .grounding import build_grounded_brief
+from .training import make_challenge, grade_transfer
+from .sprint3_contract import RetrievalQuestion, TransferAnswer
+
+@app.post('/api/v1/knowledge/retrieve')
+def retrieve_knowledge(body: RetrievalQuestion):
+    incident = incident_or_404(body.incident_id)
+    approved = list_lessons(incident_id=body.incident_id, status='approved')
+    return retrieve_approved(body.query, incident, approved,
+                             max_lessons=body.max_lessons, max_sources=body.max_sources)
+
+@app.get('/api/v1/incidents/{incident_id}/grounded-brief')
+def incident_grounded_brief(
+    incident_id: str,
+    question: str = Query(default='What evidence supports this incident?', min_length=2, max_length=500),
+):
+    incident = incident_or_404(incident_id)
+    approved = list_lessons(incident_id=incident_id, status='approved')
+    return build_grounded_brief(incident, question, approved)
+
+@app.get('/api/v1/training/challenges/{lesson_id}')
+def training_challenge(lesson_id: str):
+    item = get_lesson(lesson_id)
+    challenge = make_challenge(item)
+    if challenge is None:
+        raise HTTPException(404, 'No approved lesson or supported training scenario found')
+    return challenge
+
+@app.post('/api/v1/training/challenges/{lesson_id}/assess')
+def assess_transfer(lesson_id: str, body: TransferAnswer):
+    lesson = get_lesson(lesson_id)
+    if not lesson or lesson.get('status') != 'approved':
+        raise HTTPException(404, 'No approved lesson or supported training scenario found')
+    incident = incident_or_404(lesson['incident_id'])
+    result = grade_transfer(lesson, incident, **body.model_dump())
+    if result is None:
+        raise HTTPException(404, 'Training scenario unavailable')
+    return result
