@@ -47,7 +47,7 @@ Write-Host "[3/4] Checking frontend compilation and safety API contracts..." -Fo
 docker compose exec -T frontend npm run build
 if ($LASTEXITCODE -ne 0) { throw "Frontend TypeScript/Vite build failed." }
 
-$ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15
+$ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15 -UseBasicParsing
 if ($ui.StatusCode -ne 200) { throw "Frontend did not respond with HTTP 200." }
 
 $incidents = @(Invoke-RestMethod -Uri "$base/incidents" -TimeoutSec 10)
