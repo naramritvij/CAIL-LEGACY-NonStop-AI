@@ -218,3 +218,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# LEGACY frontend and local development artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/.venv/
+*.sqlite3
+*.db
+.env
+.env.*
+!.env.example
