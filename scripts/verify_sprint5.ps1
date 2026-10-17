@@ -24,6 +24,28 @@ if ($LASTEXITCODE -eq 0) {
     }
 }
 
+# Preflight before time-consuming tests/builds. Parse only; never execute seed.
+$seedPath = Join-Path $root "scripts/seed_demo_knowledge.ps1"
+$seedBytes = [System.IO.File]::ReadAllBytes($seedPath)
+if (@($seedBytes | Where-Object { $_ -gt 127 }).Count -gt 0) {
+    throw "Synthetic demo seed script must be ASCII-only for Windows PowerShell 5.1 compatibility."
+}
+$seedTokens = $null
+$seedErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $seedPath, [ref]$seedTokens, [ref]$seedErrors
+) | Out-Null
+if ($null -ne $seedErrors -and $seedErrors.Count -gt 0) {
+    foreach ($parseError in $seedErrors) {
+        Write-Host ("Seed syntax error at line {0}, column {1}: {2}" -f
+            $parseError.Extent.StartLineNumber,
+            $parseError.Extent.StartColumnNumber,
+            $parseError.Message) -ForegroundColor Red
+    }
+    throw "Synthetic demo seed PowerShell syntax validation failed."
+}
+Write-Host "Preflight: demo seed syntax and Windows-compatible encoding passed." -ForegroundColor Green
+
 $python = Join-Path $root "backend\.venv\Scripts\python.exe"
 if (-not (Test-Path $python)) {
     throw "Missing backend virtual environment. Create backend\.venv and install requirements-dev.txt first."
@@ -104,17 +126,6 @@ foreach ($node in $visibleNodes) {
         throw "Legacy Tree exposed an unapproved or non-synthetic node."
     }
 }
-# Check demo preparation syntax WITHOUT running it or creating lessons.
-$seedTokens = $null
-$seedErrors = $null
-$seedPath = Join-Path $root "scripts/seed_demo_knowledge.ps1"
-[System.Management.Automation.Language.Parser]::ParseFile(
-    $seedPath, [ref]$seedTokens, [ref]$seedErrors
-) | Out-Null
-if ($null -ne $seedErrors -and $seedErrors.Count -gt 0) {
-    throw "Synthetic demo seed script contains PowerShell syntax errors."
-}
-
 # Frontend one-call read model must remain independent of local Ollama.
 foreach ($id in @("INC-DISK-001", "INC-PATH-002")) {
     $workspace = Invoke-RestMethod -Uri "$base/incidents/$id/workspace" -TimeoutSec 15
