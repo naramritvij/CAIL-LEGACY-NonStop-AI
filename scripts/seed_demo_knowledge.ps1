@@ -27,6 +27,26 @@ $body = @{
 } | ConvertTo-Json -Depth 5
 $expertHeaders = @{"X-Legacy-Expert-Key" = $vars["LEGACY_EXPERT_KEY"]}
 $reviewerHeaders = @{"X-Legacy-Reviewer-Key" = $vars["LEGACY_REVIEWER_KEY"]}
+
+# Idempotent check: never silently multiply identical demo lessons in SQLite.
+# Access to nonapproved lesson metadata requires an explicit local demo role.
+$existingResponse = Invoke-RestMethod -Method Get -Uri "$base/knowledge/lessons?incident_id=INC-DISK-001&status=all" -Headers $expertHeaders -TimeoutSec 10
+$existingLessons = @($existingResponse)
+$matching = @($existingLessons | Where-Object {
+  $_.author_alias -eq "Synthetic Demo Mentor — Not a Real Operator" -and
+  $_.symptoms -eq "A simulated disk rose from 72 percent to 81 percent during the shift."
+})
+if ($matching.Count -gt 0) {
+  $approved = @($matching | Where-Object { $_.status -eq "approved" })
+  if ($approved.Count -gt 0) {
+    Write-Host "Synthetic approved demo lesson already exists: $($approved[0].id)"
+    Write-Host "Challenge endpoint: $base/training/challenges/$($approved[0].id)"
+    Write-Host "Skipped duplicate seed. No new record was written."
+    exit 0
+  }
+  throw "Matching synthetic lesson exists but is not approved; review the existing draft/submission instead of creating a duplicate."
+}
+
 $item = Invoke-RestMethod -Method Post -Uri "$base/knowledge/lessons" -Headers $expertHeaders -ContentType "application/json" -Body $body
 Invoke-RestMethod -Method Post -Uri "$base/knowledge/lessons/$($item.id)/submit" -Headers $expertHeaders | Out-Null
 $review = @{decision="approved";notes="Accepted for synthetic training demonstration only; no real senior operator verification."} | ConvertTo-Json
