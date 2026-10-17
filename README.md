@@ -116,7 +116,7 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-Latest team-verified local baseline: **91 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **MVP integration review branch adds additional tests that still require execution**; do not report a new passing total until they run. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
+Latest team-verified local baseline: **91 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **MVP integration suite has now been verified locally (95 passed),** and the Legacy Tree branch adds six more tests that still require execution; do not report a new passing total until they run. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
 
 ## 👩‍💻 Maggie's frontend development guide
 
@@ -189,6 +189,7 @@ Open a **pull request into `main`**, request Ritvij's review, and coordinate API
 | Sentinel | `POST /api/v1/diagnostics/preview` | Safe preview vs blocked purge |
 | Counterfactual | `POST /api/v1/replay` | **Simulated**, not predicted, outcomes |
 | Decision DNA | `GET /api/v1/knowledge/lessons` | Approved records only |
+| Legacy Tree | `GET /api/v1/knowledge/legacy-tree?incident_id=INC-DISK-001` | Only approved synthetic lesson nodes + revision edges; never fictional reuse counts |
 | Knowledge transfer | `GET /api/v1/training/challenges/{lesson_id}` + `POST .../assess` | New-event scenario + rubric; needs approved lesson |
 | Shift handover | `GET /api/v1/shift-briefing` | Open incidents and missing evidence |
 
