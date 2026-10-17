@@ -23,3 +23,22 @@ export function formatDuration(start: string, end: string): string {
   const remain = minutes % 60
   return remain ? `${hours}h ${remain}m` : `${hours}h`
 }
+
+/** The synthetic UI uses a fixed epoch date for source events, not an observed date. */
+export function formatDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Date unknown' : date.toISOString().slice(0, 10) + ' (synthetic)'
+}
+
+export function formatValue(value: number, unit = ''): string {
+  if (!Number.isFinite(value)) return 'Unknown'
+  const number = Number.isInteger(value) ? value.toString() : value.toFixed(1)
+  return unit === '%' ? number + '%' : unit ? number + ' ' + unit : number
+}
+
+/** Relative delta vs baseline only; not a causal or severity assessment. */
+export function formatChange(current: number, baseline: number): string {
+  if (!Number.isFinite(current) || !Number.isFinite(baseline) || baseline === 0) return 'n/a'
+  const percent = ((current - baseline) / Math.abs(baseline)) * 100
+  return (percent > 0 ? '+' : '') + percent.toFixed(1) + '% vs baseline'
+}
