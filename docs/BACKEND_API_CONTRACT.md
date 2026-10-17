@@ -70,3 +70,13 @@ See [Sprint 4 Corpus API](BACKEND_SPRINT4_CORPUS.md). The five new `/knowledge/c
 `nodes[]` includes `id`, `incident_id`, `incident_title`, `kind:"locally_approved_decision_dna"`, `title`, `reasoning_preview`, `prerequisites`, `rejected_action`, `source_event_ids`, `author_alias` (identity NOT verified), `review_status:"approved"`, `reviewed_at`, `revision_of`, and explicit evidence/synthetic flags. Only approved records with registered synthetic event IDs are exposed. `edges[]` relates visible, approved record revisions through `from`, `to`, and `kind:"approved_revision_of"`.
 
 **Not a validated real-world mentorship graph or reuse metric.** Zero nodes when no synthetic lesson has been approved is expected. Do not invent positive counts, expert identities, cross-incident reuse links, learner skills, or growth metrics. The endpoint is read-only with no authentication keys in browser code, and does not change existing lesson/retrieval APIs. Frontend integration belongs to Maggie.
+
+## Incident Workspace: Single-call read-only UI foundation
+
+`GET /api/v1/incidents/{incident_id}/workspace` accepts optional `question` (3–500 characters; default evidence question). Unknown incidents return 404. The response is a model-independent read-only assembly of the **existing** incident, deterministic analysis/grounded-brief, missing evidence, Sentinel previews for known actions, a question-relevant subset of **approved-only** Decision DNA, Legacy Tree (approved local revisions), available training challenge pointers (approved lessons only), and the unresolved synthetic shift excerpt. It reports `ai_investigation.status:"not_requested"`, `needs_separate_model_call:true`, `root_cause_status:"not_established"`, `synthetic:true`, `operational_action_authorized:false`, and `state_change_executed:false`.
+
+`sentinel_previews[].allowed` is permission to inspect a **simulated preview**, not permission to execute a command. No local model is contacted by this GET. Frontend must POST separately to `/api/v1/investigate/grounded` and show failed/rejected AI states rather than silently replacing them with invented claims. The `reviewed_knowledge` source pointers are not authenticated HPE manual snippets. No reviewer/expert keys belong in browser requests.
+
+### Prototype HTTP response safeguards
+
+API responses include `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`. These reduce accidental browser caching/sniffing/embedding but **are not a replacement for enterprise authentication, rate limits, transport security, audited RBAC or production hardening**.
