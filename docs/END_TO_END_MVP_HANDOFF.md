@@ -25,6 +25,7 @@ Existing frontend: React/TypeScript/Vite (no Next.js migration). Use the Vite pr
 | Display / interaction | Method + relative path | Truthful UI state |
 |---|---|---|
 | Incident picker, metrics, event timeline | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | `Synthetic training incident`; show event IDs and missing prerequisites |
+| **Incident Workspace (single read)** | `GET /api/v1/incidents/{id}/workspace?question=...` | A single **model-independent** read-only payload combines incident, brief, Sentinel previews, approved knowledge, Legacy Tree, training links and shift excerpt |
 | Evidence & causes | `GET /api/v1/incidents/{id}/grounded-brief` | Show deterministic evidence-linked observations, unverified hypotheses, `root_cause_status: not_established` |
 | Ask LEGACY | `POST /api/v1/investigate/grounded` | Cite each claim with source registry entry; mark **AI-generated, requires human validation** |
 | Safety panel | `POST /api/v1/diagnostics/preview` | `preview_allowed` is simulated permission **to preview only**, not permission to execute |
@@ -35,6 +36,12 @@ Existing frontend: React/TypeScript/Vite (no Next.js migration). Use the Vite pr
 | Apprentice exercise | `GET /api/v1/training/challenges/{lesson_id}` | Challenge requires an approved lesson; 404 before approval is normal |
 | Apprentice assessment | `POST /api/v1/training/challenges/{lesson_id}/assess` | Show `passed`, `score`, gate failures and *synthetic exercise* disclaimer |
 | Shift Passport | `GET /api/v1/shift-briefing` | Not operator-signed; show unresolved incidents, unknowns, approved record count |
+
+### New consolidated workspace API (preferred initial UI load)
+
+Use `GET /api/v1/incidents/INC-DISK-001/workspace?question=disk%20ownership%20retention`. It is a **read-only convenience endpoint** for React and performs **no Ollama call**. It returns `incident`, `analysis`, `grounded_brief`, `missing_evidence`, `sentinel_previews[]`, `reviewed_knowledge.relevant_approved_lessons[]` (at most 3 for the question), `legacy_tree`, `training_challenges[]` with approved `lesson_id` and challenge endpoint, `shift_handover_excerpt`, and `ai_investigation: {status:"not_requested",endpoint:"/api/v1/investigate/grounded",needs_separate_model_call:true}`. Results declare `synthetic:true`, `root_cause_status:"not_established"`, `operational_action_authorized:false`, `state_change_executed:false`. A preview marked `allowed` is **not an execution authorization**. This endpoint does not create lessons, persist training scores, or prove an expert's identity. An invalid incident returns 404; a question outside 3–500 characters returns 422.
+
+Maggie may choose the individual routes where smaller incremental loads are useful; this additive endpoint does **not** replace any existing URL. Keep the AI POST separate with visible loading/unavailable/rejected states.
 
 ### Grounded AI call
 
@@ -84,7 +91,7 @@ Render failed attempts explicitly. Unsafe actions do not pass even if the textua
 
 1. Run Docker Compose with native Windows Ollama working (Sprint 5 script checks this).
 2. **Only if you intend to create one explicitly invented training lesson**, configure different local `LEGACY_EXPERT_KEY` and `LEGACY_REVIEWER_KEY` values in a private, untracked `.env` file (at least 20 characters each). Never share them in ChatGPT, GitHub, screenshots or React.
-3. From repo root, explicitly opt into the existing `scripts/seed_demo_knowledge.ps1 -ConfirmSynthetic` script. This **persists a synthetic approved lesson to the local named SQLite volume**. It is not appropriate for a clean no-write smoke test. Do not run multiple times without intending duplicate demo lessons. If `.env` was edited, restart backend container to import environment values first.
+3. From repo root, explicitly opt into the existing `scripts/seed_demo_knowledge.ps1 -ConfirmSynthetic` script. This **persists a synthetic approved lesson to the local named SQLite volume**. It is not appropriate for a clean no-write smoke test. The script now checks for a matching record: it skips an already approved synthetic seed rather than duplicating it, and refuses to create another if the matching record is draft, submitted, or rejected (complete/review it manually). Only local demo keys are used. If `.env` was edited, restart backend container to import environment values first.
 4. Confirm `GET /api/v1/knowledge/lessons?incident_id=INC-DISK-001` includes your synthetic reviewed record, and open the returned `/training/challenges/{lesson_id}`.
 5. Show the evidence → diagnosis → Sentinel → Decision DNA → changed incident → shift handover path live.
 
@@ -92,7 +99,7 @@ Render failed attempts explicitly. Unsafe actions do not pass even if the textua
 
 ## 4. One-run integration gates
 
-From repo root, with `backend/.venv` present, use `./scripts/verify_sprint5.ps1` (PowerShell: `.\scripts\verify_sprint5.ps1`). It runs the **full backend pytest suite**, Docker rebuild/health, frontend TypeScript/Vite compile, key safety APIs and six live local Ollama checks.
+From repo root, with `backend/.venv` present, use `./scripts/verify_sprint5.ps1` (PowerShell: `.\scripts\verify_sprint5.ps1`). It runs the **full backend pytest suite**, Docker rebuild/health, frontend TypeScript/Vite compile, key safety and Legacy Tree APIs, both read-only incident workspaces, demo-script syntax checking without executing it, and a bounded live local Ollama sample.
 
 The newly added `backend/tests/test_demo_journey.py` tests additionally verify both complete HTTP lifecycle flows and fail-closed model outcomes; they are included automatically by full pytest. They use temporary files, do not write to the Docker `legacy_knowledge` volume and make no live model requests.
 
