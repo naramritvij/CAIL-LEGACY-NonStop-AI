@@ -36,18 +36,59 @@ def _incident(incident_id):
 
 
 def indicator(incident):
-    evidence = incident.get("events", []) + incident.get("metrics", [])
-    color = SEVERITY.get(incident.get("severity", ""), "unknown") if evidence else "unknown"
+    """Deterministic demo health policy; these are NOT HPE default thresholds."""
+    events = incident.get("events", [])
+    metrics = incident.get("metrics", [])
+    findings = []
+    if events:
+        levels = [str(e.get("level", "")).lower() for e in events]
+        if "high" in levels or "critical" in levels or "error" in levels:
+            findings.append(("red", "High-severity synthetic event"))
+        elif "warning" in levels:
+            findings.append(("yellow", "Warning-level synthetic event"))
+    for m in metrics:
+        name = str(m.get("name", "")).lower()
+        val = m.get("value")
+        baseline = m.get("baseline")
+        if not isinstance(val, (int, float)):
+            continue
+        if name == "disk utilization":
+            if val >= 90:
+                findings.append(("red", "Disk utilization >= 90% demo threshold"))
+            elif val >= 80:
+                findings.append(("yellow", "Disk utilization >= 80% demo threshold"))
+        elif name == "service availability":
+            if val < 80:
+                findings.append(("red", "Availability < 80% demo threshold"))
+            elif val < 99:
+                findings.append(("yellow", "Availability < 99% demo threshold"))
+        elif name == "response latency" and isinstance(baseline, (int, float)) and baseline > 0:
+            if val >= 4 * baseline:
+                findings.append(("red", "Latency >= 4x demo baseline"))
+            elif val >= 2 * baseline:
+                findings.append(("yellow", "Latency >= 2x demo baseline"))
+    if not events and not metrics:
+        color = "unknown"
+    elif any(level == "red" for level, _ in findings):
+        color = "red"
+    elif findings:
+        color = "yellow"
+    else:
+        # A record with some evidence and no alarms is not automatically healthy.
+        color = "green" if incident.get("severity") == "normal" else "unknown"
     return {
         "incident_id": incident["id"], "title": incident["title"],
         "system": incident["system"], "color": color, "meaning": EXPLANATIONS[color],
+        "signal_reasons": [description for level, description in findings],
+        "status_policy": "illustrative_training_thresholds_not_hpe_certified",
         "source_mode": "synthetic_fixture_not_live",
-        "source_hrefs": {tool: f"/api/v1/operations/incidents/{incident['id']}/sources/{tool}"
-                         for tool in TOOLS},
-        "evidence_ids": [e["id"] for e in incident.get("events", [])],
+        "source_hrefs": {
+            tool: f"/api/v1/operations/incidents/{incident['id']}/sources/{tool}"
+            for tool in TOOLS
+        },
+        "evidence_ids": [e["id"] for e in events],
         "operational_action_authorized": False,
     }
-
 
 def overview():
     indicators = [indicator(i) for i in list_incidents()]
