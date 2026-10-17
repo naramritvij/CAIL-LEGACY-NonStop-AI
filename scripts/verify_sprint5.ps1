@@ -85,6 +85,10 @@ if ($LASTEXITCODE -ne 0) {
     throw "Frontend TypeScript/Vite build failed. See build output and startup logs above."
 }
 
+# Maggie's API projection contract tests are part of the unified build gate.
+docker compose run --rm --no-deps frontend npm run test:contract
+if ($LASTEXITCODE -ne 0) { throw "Frontend API adapter contract tests failed." }
+
 try {
     $ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15 -UseBasicParsing
     if ($ui.StatusCode -ne 200) { throw "Frontend returned unexpected HTTP status: $($ui.StatusCode)." }
