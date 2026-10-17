@@ -283,3 +283,7 @@ Interactive schema is always available at **[FastAPI `/docs`](http://localhost:8
 The backend now supports **user-supplied, authorized** documentation excerpts with expert submission, independent reviewer approval, SHA-256 chunk citations and an explicit NonStop-release search filter. Nothing is downloaded from HPE automatically; an official-looking URL is not proof that pasted text is genuine. This is an **offline lexical chunk index, not full vector/semantic RAG**. With no approved excerpts, searches correctly return `no_match`.
 
 [Read the five new endpoints, ingestion rules and security limits](docs/BACKEND_SPRINT4_CORPUS.md). Existing Incident Black Box and Maggie's frontend routes are unchanged.
+
+### Sprint 5 — Citation-bounded local AI investigations
+
+Use `POST /api/v1/investigate/grounded` to request a structured local Qwen3 explanation of the **synthetic** incident, optionally augmented by release-matched, locally approved document chunks. Every generated claim must identify a registered `SIM-EVT-*` or `DOC-*` citation; invented IDs or malformed model JSON cause the claim output to be suppressed. **Matching an ID is not verifying the claim's truth or the document's authenticity.** The AI cannot execute or approve commands, and the existing frontend is unchanged. See [API contract and verification steps](docs/BACKEND_SPRINT5_GROUNDED_AI.md).

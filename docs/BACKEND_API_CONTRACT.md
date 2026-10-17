@@ -55,3 +55,8 @@ See [Sprint 3 API contract](BACKEND_SPRINT3_API.md) for approved-only retrieval,
 ## Sprint 4: Locally-approved excerpt index
 
 See [Sprint 4 Corpus API](BACKEND_SPRINT4_CORPUS.md). The five new `/knowledge/corpus` routes let an expert submit an **authorized** source excerpt as draft, a distinct reviewer approve/reject, and the frontend search **approved excerpts only** with an exact release filter. Source URL shape and checksums are recorded; external contents are **not independently verified**. This is lexical chunk search, not full vector/LLM RAG. No real NonStop commands or network source downloads.
+
+
+## Sprint 5: Source-ID-bounded local AI explanation
+
+`POST /api/v1/investigate/grounded` accepts `incident_id`, `question`, an explicit `release`, and optional `max_chunks` (1–5). It returns structured, **unverified** claims with registered event or local approved-corpus citation IDs. Missing/invalid model output yields an informative response with no generated claims; it never authorizes or executes actions. See [full Sprint 5 specification](BACKEND_SPRINT5_GROUNDED_AI.md). Older /investigate route is unchanged for Maggie.

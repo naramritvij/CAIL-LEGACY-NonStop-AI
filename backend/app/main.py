@@ -296,3 +296,13 @@ def corpus_search(body: CorpusSearch):
 @app.get('/api/v1/knowledge/corpus/status')
 def corpus_index_status():
     return corpus_status()
+
+
+# Sprint 5: optional, evidence-ID-checked local Ollama explanation. This route
+# never executes commands or authorizes actions; all source text is untrusted.
+from .grounded_investigation import GroundedInvestigationRequest, investigate_with_corpus
+
+@app.post('/api/v1/investigate/grounded')
+def investigate_grounded_with_reviewed_corpus(body: GroundedInvestigationRequest):
+    return investigate_with_corpus(body.question, incident_or_404(body.incident_id),
+                                   body.release, body.max_chunks)
