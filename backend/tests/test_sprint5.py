@@ -84,3 +84,140 @@ def test_prompt_marks_source_untrusted(monkeypatch):
 def test_non_dict_model_response_rejected(monkeypatch):
     monkeypatch.setattr(gi,'_call_local_model',lambda p:'[]')
     assert gi.investigate_with_corpus('disk status',SAMPLE,'L23.08')['status']=='model_output_rejected'
+
+
+# Sprint 5 reliability regression tests: same contracts, no live model/network.
+def test_schema_guides_short_registered_claims(monkeypatch):
+    seen = []
+    def model(payload):
+        seen.append(payload)
+        return json.dumps({'claims': [{
+            'text': 'The synthetic disk event reports 81 percent utilization.',
+            'citations': ['SIM-EVT-101'],
+        }]})
+    monkeypatch.setattr(gi, '_call_local_model', model)
+    response = gi.investigate_with_corpus('What happened?', SAMPLE, 'L24.01')
+    schema = seen[0]['format']
+    claim_schema = schema['properties']['claims']['items']['properties']
+    assert claim_schema['text']['maxLength'] == 180
+    assert claim_schema['citations']['items']['enum'] == ['SIM-EVT-101']
+    assert response['model_attempts'] == 1
+    assert response['missing_evidence'] == ['File ownership']
+    assert '"unknowns":' not in seen[0]['prompt']
+    assert 'File ownership' not in seen[0]['prompt']
+
+
+def test_overlong_answer_retries_once_then_recovers(monkeypatch):
+    outputs = [
+        json.dumps({'claims': [{
+            'text': 'Synthetic disk utilization rose. ' + ('Additional words. ' * 15),
+            'citations': ['SIM-EVT-101'],
+        }]}),
+        json.dumps({'claims': [{
+            'text': 'The synthetic event reports disk utilization at 81 percent.',
+            'citations': ['SIM-EVT-101'],
+        }]}),
+    ]
+    seen = []
+    def model(payload):
+        seen.append(payload)
+        return outputs.pop(0)
+    monkeypatch.setattr(gi, '_call_local_model', model)
+    response = gi.investigate_with_corpus('What changed?', SAMPLE, 'L24.01')
+    assert response['status'] == 'generated_unverified_citation_ids_checked'
+    assert response['model_attempts'] == 2
+    assert len(seen) == 2
+    assert 'claim_length_out_of_range' in seen[1]['prompt']
+    assert response['state_change_executed'] is False
+
+
+def test_rejected_claims_fail_closed_after_one_retry(monkeypatch):
+    seen = []
+    def bad(payload):
+        seen.append(payload)
+        return json.dumps({'claims': [{
+            'text': 'The synthetic event proves the diagnosis with unknown evidence.',
+            'citations': ['SIM-EVT-999'],
+        }]})
+    monkeypatch.setattr(gi, '_call_local_model', bad)
+    response = gi.investigate_with_corpus('What happened?', SAMPLE, 'L24.01')
+    assert response['status'] == 'model_output_rejected'
+    assert response['model_attempts'] == 2
+    assert len(seen) == 2
+    assert response['validation_attempt_reasons'] == [
+        'duplicate_or_unknown_citation', 'duplicate_or_unknown_citation',
+    ]
+    assert response['claims'] == []
+    assert response['operational_action_authorized'] is False
+
+
+def test_incompatible_schema_falls_back_to_json_mode_once(monkeypatch):
+    from urllib.error import HTTPError
+    seen = []
+    good = json.dumps({'claims': [{
+        'text': 'The synthetic event records a disk utilization increase.',
+        'citations': ['SIM-EVT-101'],
+    }]})
+    def model(payload):
+        seen.append(payload)
+        if len(seen) == 1:
+            raise HTTPError('http://localhost:11434/api/generate', 400, 'schema unsupported', None, None)
+        return good
+    monkeypatch.setattr(gi, '_call_local_model', model)
+    response = gi.investigate_with_corpus('What changed?', SAMPLE, 'L24.01')
+    assert response['status'] == 'generated_unverified_citation_ids_checked'
+    assert response['model_attempts'] == 2
+    assert isinstance(seen[0]['format'], dict)
+    assert seen[1]['format'] == 'json'
+
+
+def test_failed_retry_returns_safe_registry_and_explains_failure(monkeypatch):
+    calls = [0]
+    def model(payload):
+        calls[0] += 1
+        if calls[0] == 1:
+            return 'not a json document'
+        raise OSError('transient local model failure')
+    monkeypatch.setattr(gi, '_call_local_model', model)
+    response = gi.investigate_with_corpus('What happened?', SAMPLE, 'L24.01')
+    assert response['status'] == 'model_output_rejected'
+    assert response['validation_attempt_reasons'] == ['invalid_json', 'retry_model_unavailable']
+    assert response['source_registry'][0]['id'] == 'SIM-EVT-101'
+    assert response['claims'] == []
+    assert response['state_change_executed'] is False
+
+
+def test_rejected_causal_certainty_is_not_repaired_by_disabling_rules(monkeypatch):
+    calls = []
+    def model(payload):
+        calls.append(payload)
+        return json.dumps({'claims': [{
+            'text': 'The root cause is a proven configuration problem.',
+            'citations': ['SIM-EVT-101'],
+        }]})
+    monkeypatch.setattr(gi, '_call_local_model', model)
+    response = gi.investigate_with_corpus('Why?', SAMPLE, 'L24.01')
+    assert response['status'] == 'model_output_rejected'
+    assert response['validation_attempt_reasons'] == ['unsupported_certainty'] * 2
+    assert calls[0]['format'] == calls[1]['format']
+    assert not response['operational_action_authorized']
+
+
+def test_full_fixture_unknowns_are_server_owned(monkeypatch):
+    from app.scenarios import get_incident
+    original = get_incident('INC-DISK-001')
+    seen = []
+    def model(payload):
+        seen.append(payload)
+        return json.dumps({'claims': [{
+            'text': 'The disk monitor reports utilization reaching 81 percent.',
+            'citations': ['SIM-EVT-103'],
+        }]})
+    monkeypatch.setattr(gi, 'search_approved',
+                        lambda q,r,n: {'status':'no_match', 'matches':[]})
+    monkeypatch.setattr(gi, '_call_local_model', model)
+    response = gi.investigate_with_corpus('What does the evidence show?', original, 'L23.08')
+    assert response['missing_evidence'] == original['unknowns']
+    assert 'File ownership' not in seen[0]['prompt']
+    assert response['root_cause_status'] == 'not_established'
+    assert response['approved_corpus_chunks_in_context'] == 0
