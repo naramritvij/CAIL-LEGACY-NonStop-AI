@@ -116,7 +116,7 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-Latest team-verified local baseline: **91 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **MVP integration suite has now been verified locally (95 passed),** and the Legacy Tree branch adds six more tests that still require execution; do not report a new passing total until they run. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
+Latest team-verified local baseline: **95 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **Legacy Tree review branch adds six tests** (expected 101 total) that still require execution; do not report a new passing total until they run. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
 
 ## 👩‍💻 Maggie's frontend development guide
 
