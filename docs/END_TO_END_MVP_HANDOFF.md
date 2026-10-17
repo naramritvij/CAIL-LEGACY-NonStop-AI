@@ -30,6 +30,7 @@ Existing frontend: React/TypeScript/Vite (no Next.js migration). Use the Vite pr
 | Safety panel | `POST /api/v1/diagnostics/preview` | `preview_allowed` is simulated permission **to preview only**, not permission to execute |
 | What-if outcomes | `POST /api/v1/replay` | Pre-authored simulator branch **not a prediction** |
 | Reviewed Decision DNA | `GET /api/v1/knowledge/lessons?incident_id=...` | **Approved only**; empty state if no reviewed records |
+| Legacy Tree knowledge lineage | `GET /api/v1/knowledge/legacy-tree?incident_id=...` | Approved-only nodes + approved-revision edges; honest empty state and **no invented reuse counts** |
 | Relevant reviewed lesson | `POST /api/v1/knowledge/retrieve` | Approved lessons separate from generic HPE documentation pointers |
 | Apprentice exercise | `GET /api/v1/training/challenges/{lesson_id}` | Challenge requires an approved lesson; 404 before approval is normal |
 | Apprentice assessment | `POST /api/v1/training/challenges/{lesson_id}/assess` | Show `passed`, `score`, gate failures and *synthetic exercise* disclaimer |
@@ -57,7 +58,7 @@ Return `missing_evidence[]` as its own panel, **not** as claims backed by unrela
 ### Decision DNA and Legacy Tree
 
 - **Backend currently persists lessons**, review status and audit history. It does not deliver a fully validated real-operator genealogy, learning impact metric, or reuse graph.
-- If visualizing a **Legacy Tree**, derive nodes from `GET /knowledge/lessons` (approved only) and use `id` / `previous_lesson_id` as links where present. For a single synthetic approved lesson, a single node is a truthful first version.
+- The additive **Legacy Tree API** `GET /api/v1/knowledge/legacy-tree?incident_id=INC-DISK-001` provides **approved-only** `nodes` with `id`, `kind`, `title`, `source_event_ids`, `reasoning_preview`, `prerequisites`, `revision_of`, `review_status`, `reviewed_at`, and unverified `author_alias`; `edges` link approved revisions only. For a single synthetic approved lesson, one node without edges is truthful. Use the returned `review_scope`, `reuse_metrics_available:false`, and `lineage_semantics` labels directly—never call revision links real-world reuse or mentor-to-apprentice sessions.
 - Do not fabricate lesson counts, expert credentials, reuse growth, years of expertise, organization approval, or leaderboards.
 - Never expose draft or rejected records through public API calls.
 - A user submitting notes in the future needs a proper authentication/authorization design; this MVP keeps expert creation/approval in local developer-controlled workflows.
@@ -74,6 +75,10 @@ Return `missing_evidence[]` as its own panel, **not** as claims backed by unrela
 ```
 
 Render failed attempts explicitly. Unsafe actions do not pass even if the textual reasoning looks plausible. Scores are **not persisted** and do not certify employment competence.
+
+### Legacy Tree response details for Maggie
+
+`GET /api/v1/knowledge/legacy-tree` returns `{ synthetic, review_scope, nodes, edges, returned_node_count, returned_edge_count, maximum_returned_nodes, may_be_truncated, reuse_metrics_available, identity_or_source_authenticity_verified, lineage_semantics, limitations }`. Optionally filter by `incident_id`. All nodes are from reviewed `approved` lessons with registered synthetic event IDs; draft, submitted and rejected records are excluded. Nodes have *unverified author aliases*, not authenticated expert identities. An edge is a **locally approved revision relationship**, not proof a colleague reused or learned the lesson. Returned counts are limited to the current response window (up to 100 approved records), not lifetime performance metrics. `404` means the requested incident ID does not exist. Keep React text escaped and **do not embed reviewer/expert secrets**.
 
 ## 3. Safe local demo preparation
 
