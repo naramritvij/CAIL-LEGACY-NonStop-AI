@@ -135,9 +135,51 @@ def search_approved(query: str, release: str, limit: int = 4):
                        'document_sha256':r['content_sha256'],'retrieval_score':len(overlap),
                        'matched_terms':overlap,'rank_basis':'lexical_overlap_not_probability',
                        'local_reviewed_at':r['reviewed_at'],
-                       'content_verified_against_url':False,'validated_for_live_use':False})
+                       'source_kind':r['source_kind'], 'content_verified_against_url':False,'validated_for_live_use':False})
     result.sort(key=lambda x:(-x['retrieval_score'],x['citation_id']))
     return {'status':'matches' if result else 'no_match','matches':result[:limit],
             'retrieval_method':'reviewer_approved_local_lexical_chunks',
             'release_filter':release,'independently_verified':False,
             'limitations':'Approval attests to local reviewer workflow only. The submitted text is not verified against the HPE URL and cannot prove an incident root cause.'}
+
+def create_transcript(title: str, recording_reference: str, release: str,
+                      section: str, content: str, acknowledged_authorization: bool,
+                      redaction_confirmed: bool):
+    """Store consented redacted transcript text as a review-gated local draft.
+
+    No audio transcription, arbitrary file fetch, or external source execution.
+    An internal URN labels provenance without pretending to be an HPE URL.
+    """
+    if not acknowledged_authorization or not redaction_confirmed:
+        raise ValueError('Permission and redaction confirmation required')
+    if not (80 <= len(content) <= MAX_DOCUMENT_CHARS) or not content.strip():
+        raise ValueError('Transcript text must have 80-12000 characters')
+    pieces = _chunks(content)
+    if len(pieces) > MAX_CHUNKS:
+        raise ValueError('Too many transcript chunks')
+    ident = str(uuid4())
+    digest = _digest(content)
+    origin = 'urn:cail:transcript:' + ident
+    rows = [
+        (f'DOC-{ident[:8]}-C{i+1:02d}', ident, i+1, excerpt, _digest(excerpt))
+        for i, excerpt in enumerate(pieces)
+    ]
+    with connect() as db:
+        _ensure_tables(db)
+        db.execute('BEGIN IMMEDIATE')
+        db.execute('''INSERT INTO corpus_documents
+          (id,title,url,release,section,content_sha256,status,source_kind,created_at)
+          VALUES (?,?,?,?,?,?,?,?,?)''',
+          (ident, title, origin, release,
+           section + ' | recording reference: ' + recording_reference,
+           digest, 'draft', 'locally_supplied_operator_transcript_not_authenticated', _now()))
+        db.executemany(
+            'INSERT INTO corpus_chunks(id,document_id,ordinal,content,sha256) VALUES (?,?,?,?,?)',
+            rows)
+        db.execute('COMMIT')
+    return {
+        'document_id': ident, 'status': 'draft', 'chunk_count': len(rows),
+        'content_sha256': digest, 'source_url': origin,
+        'review_required': True, 'transcript_authenticity_verified': False,
+        'message': 'Text-only local draft; only distinct-reviewer-approved chunks are searchable.',
+    }
