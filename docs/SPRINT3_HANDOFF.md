@@ -1,6 +1,6 @@
 # Backend Sprint 3 — Teammate Handoff and Validation
 
-**Backend track:** Ritvij and supporting assistant. **Frontend track:** Maggie. The Sprint 3 commit changes only backend Python files and documentation, not React/Next.js or other frontend code.
+**Backend track:** Ritvij and supporting assistant. **Frontend track:** Maggie. The Sprint 3 commit changes only backend Python files and documentation, not React or other frontend UI code.
 
 ## Integration priority for Maggie
 1. Show `POST /api/v1/knowledge/retrieve` after a question: render **approved-only** lessons and official document pointers in distinct columns; never call chapter pointers exact matches.
@@ -23,7 +23,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Expected: previously 33 tests plus 13 new automated tests = **46 if everything passes** (not yet executed on the user's laptop). Sample fast endpoint test:
+Latest developer-verified baseline on Windows: **49 tests passed, 1 Starlette/httpx deprecation warning, 3.30 seconds** on 17 October 2026 (46 original + 3 scoring-gate regression cases). Re-run after future backend changes. Sample fast endpoint test:
 
 ```
 Invoke-RestMethod 'http://localhost:8000/api/v1/incidents/INC-DISK-001/grounded-brief' |
@@ -31,3 +31,7 @@ Invoke-RestMethod 'http://localhost:8000/api/v1/incidents/INC-DISK-001/grounded-
 ```
 
 Training challenge needs an **approved** Decision DNA record first. Use existing protected expert/reviewer API operations and keep secret keys in private local environment only.
+
+## Maggie's local setup and collaboration
+
+Follow [the illustrated README](../README.md#-maggies-frontend-development-guide) or [Confluence onboarding](https://northeastern-team-mx3hi3ad.atlassian.net/wiki/spaces/CAILLEG26/pages/753694). The existing UI is React + Vite (not Next.js). For frontend hot reload: run Docker **backend only**, stop Docker frontend, then from `frontend/` run `npm.cmd install` and `npm.cmd run dev -- --config vite.local.config.ts`. Do not change API secrets in browser code. Use separate feature branches and pull requests.
