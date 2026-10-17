@@ -18,7 +18,7 @@ if (-not (Test-Path $python)) {
     throw "Missing backend virtual environment. Create backend\.venv and install requirements-dev.txt first."
 }
 
-Write-Host "[1/3] Running complete backend pytest suite..." -ForegroundColor Cyan
+Write-Host "[1/4] Running complete backend pytest suite..." -ForegroundColor Cyan
 Push-Location (Join-Path $root "backend")
 try {
     & $python -m pytest -q
@@ -26,7 +26,7 @@ try {
 }
 finally { Pop-Location }
 
-Write-Host "[2/3] Building and starting existing Docker services..." -ForegroundColor Cyan
+Write-Host "[2/4] Building and starting existing Docker services..." -ForegroundColor Cyan
 docker compose up -d --build
 if ($LASTEXITCODE -ne 0) { throw "Docker Compose failed." }
 
@@ -43,7 +43,42 @@ for ($i = 0; $i -lt 12; $i++) {
 }
 if (-not $ready) { throw "Backend did not pass health check." }
 
-Write-Host "[3/3] Running bounded local-Ollama investigations..." -ForegroundColor Cyan
+Write-Host "[3/4] Checking frontend compilation and safety API contracts..." -ForegroundColor Cyan
+docker compose exec -T frontend npm run build
+if ($LASTEXITCODE -ne 0) { throw "Frontend TypeScript/Vite build failed." }
+
+$ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15
+if ($ui.StatusCode -ne 200) { throw "Frontend did not respond with HTTP 200." }
+
+$incidents = @(Invoke-RestMethod -Uri "$base/incidents" -TimeoutSec 10)
+if ($incidents.Count -lt 2) { throw "Synthetic incident catalog is incomplete." }
+if (@($incidents | Where-Object { $_.synthetic -ne $true }).Count -gt 0) {
+    throw "Expected synthetic-only incident records."
+}
+
+$brief = Invoke-RestMethod -Uri "$base/incidents/INC-DISK-001/grounded-brief" -TimeoutSec 10
+if ($brief.root_cause_status -ne "not_established") {
+    throw "Grounded incident brief should not assert a proven root cause."
+}
+
+$blockedAction = @{ incident_id = "INC-DISK-001"; action_id = "purge_files" } | ConvertTo-Json
+$preview = Invoke-RestMethod -Uri "$base/diagnostics/preview" -Method Post -Body $blockedAction -ContentType "application/json" -TimeoutSec 10
+if ($preview.allowed -ne $false -or $preview.simulation_only -ne $true) {
+    throw "Sentinel destructive-action preview was not blocked."
+}
+
+$handover = Invoke-RestMethod -Uri "$base/shift-briefing" -TimeoutSec 10
+if ($handover.synthetic -ne $true -or $handover.open_incidents -lt 2) {
+    throw "Shift handover response is inconsistent."
+}
+
+$corpus = Invoke-RestMethod -Uri "$base/knowledge/corpus/status" -TimeoutSec 10
+if ($corpus.full_hpe_manual_ingested -ne $false -or $corpus.independently_verified_content -ne $false) {
+    throw "Corpus endpoint incorrectly claims verified official HPE content."
+}
+Write-Host "Frontend and read-only/safety contract smoke checks passed." -ForegroundColor Green
+
+Write-Host "[4/4] Running bounded local-Ollama investigations..." -ForegroundColor Cyan
 $scenarios = @(
     @{ Id = "INC-DISK-001"; Question = "What does the disk evidence show?" },
     @{ Id = "INC-PATH-002"; Question = "What do the Pathway events show?" }
