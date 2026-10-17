@@ -64,6 +64,7 @@ def _call_local_model(payload: dict) -> str:
 def _source_registry(incident: dict, hits: list[dict]):
     events = [{
         'id': x['id'], 'kind': 'synthetic_event', 'source_text': x['message'],
+        'source_href': f"/api/v1/operations/incidents/{incident['id']}/sources/ems",
         'official_hpe_message': False,
     } for x in incident['events']]
     docs = []
