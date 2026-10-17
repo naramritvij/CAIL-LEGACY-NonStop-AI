@@ -170,3 +170,21 @@ def test_training_grader_rejects_excessive_input():
     ident = approved_lesson()
     answer = valid_answer(); answer['reasoning'] = 'a' * 1001
     assert client.post(f'/api/v1/training/challenges/{ident}/assess',json=answer).status_code == 422
+
+
+@pytest.mark.parametrize('incomplete', ['missing_one_prerequisite', 'missing_one_event', 'nonoptimal_read_only'])
+def test_mandatory_training_gates_cap_score_below_passing(incomplete):
+    ident = approved_lesson()
+    answer = valid_answer()
+    if incomplete == 'missing_one_prerequisite':
+        answer['prerequisites'] = ['Verify file ownership']
+    elif incomplete == 'missing_one_event':
+        answer['evidence_ids'] = ['TRAIN-EVT-301']
+    else:
+        answer['action_id'] = 'inspect_events'
+    data = client.post(f'/api/v1/training/challenges/{ident}/assess', json=answer).json()
+    assert data['passed'] is False
+    assert data['score'] <= 74
+    assert data['score_cap_applied'] == 74
+    assert data['unmet_mandatory_conditions']
+    assert data['state_change_executed'] is False
