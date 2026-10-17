@@ -77,6 +77,22 @@ $corpus = Invoke-RestMethod -Uri "$base/knowledge/corpus/status" -TimeoutSec 10
 if ($corpus.full_hpe_manual_ingested -ne $false -or $corpus.independently_verified_content -ne $false) {
     throw "Corpus endpoint incorrectly claims verified official HPE content."
 }
+$tree = Invoke-RestMethod -Uri "$base/knowledge/legacy-tree?incident_id=INC-DISK-001" -TimeoutSec 10
+if ($tree.synthetic -ne $true -or
+    $tree.review_scope -ne "approved_only" -or
+    $tree.reuse_metrics_available -ne $false -or
+    $tree.identity_or_source_authenticity_verified -ne $false) {
+    throw "Legacy Tree incorrectly claims verified knowledge or reuse metrics."
+}
+$visibleNodes = @($tree.nodes | Where-Object { $null -ne $_ })
+if ($tree.returned_node_count -ne $visibleNodes.Count) {
+    throw "Legacy Tree count does not match returned nodes."
+}
+foreach ($node in $visibleNodes) {
+    if ($node.review_status -ne "approved" -or $node.synthetic_training_context -ne $true) {
+        throw "Legacy Tree exposed an unapproved or non-synthetic node."
+    }
+}
 Write-Host "Frontend and read-only/safety contract smoke checks passed." -ForegroundColor Green
 
 Write-Host "[4/4] Running bounded local-Ollama investigations..." -ForegroundColor Cyan
