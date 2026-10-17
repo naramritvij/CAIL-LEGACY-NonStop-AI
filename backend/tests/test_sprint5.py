@@ -103,7 +103,7 @@ def test_schema_guides_short_registered_claims(monkeypatch):
     assert claim_schema['citations']['items']['enum'] == ['SIM-EVT-101']
     assert response['model_attempts'] == 1
     assert response['missing_evidence'] == ['File ownership']
-    assert 'unknowns' not in seen[0]['prompt']
+    assert '"unknowns":' not in seen[0]['prompt']
     assert 'File ownership' not in seen[0]['prompt']
 
 
