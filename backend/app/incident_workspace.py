@@ -63,7 +63,8 @@ def build_workspace(incident: dict, question: str) -> dict:
             'official_document_pointers': retrieved['official_document_pointers'],
             'source_authenticity_verified': False,
         },
-        'legacy_tree': tree,
+        'knowledge_tree': tree,
+        'legacy_tree': tree,  # Backwards-compatible deprecated field
         'training_challenges': challenges,
         'shift_handover_excerpt': {
             'incident_id': incident['id'],
@@ -84,7 +85,7 @@ def build_workspace(incident: dict, question: str) -> dict:
         'limitations': (
             'Synthetic educational data only. Preview allowance is not execution '
             'authorization. Citation IDs do not establish claim truth, approved '
-            'demo lessons do not verify expert identity, and the Legacy Tree '
+            'demo lessons do not verify expert identity, and the Knowledge Tree '
             'does not measure real-world reuse or skill transfer.'
         ),
     }
