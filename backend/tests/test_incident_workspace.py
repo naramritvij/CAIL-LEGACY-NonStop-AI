@@ -147,3 +147,18 @@ def test_api_security_headers_applied_to_success_and_errors(client):
         assert result.headers['x-content-type-options'] == 'nosniff'
         assert result.headers['x-frame-options'] == 'DENY'
         assert result.headers['access-control-allow-origin'] == 'http://localhost:5173'
+
+def test_corrupted_approved_provenance_cannot_unlock_workspace_training(client):
+    from app.storage import connect
+    ident = _lesson(client, 'approved')
+    with connect() as db:
+        db.execute('UPDATE lessons SET evidence_ids=? WHERE id=?',
+                   (json.dumps(['SIM-EVT-999']), ident))
+    result = client.get(f'{API}/incidents/INC-DISK-001/workspace',
+                        params={'question': 'disk ownership retention'})
+    assert result.status_code == 200
+    data = result.json()
+    assert data['legacy_tree']['nodes'] == []
+    assert data['reviewed_knowledge']['relevant_approved_lessons'] == []
+    assert data['training_challenges'] == []
+    assert data['operational_action_authorized'] is False
