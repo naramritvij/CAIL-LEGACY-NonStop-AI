@@ -5,7 +5,7 @@
 
 **CAIL • Catalyst 2026 • HPE NonStop-inspired training environment**
 
-![Python](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square) ![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20TypeScript-177DAD?style=flat-square) ![AI](https://img.shields.io/badge/AI-Local%20Ollama-6B64C6?style=flat-square) ![Tests](https://img.shields.io/badge/Validated-49%20backend%20tests-23976A?style=flat-square) ![Safety](https://img.shields.io/badge/Environment-Synthetic%20%7C%20Read--only-BE5974?style=flat-square)
+![Python](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square) ![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20TypeScript-177DAD?style=flat-square) ![AI](https://img.shields.io/badge/AI-Local%20Ollama-6B64C6?style=flat-square) ![Tests](https://img.shields.io/badge/Tests-Pytest%20%2B%20live%20smoke-23976A?style=flat-square) ![Safety](https://img.shields.io/badge/Environment-Synthetic%20%7C%20Read--only-BE5974?style=flat-square)
 
 **[Quick start](#-quick-start-clone--run) · [Maggie's frontend setup](#-maggies-frontend-development-guide) · [Architecture](#-system-architecture) · [API reference](#-api-map) · [Confluence](https://northeastern-team-mx3hi3ad.atlassian.net/wiki/spaces/CAILLEG26)**
 
@@ -116,7 +116,7 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-Latest team-verified local baseline: **49 passed, 1 non-blocking Starlette deprecation warning** on 17 Oct 2026. Subsequent commits should be validated again; that number is not a CI badge or permanent guarantee.
+Latest team-verified local baseline: **91 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **MVP integration review branch adds additional tests that still require execution**; do not report a new passing total until they run. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
 
 ## 👩‍💻 Maggie's frontend development guide
 
@@ -193,6 +193,8 @@ Open a **pull request into `main`**, request Ritvij's review, and coordinate API
 | Shift handover | `GET /api/v1/shift-briefing` | Open incidents and missing evidence |
 
 **Full contracts:** [Backend API overview](docs/BACKEND_API_CONTRACT.md) · [Sprint 2](docs/BACKEND_SPRINT2_API.md) · [Sprint 3](docs/BACKEND_SPRINT3_API.md) · [Maggie's integration handoff](docs/SPRINT3_HANDOFF.md).
+
+**Current cross-team MVP plan:** [Complete incident → Decision DNA → apprentice transfer handoff](docs/END_TO_END_MVP_HANDOFF.md) documents every existing endpoint, safety/error state, the synthetic demo walkthrough, and what's still Maggie's frontend work. Backend contract integration tests live in `backend/tests/test_demo_journey.py` (included in full pytest). This backend handoff does **not** implement Maggie's screens.
 
 ## 🧩 Repository map
 
