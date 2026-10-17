@@ -143,3 +143,9 @@ def test_fallback_when_ai_unreachable(monkeypatch):
     }).json()
     assert data['status'] == 'model_unavailable'
     assert data['evidence_ids']
+
+
+def test_same_expert_and_reviewer_key_is_rejected(monkeypatch):
+    monkeypatch.setenv('LEGACY_REVIEWER_KEY', E['X-Legacy-Expert-Key'])
+    response = client.post('/api/v1/knowledge/lessons', json=lesson_payload(), headers=E)
+    assert response.status_code == 503
