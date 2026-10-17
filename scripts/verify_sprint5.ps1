@@ -77,11 +77,23 @@ for ($i = 0; $i -lt 12; $i++) {
 if (-not $ready) { throw "Backend did not pass health check." }
 
 Write-Host "[3/4] Checking frontend compilation and safety API contracts..." -ForegroundColor Cyan
-docker compose exec -T frontend npm run build
-if ($LASTEXITCODE -ne 0) { throw "Frontend TypeScript/Vite build failed." }
+# A one-off container can compile even if the long-running Vite service crashed.
+# This distinguishes a source/build problem from a dev-server startup problem.
+docker compose run --rm --no-deps frontend npm run build
+if ($LASTEXITCODE -ne 0) {
+    docker compose logs --no-color --tail=80 frontend
+    throw "Frontend TypeScript/Vite build failed. See build output and startup logs above."
+}
 
-$ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15 -UseBasicParsing
-if ($ui.StatusCode -ne 200) { throw "Frontend did not respond with HTTP 200." }
+try {
+    $ui = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 15 -UseBasicParsing
+    if ($ui.StatusCode -ne 200) { throw "Frontend returned unexpected HTTP status: $($ui.StatusCode)." }
+} catch {
+    Write-Host "Frontend startup diagnostics:" -ForegroundColor Yellow
+    docker compose ps -a
+    docker compose logs --no-color --tail=80 frontend
+    throw "Frontend runtime did not respond at http://localhost:5173. Check startup diagnostics above."
+}
 
 $incidentResponse = Invoke-RestMethod -Uri "$base/incidents" -TimeoutSec 10
 $incidents = @($incidentResponse)
