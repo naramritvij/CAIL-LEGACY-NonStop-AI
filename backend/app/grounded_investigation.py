@@ -76,8 +76,21 @@ def _source_registry(incident: dict, hits: list[dict]):
             'source_text': text[:760], 'source_url': x['source_url'],
             'section': x['section'], 'release': x['release'],
             'chunk_sha256': x['chunk_sha256'], 'content_verified_against_url': False,
+            'source_kind': x.get('source_kind', 'authorized_excerpt_unverified'),
         })
-    return events + docs
+    # Only metrics provided by this incident are projected into ASAP-style
+    # evidence. This does NOT query ASAP or authenticate metric provenance.
+    metrics = [{
+        'id': f"SIM-ASAP-{incident['id']}-{i+1:02d}",
+        'kind': 'simulated_asap_metric_projection',
+        'source_text': (
+            f"Training metric {metric['name']}: {metric['value']}"
+            f"{metric['unit']}; baseline {metric['baseline']}{metric['unit']}."
+        ),
+        'source_href': f"/api/v1/operations/incidents/{incident['id']}/sources/asap",
+        'official_hpe_message': False,
+    } for i, metric in enumerate(incident.get('metrics', []))]
+    return events + docs + metrics
 
 
 def _validate_model_claims(value: str, allowed: set[str]):
