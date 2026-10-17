@@ -1,5 +1,5 @@
 <#
-Runs the Sprint 5 backend regression suite and a bounded live Ollama smoke test.
+Runs the complete LEGACY backend regression suite and bounded live Ollama smoke test.
 Synthetic data only. Does not alter application source or exercise NonStop commands.
 Docker Compose rebuild preserves the named database volume.
 Usage: .\scripts\verify_sprint5.ps1
@@ -12,6 +12,39 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+
+$branch = (& git branch --show-current).Trim()
+$localCommit = (& git rev-parse HEAD).Trim()
+$remoteRef = "refs/remotes/origin/$branch"
+& git show-ref --verify --quiet $remoteRef
+if ($LASTEXITCODE -eq 0) {
+    $remoteCommit = (& git rev-parse $remoteRef).Trim()
+    if ($localCommit -ne $remoteCommit) {
+        throw "Local branch differs from fetched origin branch. Synchronize your checkout before verification."
+    }
+}
+
+# Preflight before time-consuming tests/builds. Parse only; never execute seed.
+$seedPath = Join-Path $root "scripts/seed_demo_knowledge.ps1"
+$seedBytes = [System.IO.File]::ReadAllBytes($seedPath)
+if (@($seedBytes | Where-Object { $_ -gt 127 }).Count -gt 0) {
+    throw "Synthetic demo seed script must be ASCII-only for Windows PowerShell 5.1 compatibility."
+}
+$seedTokens = $null
+$seedErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $seedPath, [ref]$seedTokens, [ref]$seedErrors
+) | Out-Null
+if ($null -ne $seedErrors -and $seedErrors.Count -gt 0) {
+    foreach ($parseError in $seedErrors) {
+        Write-Host ("Seed syntax error at line {0}, column {1}: {2}" -f
+            $parseError.Extent.StartLineNumber,
+            $parseError.Extent.StartColumnNumber,
+            $parseError.Message) -ForegroundColor Red
+    }
+    throw "Synthetic demo seed PowerShell syntax validation failed."
+}
+Write-Host "Preflight: demo seed syntax and Windows-compatible encoding passed." -ForegroundColor Green
 
 $python = Join-Path $root "backend\.venv\Scripts\python.exe"
 if (-not (Test-Path $python)) {
@@ -77,6 +110,44 @@ $corpus = Invoke-RestMethod -Uri "$base/knowledge/corpus/status" -TimeoutSec 10
 if ($corpus.full_hpe_manual_ingested -ne $false -or $corpus.independently_verified_content -ne $false) {
     throw "Corpus endpoint incorrectly claims verified official HPE content."
 }
+$tree = Invoke-RestMethod -Uri "$base/knowledge/legacy-tree?incident_id=INC-DISK-001" -TimeoutSec 10
+if ($tree.synthetic -ne $true -or
+    $tree.review_scope -ne "approved_only" -or
+    $tree.reuse_metrics_available -ne $false -or
+    $tree.identity_or_source_authenticity_verified -ne $false) {
+    throw "Legacy Tree incorrectly claims verified knowledge or reuse metrics."
+}
+$visibleNodes = @($tree.nodes | Where-Object { $null -ne $_ })
+if ($tree.returned_node_count -ne $visibleNodes.Count) {
+    throw "Legacy Tree count does not match returned nodes."
+}
+foreach ($node in $visibleNodes) {
+    if ($node.review_status -ne "approved" -or $node.synthetic_training_context -ne $true) {
+        throw "Legacy Tree exposed an unapproved or non-synthetic node."
+    }
+}
+# Frontend one-call read model must remain independent of local Ollama.
+foreach ($id in @("INC-DISK-001", "INC-PATH-002")) {
+    $workspace = Invoke-RestMethod -Uri "$base/incidents/$id/workspace" -TimeoutSec 15
+    if ($workspace.synthetic -ne $true -or
+        $workspace.mode -ne "synthetic_read_only_incident_workspace" -or
+        $workspace.root_cause_status -ne "not_established" -or
+        $workspace.state_change_executed -ne $false -or
+        $workspace.operational_action_authorized -ne $false -or
+        $workspace.ai_investigation.status -ne "not_requested" -or
+        $workspace.ai_investigation.needs_separate_model_call -ne $true) {
+        throw "Incident Workspace API violated synthetic read-only contract for $id."
+    }
+    $blocked = @($workspace.sentinel_previews | Where-Object { $_.allowed -eq $false })
+    if ($blocked.Count -lt 1) { throw "Sentinel has no blocked preview in $id workspace." }
+    foreach ($lesson in $workspace.training_challenges) {
+        if (@($workspace.legacy_tree.nodes | Where-Object { $_.id -eq $lesson.lesson_id }).Count -ne 1) {
+            throw "An apprentice challenge lacks a visible approved lesson in $id workspace."
+        }
+    }
+}
+Write-Host "Incident Workspaces, Legacy Tree, and demo script syntax verified." -ForegroundColor Green
+
 Write-Host "Frontend and read-only/safety contract smoke checks passed." -ForegroundColor Green
 
 Write-Host "[4/4] Running bounded local-Ollama investigations..." -ForegroundColor Cyan
@@ -133,4 +204,4 @@ Write-Host "Any failure needs review; this script does not execute production ac
 if ($acceptedCount -ne $total -or $safeCount -ne $total) {
     throw "Sprint 5 live acceptance target not met. Review table; safety rules were not bypassed."
 }
-Write-Host "Sprint 5 checks passed for this local sample." -ForegroundColor Green
+Write-Host "LEGACY backend-foundation checks passed for this local sample." -ForegroundColor Green

@@ -62,3 +62,21 @@ See [Sprint 4 Corpus API](BACKEND_SPRINT4_CORPUS.md). The five new `/knowledge/c
 `POST /api/v1/investigate/grounded` accepts `incident_id`, `question`, an explicit `release`, and optional `max_chunks` (1–5). It returns structured, **unverified** claims with registered event or local approved-corpus citation IDs. Missing/invalid model output yields an informative response with no generated claims; it never authorizes or executes actions. See [full Sprint 5 specification](BACKEND_SPRINT5_GROUNDED_AI.md). Older /investigate route is unchanged for Maggie.
 
 **Sprint 5 reliability branch (additive response fields, no route change):** `/investigate/grounded` now returns a deterministic `missing_evidence` list separately from AI `claims`, plus `model_attempts` and (when rejected) `validation_attempt_reasons`. The model is requested to emit 1-2 concise source-cited observations; citations are identifier-checked only and are not proof of source entailment. At most one format-repair call is made, and all failures keep `claims: []`, `operational_action_authorized: false`, and `state_change_executed: false`. Maggie's existing `/investigate` integration is unaffected.
+
+## Legacy Tree: Approved local knowledge-lineage view
+
+`GET /api/v1/knowledge/legacy-tree` accepts optional query `incident_id` (known synthetic incident only; unknown ID returns 404). Returns `synthetic:true`, `review_scope:"approved_only"`, `nodes[]`, `edges[]`, `returned_node_count`, `returned_edge_count`, `maximum_returned_nodes:100`, `may_be_truncated`, `reuse_metrics_available:false`, `identity_or_source_authenticity_verified:false`, `lineage_semantics`, and `limitations`.
+
+`nodes[]` includes `id`, `incident_id`, `incident_title`, `kind:"locally_approved_decision_dna"`, `title`, `reasoning_preview`, `prerequisites`, `rejected_action`, `source_event_ids`, `author_alias` (identity NOT verified), `review_status:"approved"`, `reviewed_at`, `revision_of`, and explicit evidence/synthetic flags. Only approved records with registered synthetic event IDs are exposed. `edges[]` relates visible, approved record revisions through `from`, `to`, and `kind:"approved_revision_of"`.
+
+**Not a validated real-world mentorship graph or reuse metric.** Zero nodes when no synthetic lesson has been approved is expected. Do not invent positive counts, expert identities, cross-incident reuse links, learner skills, or growth metrics. The endpoint is read-only with no authentication keys in browser code, and does not change existing lesson/retrieval APIs. Frontend integration belongs to Maggie.
+
+## Incident Workspace: Single-call read-only UI foundation
+
+`GET /api/v1/incidents/{incident_id}/workspace` accepts optional `question` (3–500 characters; default evidence question). Unknown incidents return 404. The response is a model-independent read-only assembly of the **existing** incident, deterministic analysis/grounded-brief, missing evidence, Sentinel previews for known actions, a question-relevant subset of **approved-only** Decision DNA, Legacy Tree (approved local revisions), available training challenge pointers (approved lessons only), and the unresolved synthetic shift excerpt. It reports `ai_investigation.status:"not_requested"`, `needs_separate_model_call:true`, `root_cause_status:"not_established"`, `synthetic:true`, `operational_action_authorized:false`, and `state_change_executed:false`.
+
+`sentinel_previews[].allowed` is permission to inspect a **simulated preview**, not permission to execute a command. No local model is contacted by this GET. Frontend must POST separately to `/api/v1/investigate/grounded` and show failed/rejected AI states rather than silently replacing them with invented claims. The `reviewed_knowledge` source pointers are not authenticated HPE manual snippets. No reviewer/expert keys belong in browser requests.
+
+### Prototype HTTP response safeguards
+
+API responses include `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`. These reduce accidental browser caching/sniffing/embedding but **are not a replacement for enterprise authentication, rate limits, transport security, audited RBAC or production hardening**.

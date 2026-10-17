@@ -25,15 +25,23 @@ Existing frontend: React/TypeScript/Vite (no Next.js migration). Use the Vite pr
 | Display / interaction | Method + relative path | Truthful UI state |
 |---|---|---|
 | Incident picker, metrics, event timeline | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | `Synthetic training incident`; show event IDs and missing prerequisites |
+| **Incident Workspace (single read)** | `GET /api/v1/incidents/{id}/workspace?question=...` | A single **model-independent** read-only payload combines incident, brief, Sentinel previews, approved knowledge, Legacy Tree, training links and shift excerpt |
 | Evidence & causes | `GET /api/v1/incidents/{id}/grounded-brief` | Show deterministic evidence-linked observations, unverified hypotheses, `root_cause_status: not_established` |
 | Ask LEGACY | `POST /api/v1/investigate/grounded` | Cite each claim with source registry entry; mark **AI-generated, requires human validation** |
 | Safety panel | `POST /api/v1/diagnostics/preview` | `preview_allowed` is simulated permission **to preview only**, not permission to execute |
 | What-if outcomes | `POST /api/v1/replay` | Pre-authored simulator branch **not a prediction** |
 | Reviewed Decision DNA | `GET /api/v1/knowledge/lessons?incident_id=...` | **Approved only**; empty state if no reviewed records |
+| Legacy Tree knowledge lineage | `GET /api/v1/knowledge/legacy-tree?incident_id=...` | Approved-only nodes + approved-revision edges; honest empty state and **no invented reuse counts** |
 | Relevant reviewed lesson | `POST /api/v1/knowledge/retrieve` | Approved lessons separate from generic HPE documentation pointers |
 | Apprentice exercise | `GET /api/v1/training/challenges/{lesson_id}` | Challenge requires an approved lesson; 404 before approval is normal |
 | Apprentice assessment | `POST /api/v1/training/challenges/{lesson_id}/assess` | Show `passed`, `score`, gate failures and *synthetic exercise* disclaimer |
 | Shift Passport | `GET /api/v1/shift-briefing` | Not operator-signed; show unresolved incidents, unknowns, approved record count |
+
+### New consolidated workspace API (preferred initial UI load)
+
+Use `GET /api/v1/incidents/INC-DISK-001/workspace?question=disk%20ownership%20retention`. It is a **read-only convenience endpoint** for React and performs **no Ollama call**. It returns `incident`, `analysis`, `grounded_brief`, `missing_evidence`, `sentinel_previews[]`, `reviewed_knowledge.relevant_approved_lessons[]` (at most 3 for the question), `legacy_tree`, `training_challenges[]` with approved `lesson_id` and challenge endpoint, `shift_handover_excerpt`, and `ai_investigation: {status:"not_requested",endpoint:"/api/v1/investigate/grounded",needs_separate_model_call:true}`. Results declare `synthetic:true`, `root_cause_status:"not_established"`, `operational_action_authorized:false`, `state_change_executed:false`. A preview marked `allowed` is **not an execution authorization**. This endpoint does not create lessons, persist training scores, or prove an expert's identity. An invalid incident returns 404; a question outside 3–500 characters returns 422.
+
+Maggie may choose the individual routes where smaller incremental loads are useful; this additive endpoint does **not** replace any existing URL. Keep the AI POST separate with visible loading/unavailable/rejected states.
 
 ### Grounded AI call
 
@@ -57,7 +65,7 @@ Return `missing_evidence[]` as its own panel, **not** as claims backed by unrela
 ### Decision DNA and Legacy Tree
 
 - **Backend currently persists lessons**, review status and audit history. It does not deliver a fully validated real-operator genealogy, learning impact metric, or reuse graph.
-- If visualizing a **Legacy Tree**, derive nodes from `GET /knowledge/lessons` (approved only) and use `id` / `previous_lesson_id` as links where present. For a single synthetic approved lesson, a single node is a truthful first version.
+- The additive **Legacy Tree API** `GET /api/v1/knowledge/legacy-tree?incident_id=INC-DISK-001` provides **approved-only** `nodes` with `id`, `kind`, `title`, `source_event_ids`, `reasoning_preview`, `prerequisites`, `revision_of`, `review_status`, `reviewed_at`, and unverified `author_alias`; `edges` link approved revisions only. For a single synthetic approved lesson, one node without edges is truthful. Use the returned `review_scope`, `reuse_metrics_available:false`, and `lineage_semantics` labels directly—never call revision links real-world reuse or mentor-to-apprentice sessions.
 - Do not fabricate lesson counts, expert credentials, reuse growth, years of expertise, organization approval, or leaderboards.
 - Never expose draft or rejected records through public API calls.
 - A user submitting notes in the future needs a proper authentication/authorization design; this MVP keeps expert creation/approval in local developer-controlled workflows.
@@ -75,11 +83,15 @@ Return `missing_evidence[]` as its own panel, **not** as claims backed by unrela
 
 Render failed attempts explicitly. Unsafe actions do not pass even if the textual reasoning looks plausible. Scores are **not persisted** and do not certify employment competence.
 
+### Legacy Tree response details for Maggie
+
+`GET /api/v1/knowledge/legacy-tree` returns `{ synthetic, review_scope, nodes, edges, returned_node_count, returned_edge_count, maximum_returned_nodes, may_be_truncated, reuse_metrics_available, identity_or_source_authenticity_verified, lineage_semantics, limitations }`. Optionally filter by `incident_id`. All nodes are from reviewed `approved` lessons with registered synthetic event IDs; draft, submitted and rejected records are excluded. Nodes have *unverified author aliases*, not authenticated expert identities. An edge is a **locally approved revision relationship**, not proof a colleague reused or learned the lesson. Returned counts are limited to the current response window (up to 100 approved records), not lifetime performance metrics. `404` means the requested incident ID does not exist. Keep React text escaped and **do not embed reviewer/expert secrets**.
+
 ## 3. Safe local demo preparation
 
 1. Run Docker Compose with native Windows Ollama working (Sprint 5 script checks this).
 2. **Only if you intend to create one explicitly invented training lesson**, configure different local `LEGACY_EXPERT_KEY` and `LEGACY_REVIEWER_KEY` values in a private, untracked `.env` file (at least 20 characters each). Never share them in ChatGPT, GitHub, screenshots or React.
-3. From repo root, explicitly opt into the existing `scripts/seed_demo_knowledge.ps1 -ConfirmSynthetic` script. This **persists a synthetic approved lesson to the local named SQLite volume**. It is not appropriate for a clean no-write smoke test. Do not run multiple times without intending duplicate demo lessons. If `.env` was edited, restart backend container to import environment values first.
+3. From repo root, explicitly opt into the existing `scripts/seed_demo_knowledge.ps1 -ConfirmSynthetic` script. This **persists a synthetic approved lesson to the local named SQLite volume**. It is not appropriate for a clean no-write smoke test. The script now checks for a matching record: it skips an already approved synthetic seed rather than duplicating it, and refuses to create another if the matching record is draft, submitted, or rejected (complete/review it manually). It uses Windows PowerShell 5.1-compatible ASCII source and reconstructs the original em dash in the synthetic author alias at runtime. The verifier parses the script before running any tests/builds and prints syntax error locations if needed. Only local demo keys are used. If `.env` was edited, restart backend container to import environment values first.
 4. Confirm `GET /api/v1/knowledge/lessons?incident_id=INC-DISK-001` includes your synthetic reviewed record, and open the returned `/training/challenges/{lesson_id}`.
 5. Show the evidence → diagnosis → Sentinel → Decision DNA → changed incident → shift handover path live.
 
@@ -87,7 +99,7 @@ Render failed attempts explicitly. Unsafe actions do not pass even if the textua
 
 ## 4. One-run integration gates
 
-From repo root, with `backend/.venv` present, use `./scripts/verify_sprint5.ps1` (PowerShell: `.\scripts\verify_sprint5.ps1`). It runs the **full backend pytest suite**, Docker rebuild/health, frontend TypeScript/Vite compile, key safety APIs and six live local Ollama checks.
+From repo root, with `backend/.venv` present, use `./scripts/verify_sprint5.ps1` (PowerShell: `.\scripts\verify_sprint5.ps1`). It runs the **full backend pytest suite**, Docker rebuild/health, frontend TypeScript/Vite compile, key safety and Legacy Tree APIs, both read-only incident workspaces, demo-script syntax checking without executing it, and a bounded live local Ollama sample.
 
 The newly added `backend/tests/test_demo_journey.py` tests additionally verify both complete HTTP lifecycle flows and fail-closed model outcomes; they are included automatically by full pytest. They use temporary files, do not write to the Docker `legacy_knowledge` volume and make no live model requests.
 

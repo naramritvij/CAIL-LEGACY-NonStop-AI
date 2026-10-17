@@ -23,6 +23,16 @@ app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173', 'http
                    allow_credentials=False, allow_methods=['GET', 'POST'],
                    allow_headers=['Content-Type', 'X-Legacy-Expert-Key', 'X-Legacy-Reviewer-Key'])
 
+@app.middleware('http')
+async def prototype_response_safeguards(request, call_next):
+    """No credentialed/write workflow content should be cached by a browser."""
+    response = await call_next(request)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    return response
+
+
 class DiagnosticRequest(BaseModel):
     incident_id: str = Field(min_length=1, max_length=64)
     action_id: str = Field(min_length=1, max_length=64)
@@ -306,3 +316,29 @@ from .grounded_investigation import GroundedInvestigationRequest, investigate_wi
 def investigate_grounded_with_reviewed_corpus(body: GroundedInvestigationRequest):
     return investigate_with_corpus(body.question, incident_or_404(body.incident_id),
                                    body.release, body.max_chunks)
+
+
+# Read-only mentor knowledge visualization; only locally approved synthetic
+# Decision DNA revisions are returned, not verified reuse or impact metrics.
+from .legacy_tree import build_legacy_tree
+
+@app.get('/api/v1/knowledge/legacy-tree')
+def approved_legacy_tree(incident_id: str | None = Query(default=None, min_length=1, max_length=64)):
+    if incident_id is not None:
+        incident_or_404(incident_id)
+    return build_legacy_tree(incident_id)
+
+# Frontend-friendly composition of existing READ-ONLY endpoints. The model call
+# intentionally stays separate, avoiding a slow or hidden AI dependency.
+from .incident_workspace import build_workspace
+
+@app.get('/api/v1/incidents/{incident_id}/workspace')
+def incident_workspace(
+    incident_id: str,
+    question: str = Query(
+        default='What does the available evidence show?',
+        min_length=3,
+        max_length=500,
+    ),
+):
+    return build_workspace(incident_or_404(incident_id), question)
