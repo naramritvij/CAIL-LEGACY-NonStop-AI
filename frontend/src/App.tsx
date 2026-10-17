@@ -1,3 +1,4 @@
+import OperatorCommandCenter from './OperatorCommandCenter';
 import { useEffect, useState } from 'react';
 
 type Event = { id: string; time: string; source: string; level: string; message: string };
@@ -60,19 +61,20 @@ export default function App() {
 
   return <div className="shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brandmark">△</div><div><strong>LEGACY</strong><small>NONSTOP BLACK BOX</small></div></div>
+      <div className="brand"><div className="brandmark">△</div><div><strong>CAIL</strong><small>NONSTOP AI OPERATIONS ASSISTANT</small></div></div>
       <div className="navlabel">MISSION CONTROL</div>
       <div className="navitem selected">◈ &nbsp; Incident Investigation</div>
-      <div className="navitem">◇ &nbsp; Decision DNA <span className="smalltag">Seed</span></div>
+      <div className="navitem">◇ &nbsp; Knowledge Tree <span className="smalltag">Expert review</span></div>
       <div className="navitem">▤ &nbsp; Shift Passport <span className="smalltag">Soon</span></div>
       <div className="sidebottom">CAIL Catalyst 2026<br /><span>Training sandbox · No live systems</span></div>
     </aside>
     <main className="main">
       <header><div><div className="eyebrow">MISSION-CRITICAL OPERATIONS · PROTOTYPE</div>
-        <h1>Incident Black Box</h1><p>Observe evidence. Challenge assumptions. Preserve judgment.</p></div>
+        <h1>CAIL/Nonstop AI Operations Assistant</h1><p>Observe evidence. Challenge assumptions. Preserve judgment.</p></div>
         <div className="indicator"><span className="dot"></span> SIMULATED · READ ONLY</div>
       </header>
       {error && <div className="error" role="alert">{error}</div>}
+      <OperatorCommandCenter incidentId={active} />
       <section className="summary">
         <div className="sectionhead"><h2>Choose an incident</h2><span>Two repeatable scenarios</span></div>
         <div className="incidents">{incidents.map(item => <button key={item.id} className={'incidentselect ' + (active === item.id ? 'active' : '')} onClick={() => { setActive(item.id); setAnswer(null); setPreview(null); }}>
@@ -99,7 +101,7 @@ export default function App() {
           </section>
         </div>
         <section className="panel wide">
-          <div className="sectionhead"><h2>Ask LEGACY</h2><span>Local Ollama · Evidence-based explanation</span></div>
+          <div className="sectionhead"><h2>Ask CAIL/Nonstop AI Operations Assistant</h2><span>Local Ollama · Evidence-based explanation</span></div>
           <div className="askrow"><input aria-label="Investigation question" value={question} maxLength={500} onChange={e => setQuestion(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void investigate(); }} />
             <button className="primary" disabled={busy || question.length < 3} onClick={() => void investigate()}>{busy ? 'Investigating…' : 'Investigate →'}</button></div>
           {answer && <div className="result"><div className="sectionhead"><strong>Evidence-aware response</strong><span>{answer.status} · {answer.model || 'fallback'}</span></div>
@@ -126,7 +128,7 @@ export default function App() {
           </section>
         </div>
       </>}
-      <footer>LEGACY · synthetic educational demo · no automatic remediation · <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">Open API documentation ↗</a></footer>
+      <footer>CAIL/Nonstop AI Operations Assistant · synthetic educational demo · no automatic remediation · <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">Open API documentation ↗</a></footer>
     </main>
   </div>;
 }
