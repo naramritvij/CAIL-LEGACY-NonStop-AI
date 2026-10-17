@@ -277,3 +277,9 @@ Interactive schema is always available at **[FastAPI `/docs`](http://localhost:8
 *Understand what happened. Show the evidence. Preserve the reasoning.*
 
 </div>
+
+### Optional locally reviewed excerpt corpus (Sprint 4)
+
+The backend now supports **user-supplied, authorized** documentation excerpts with expert submission, independent reviewer approval, SHA-256 chunk citations and an explicit NonStop-release search filter. Nothing is downloaded from HPE automatically; an official-looking URL is not proof that pasted text is genuine. This is an **offline lexical chunk index, not full vector/semantic RAG**. With no approved excerpts, searches correctly return `no_match`.
+
+[Read the five new endpoints, ingestion rules and security limits](docs/BACKEND_SPRINT4_CORPUS.md). Existing Incident Black Box and Maggie's frontend routes are unchanged.

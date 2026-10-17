@@ -252,3 +252,47 @@ def assess_transfer(lesson_id: str, body: TransferAnswer):
     if result is None:
         raise HTTPException(404, 'Training scenario unavailable')
     return result
+
+
+# Sprint 4: opt-in authorized local document excerpts, independent review and
+# deterministic release-bounded retrieval. No automatic source download.
+from .corpus import create_document, review_transition, corpus_status, search_approved
+from .corpus_contract import CorpusIngest, CorpusReview, CorpusSearch
+
+@app.post('/api/v1/knowledge/corpus/documents', status_code=201)
+def corpus_ingest(body: CorpusIngest, x_legacy_expert_key: str | None = Header(default=None)):
+    require_role('expert', x_legacy_expert_key)
+    try:
+        return create_document(body.title, body.source_url, body.release,
+                               body.section, body.content, body.acknowledged_authorization)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+@app.post('/api/v1/knowledge/corpus/documents/{document_id}/submit')
+def corpus_submit(document_id: str, x_legacy_expert_key: str | None = Header(default=None)):
+    require_role('expert', x_legacy_expert_key)
+    result = review_transition(document_id, 'draft', 'submitted')
+    if result == 'missing':
+        raise HTTPException(404, 'Document not found')
+    if result != 'ok':
+        raise HTTPException(409, 'Only draft documents can be submitted')
+    return {'document_id': document_id, 'status': 'submitted'}
+
+@app.post('/api/v1/knowledge/corpus/documents/{document_id}/review')
+def corpus_review(document_id: str, body: CorpusReview,
+                  x_legacy_reviewer_key: str | None = Header(default=None)):
+    require_role('reviewer', x_legacy_reviewer_key)
+    result = review_transition(document_id, 'submitted', body.decision, body.notes)
+    if result == 'missing':
+        raise HTTPException(404, 'Document not found')
+    if result != 'ok':
+        raise HTTPException(409, 'Only submitted documents can be reviewed')
+    return {'document_id': document_id, 'status': body.decision}
+
+@app.post('/api/v1/knowledge/corpus/search')
+def corpus_search(body: CorpusSearch):
+    return search_approved(body.query, body.release, body.limit)
+
+@app.get('/api/v1/knowledge/corpus/status')
+def corpus_index_status():
+    return corpus_status()
