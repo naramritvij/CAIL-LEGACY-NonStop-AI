@@ -26,7 +26,15 @@ This milestone adds a source-aware operator experience WITHOUT claiming a live H
 - GET /api/v1/knowledge/knowledge-tree
 - GET /api/v1/incidents/INC-DISK-001/workspace now includes knowledge_tree and legacy_tree compatibility fields.
 
-## Windows verification
+## Windows verification (one command after checkout)
+
+Once on this branch, run the full-stack regression, build, local Ollama, source-status, and safe-command checks together with: 
+
+    .\scripts\verify_operator_center.ps1 -RunsPerIncident 1
+
+The script builds on the existing validated Sprint 5 check and fails when an asserted synthetic safety/health contract is violated. Real HPE tool access remains untested and unconfigured.
+
+For manual troubleshooting, the equivalent individual checks are below.
 
 Use the existing local workspace on the named branch. Do not run multiple concurrent Git write flows against Maggie's UI work.
 
