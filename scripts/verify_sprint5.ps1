@@ -100,7 +100,7 @@ $seedPath = Join-Path $root "scripts/seed_demo_knowledge.ps1"
 [System.Management.Automation.Language.Parser]::ParseFile(
     $seedPath, [ref]$seedTokens, [ref]$seedErrors
 ) | Out-Null
-if (@($seedErrors).Count -gt 0) {
+if ($null -ne $seedErrors -and $seedErrors.Count -gt 0) {
     throw "Synthetic demo seed script contains PowerShell syntax errors."
 }
 
@@ -118,7 +118,7 @@ foreach ($id in @("INC-DISK-001", "INC-PATH-002")) {
     }
     $blocked = @($workspace.sentinel_previews | Where-Object { $_.allowed -eq $false })
     if ($blocked.Count -lt 1) { throw "Sentinel has no blocked preview in $id workspace." }
-    foreach ($lesson in @($workspace.training_challenges)) {
+    foreach ($lesson in $workspace.training_challenges) {
         if (@($workspace.legacy_tree.nodes | Where-Object { $_.id -eq $lesson.lesson_id }).Count -ne 1) {
             throw "An apprentice challenge lacks a visible approved lesson in $id workspace."
         }
