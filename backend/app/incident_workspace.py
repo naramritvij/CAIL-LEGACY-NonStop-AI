@@ -29,9 +29,13 @@ def build_workspace(incident: dict, question: str) -> dict:
         evaluate(action_id, incident)
         for action_id in ACTIONS
     ]
+    # Gate training links on BOTH reviewer approval and event-provenance validity.
+    # An approved SQLite row with tampered event IDs must not unlock training.
+    valid_tree_ids = {node['id'] for node in tree['nodes']}
     challenges = []
     for lesson in approved:
-        # Every visible training entry must trace back to a reviewed record.
+        if lesson['id'] not in valid_tree_ids:
+            continue
         challenge = make_challenge(lesson)
         if challenge is not None:
             challenges.append({
