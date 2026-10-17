@@ -4,8 +4,13 @@ services:
     environment:
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: qwen3:4b-instruct
+      LEGACY_DATABASE_PATH: /data/legacy.sqlite3
+      LEGACY_EXPERT_KEY: ${LEGACY_EXPERT_KEY:-}
+      LEGACY_REVIEWER_KEY: ${LEGACY_REVIEWER_KEY:-}
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - legacy_knowledge:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
   frontend:
@@ -14,3 +19,5 @@ services:
       - backend
     ports:
       - "127.0.0.1:5173:5173"
+volumes:
+  legacy_knowledge:
