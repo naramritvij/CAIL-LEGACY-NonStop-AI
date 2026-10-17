@@ -81,11 +81,26 @@ def grade_transfer(lesson: dict, incident: dict, action_id: str, evidence_ids: l
     rationale_points = 15 if (len(reasoning.strip()) >= 20 and any(
         word in reason_terms for word in ('because', 'before', 'verify', 'risk', 'evidence', 'unknown'))) else 0
     raw = safety_points + evidence_points + prereq_points + rationale_points
-    score = min(raw, 20) if not safe else raw
+    # Essential safety and evidence requirements are *gates*, not optional
+    # point bonuses. The displayed score must never imply a pass when a
+    # prerequisite, required citation, or correct read-only first action is absent.
+    unmet_gates = []
+    if not optimal:
+        unmet_gates.append('correct_safe_first_action')
+    if unsupported:
+        unmet_gates.append('no_fabricated_evidence')
+    if missing:
+        unmet_gates.append('complete_required_evidence')
+    if missing_concepts:
+        unmet_gates.append('complete_prerequisites')
+    score_cap = 20 if not safe else (74 if unmet_gates else None)
+    score = min(raw, score_cap) if score_cap is not None else raw
     return {
         'challenge_id': case['id'], 'lesson_id': lesson['id'], 'incident_id': incident['id'],
         'score': score, 'max_score': 100,
-        'passed': score >= 75 and optimal and not unsupported and not missing and not missing_concepts,
+        'raw_score_before_safety_gates': raw, 'score_cap_applied': score_cap,
+        'unmet_mandatory_conditions': unmet_gates,
+        'passed': score >= 75 and not unmet_gates,
         'safety': {'action_id': action_id, 'allowed': safe, 'optimal_read_only_action': optimal,
                    'points': safety_points, 'policy_reason': policy['reason'],
                    'unsafe_score_cap_applied': not safe},
