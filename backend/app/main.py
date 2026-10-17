@@ -306,3 +306,14 @@ from .grounded_investigation import GroundedInvestigationRequest, investigate_wi
 def investigate_grounded_with_reviewed_corpus(body: GroundedInvestigationRequest):
     return investigate_with_corpus(body.question, incident_or_404(body.incident_id),
                                    body.release, body.max_chunks)
+
+
+# Read-only mentor knowledge visualization; only locally approved synthetic
+# Decision DNA revisions are returned, not verified reuse or impact metrics.
+from .legacy_tree import build_legacy_tree
+
+@app.get('/api/v1/knowledge/legacy-tree')
+def approved_legacy_tree(incident_id: str | None = Query(default=None, min_length=1, max_length=64)):
+    if incident_id is not None:
+        incident_or_404(incident_id)
+    return build_legacy_tree(incident_id)
