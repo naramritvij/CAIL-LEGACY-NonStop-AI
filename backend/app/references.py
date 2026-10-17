@@ -11,6 +11,15 @@ from typing import Optional
 # A few vetted, attribution-preserving source pointers, not an arbitrary web crawler.
 SOURCE_REGISTRY = (
     {
+        'id': 'HPE-CAIL-CHALLENGE-LINK',
+        'title': 'HPE Support Center link from CAIL Catalyst brief (document title unverified)',
+        'section': 'Document contents not retrieved',
+        'url': 'https://support.hpe.com/hpesc/public/docDisplay?docId=a00099017en_us&docLocale=en_US',
+        'summary': 'Challenge brief includes this HPE URL. The document body could not be read in the research environment. No operational commands, technical assertions or manual sections are inferred from it.',
+        'keywords': ('CAIL', 'Catalyst', 'challenge', 'HPE', 'reference', 'nonstop', 'brief'),
+        'scope': 'external_url_only_no_content_verified',
+    },
+    {
         'id': 'HPE-OPERATOR-INTRO',
         'title': 'HPE NonStop Operator Messages Manual — Introduction',
         'section': 'The Message Header / How to Find a Message',
