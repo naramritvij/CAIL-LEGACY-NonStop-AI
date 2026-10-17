@@ -73,11 +73,11 @@ export default function OperatorCommandCenter({ incidentId }: { incidentId: stri
       });
       if (!response.ok) throw new Error('Safe preview unavailable');
       const result = await response.json();
-      if (selectedIncident.current === incidentId) setPreview(result);
       if (command.id.startsWith('open_')) {
         const tool = command.id.slice(5);
         if (tools.some(x => x === tool)) await viewSource(tool);
       }
+      if (selectedIncident.current === incidentId) setPreview(result);
     } catch (e) { if (selectedIncident.current === incidentId) setError(String(e)); }
   }
 
