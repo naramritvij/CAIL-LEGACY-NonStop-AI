@@ -18,7 +18,7 @@ if (-not $vars["LEGACY_EXPERT_KEY"] -or -not $vars["LEGACY_REVIEWER_KEY"]) {
 $base = "http://127.0.0.1:8000/api/v1"
 $body = @{
  incident_id = "INC-DISK-001"
- author_alias = "Synthetic Demo Mentor — Not a Real Operator"
+ author_alias = "Synthetic Demo Mentor $([char]0x2014) Not a Real Operator"
  symptoms = "A simulated disk rose from 72 percent to 81 percent during the shift."
  reasoning = "Review utilization chronology, file ownership, retention and dependencies before any corrective action. The increasing metric alone does not prove causation."
  rejected_action = "purge_files"
@@ -33,7 +33,7 @@ $reviewerHeaders = @{"X-Legacy-Reviewer-Key" = $vars["LEGACY_REVIEWER_KEY"]}
 $existingResponse = Invoke-RestMethod -Method Get -Uri "$base/knowledge/lessons?incident_id=INC-DISK-001&status=all" -Headers $expertHeaders -TimeoutSec 10
 $existingLessons = @($existingResponse)
 $matching = @($existingLessons | Where-Object {
-  $_.author_alias -eq "Synthetic Demo Mentor — Not a Real Operator" -and
+  $_.author_alias -eq "Synthetic Demo Mentor $([char]0x2014) Not a Real Operator" -and
   $_.symptoms -eq "A simulated disk rose from 72 percent to 81 percent during the shift."
 })
 if ($matching.Count -gt 0) {
