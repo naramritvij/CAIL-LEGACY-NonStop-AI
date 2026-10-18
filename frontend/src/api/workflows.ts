@@ -41,15 +41,28 @@ export async function workflowRequest<T>(
     if (!credential?.trim()) throw new Error('Enter your local demo ' + role + ' key.')
     headers[role === 'expert' ? 'X-Legacy-Expert-Key' : 'X-Legacy-Reviewer-Key'] = credential
   }
-  const response = await fetch(API_BASE + path, {
-    method, headers, cache: 'no-store',
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null)
-    const detail = data && typeof data === 'object' && 'detail' in data
-      ? String((data as { detail: unknown }).detail) : 'Request failed'
-    throw new Error(`${detail} (HTTP ${response.status})`)
+  // Local knowledge actions should never leave a spinner waiting indefinitely.
+  // Timeout is bounded and is not a retry: do not duplicate writes.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const response = await fetch(API_BASE + path, {
+      method, headers, cache: 'no-store', signal: controller.signal,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+    if (!response.ok) {
+      const data: unknown = await response.json().catch(() => null)
+      const detail = data && typeof data === 'object' && 'detail' in data
+        ? String((data as { detail: unknown }).detail) : 'Request failed'
+      throw new Error(`${detail} (HTTP ${response.status})`)
+    }
+    return await response.json() as T
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('The local knowledge service did not respond in 15 seconds. Check Docker and refresh the queue before retrying a submission; it may have been saved.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
   }
-  return await response.json() as T
 }

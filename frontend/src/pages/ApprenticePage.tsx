@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GraduationCap, ShieldCheck, Trophy } from 'lucide-react'
 import { DATA_MODE } from '@/api/client'
+import { KnowledgeWorkflowStatus } from '@/components/knowledge/KnowledgeWorkflowStatus'
 import { workflowRequest, type DecisionLesson, type TransferChallenge, type TransferScore } from '@/api/workflows'
 
 type Action = { id:string;title:string;classification:string }
@@ -15,6 +16,7 @@ export function ApprenticePage() {
   const [reasoning,setReasoning]=useState('')
   const [score,setScore]=useState<TransferScore|null>(null)
   const [busy,setBusy]=useState(false)
+  const [loaded,setLoaded]=useState(false)
   const [error,setError]=useState('')
   async function load() {
     setBusy(true);setError('')
@@ -25,7 +27,7 @@ export function ApprenticePage() {
       ])
       setLessons(l);setActions(a)
     }catch(e){setError(String(e))}
-    finally{setBusy(false)}
+    finally{setBusy(false);setLoaded(true)}
   }
   useEffect(()=>{if(DATA_MODE==='http')void load()},[])
   async function choose(id:string) {
@@ -57,6 +59,7 @@ export function ApprenticePage() {
       <h1 className="mt-1 text-2xl font-semibold">Apprentice · Simulation Challenge</h1>
       <p className="mt-2 text-sm text-ink-muted">Practice on a changed, fictional incident created from an approved local lesson. A deterministic rubric checks safe actions, event citations, prerequisites and reasoning.</p>
     </header>
+    <KnowledgeWorkflowStatus />
     {DATA_MODE!=='http'&&<p className="glass p-4 text-sm text-gold">Challenges are available only in Local API · Synthetic mode.</p>}
     <section className="glass p-5">
       <h2 className="flex items-center gap-2 text-lg font-semibold"><GraduationCap className="size-5 text-violet"/> Select an approved lesson</h2>
@@ -65,13 +68,21 @@ export function ApprenticePage() {
         <option value="">Choose a reviewed synthetic lesson…</option>
         {lessons.map(l=><option key={l.id} value={l.id}>{l.incident_id} · {l.symptoms.slice(0,90)}</option>)}
       </select>
-      {!lessons.length&&<p className="mt-3 text-sm text-ink-muted">No approved lessons are present yet. Capture a Decision DNA lesson and approve it through Mentor first.</p>}
+      {loaded&&!lessons.length&&<div className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3">
+        <p className="text-sm text-gold">No approved lessons yet — the training challenge cannot start without an independently reviewed decision.</p>
+        <p className="mt-1 text-xs text-ink-muted">Open an incident in Investigate, capture its evidence-linked Decision DNA, then review it using a separate mentor credential.</p>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <a className="text-xs text-cyan underline" href="#/investigate">Capture Decision DNA →</a>
+          <a className="text-xs text-cyan underline" href="#/mentor">Review in Mentor →</a>
+        </div>
+      </div>}
     </section>
     {error&&<p role="alert" className="glass border border-coral/30 p-3 text-sm text-coral">{error}</p>}
     {challenge&&<section className="glass flex flex-col gap-4 p-5">
       <h2 className="text-lg font-semibold">{challenge.title} <span className="ml-2 text-xs text-gold">Synthetic</span></h2>
       <p className="text-sm leading-relaxed text-ink-muted">{challenge.situation}</p>
       <p className="text-xs font-semibold text-cyan">{challenge.task}</p>
+      <p className="text-xs text-ink-muted">Known unknowns to consider: {challenge.unknowns.join(' · ')}</p>
       <fieldset className="glass-sub p-4">
         <legend className="text-sm font-semibold">Select supporting training observations</legend>
         {challenge.events.map(e=><label key={e.id} className="mt-2 flex items-start gap-3 text-sm">
@@ -96,6 +107,7 @@ export function ApprenticePage() {
         <p className="mt-2 text-sm text-ink-muted">Mandatory gates: {score.unmet_mandatory_conditions.length?score.unmet_mandatory_conditions.join(', '):'Satisfied'}</p>
         <p className="mt-2 text-xs text-ink-muted">Missing evidence: {score.evidence.missing.join(', ')||'None'} · Unsupported: {score.evidence.unsupported.join(', ')||'None'}</p>
         <p className="mt-1 text-xs text-ink-muted">Missing prerequisites: {score.prerequisites.missing.join(', ')||'None'}</p>
+        {!score.passed&&<p className="mt-2 text-sm text-gold">Improve your response: use the supported diagnostic first action, cite all required events, name the missing prerequisites, and explain why you would verify before changing the system.</p>}
         <p className="mt-2 text-xs text-ink-faint">One-time synthetic score; attempt not persisted, no credential or production operation involved. This does not certify real operator competence.</p>
       </div>}
     </section>}

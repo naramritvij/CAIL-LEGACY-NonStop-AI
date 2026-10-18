@@ -404,6 +404,23 @@ test('Home source panel renders human-readable evidence before optional raw JSON
   assert.match(ui, /SIMULATED · NOT LIVE/)
 })
 
+test('Mentor, Library and Apprentice show real workflow readiness and bound requests', () => {
+  const status = fs.readFileSync(path.join(root,'src','components','knowledge','KnowledgeWorkflowStatus.tsx'),'utf8')
+  const api = fs.readFileSync(path.join(root,'src','api','workflows.ts'),'utf8')
+  const mentor = fs.readFileSync(path.join(root,'src','pages','MentorPage.tsx'),'utf8')
+  const library = fs.readFileSync(path.join(root,'src','pages','LibraryPage.tsx'),'utf8')
+  const apprentice = fs.readFileSync(path.join(root,'src','pages','ApprenticePage.tsx'),'utf8')
+  for (const field of ['knowledge/workflow-readiness','approved_lesson_count','independent_reviewer_configured','real_mentor_identity_verified']) {
+    assert.ok(status.includes(field), 'Missing readiness field: '+field)
+  }
+  assert.ok(api.includes('AbortController'))
+  assert.ok(api.includes('clearTimeout(timeout)'))
+  for (const page of [mentor,library,apprentice]) assert.ok(page.includes('<KnowledgeWorkflowStatus />'))
+  assert.ok(!mentor.includes('await load()'), 'Mentor should not block on unnecessary reload')
+  assert.ok(apprentice.includes('No approved lessons yet'))
+  assert.ok(library.includes('No approved excerpts match'))
+})
+
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)

@@ -21,6 +21,56 @@ def client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
+
+def test_workflow_readiness_counts_only_approved_local_lessons(client, monkeypatch):
+    route = API + '/knowledge/workflow-readiness'
+    before = client.get(route)
+    assert before.status_code == 200
+    status = before.json()
+    assert status['storage_ready'] is True
+    assert status['independent_reviewer_configured'] is True
+    assert status['approved_source_count'] == 0
+    assert status['approved_lesson_count'] == 0
+    assert status['available_apprentice_challenges'] == 0
+    assert status['production_ready'] is False
+    assert status['real_mentor_identity_verified'] is False
+    assert EKEY not in before.text and RKEY not in before.text
+
+    incident = client.get(API + '/incidents/INC-DISK-001').json()
+    created = client.post(API + '/knowledge/lessons', headers=E, json={
+        'incident_id': 'INC-DISK-001', 'author_alias': 'Local Training Expert',
+        'symptoms': incident['summary'],
+        'reasoning': 'Review evidence and ownership before changing any resources.',
+        'rejected_action': 'purge_files',
+        'prerequisites': ['Verify ownership', 'Verify retention'],
+        'evidence_ids': ['SIM-EVT-101', 'SIM-EVT-103'],
+    })
+    assert created.status_code == 201
+    lesson_id = created.json()['id']
+    submitted = client.post(API + f'/knowledge/lessons/{lesson_id}/submit', headers=E)
+    assert submitted.status_code == 200
+    assert client.get(route).json()['approved_lesson_count'] == 0
+    approved = client.post(API + f'/knowledge/lessons/{lesson_id}/review', headers=R,
+        json={'decision':'approved','notes':'Reviewed as local training material only.'})
+    assert approved.status_code == 200
+    ready = client.get(route).json()
+    assert ready['approved_lesson_count'] == 1
+    assert ready['available_apprentice_challenges'] == 1
+    assert client.get(API + f'/training/challenges/{lesson_id}').status_code == 200
+
+    monkeypatch.delenv('LEGACY_REVIEWER_KEY')
+    missing = client.get(route).json()
+    assert missing['independent_reviewer_configured'] is False
+    assert missing['approved_lesson_count'] == 1
+
+
+def test_workflow_readiness_disallows_same_expert_reviewer_key(client, monkeypatch):
+    monkeypatch.setenv('LEGACY_REVIEWER_KEY', EKEY)
+    result = client.get(API + '/knowledge/workflow-readiness').json()
+    assert result['independent_reviewer_configured'] is False
+    assert result['ready_for_local_review'] is False
+
+
 def test_submitted_corpus_requires_reviewer_key_and_approval(client):
     body = {
         'title': 'Permitted synthetic NonStop availability notes',
