@@ -42,9 +42,20 @@ for (const filename of ['errors.ts', 'backend-contract.ts']) {
   if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))throw Error('Console guard did not transpile')
   fs.writeFileSync(path.join(tmp,'console-guard.js'),output.outputText)
 }
+{
+  const source=fs.readFileSync(path.join(root,'src','api','atm-guard.ts'),'utf8')
+  const output=ts.transpileModule(source,{
+    fileName:'atm-guard.ts',reportDiagnostics:true,
+    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,isolatedModules:true},
+  })
+  if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))
+    throw Error('ATM guard did not transpile')
+  fs.writeFileSync(path.join(tmp,'atm-guard.js'),output.outputText)
+}
 const requireTmp = createRequire(path.join(tmp, 'verify.cjs'))
 const { assertSafePlaybook } = requireTmp('./playbook-guard.js')
 const { assertSafeConsoleResult } = requireTmp('./console-guard.js')
+const { assertSyntheticAtmNetwork, assertSyntheticAtmAssist, assertSyntheticAtmChat } = requireTmp('./atm-guard.js')
 const { fromBackendIncidents, fromBackendWorkspace, fromBackendTree, fromBackendGrounded } = requireTmp('./backend-contract.js')
 
 const disk = {
@@ -97,7 +108,8 @@ const workspace = {
 }
 let checks = 0
 function test(name, fn) {
-  try { fn(); checks++; process.stdout.write('✓ ' + name + '\n') }
+  try { fn(); checks++; 
+process.stdout.write('✓ ' + name + '\n') }
   catch (err) { process.stderr.write('FAILED: ' + name + ': ' + err.stack + '\n'); process.exitCode = 1 }
 }
 test('two real incident schemas normalize as synthetic', () => {
@@ -258,6 +270,126 @@ test('Native command reference cannot pretend to return executed PATHCOM data', 
   assert.throws(()=>assertSafeConsoleResult({...sample,evidence:{...sample.evidence,
     observations:[{status:'RUNNING'}]}}),/fake native/)
 })
+test('ATM mission map forbids fabricated live locations and unapproved history',()=>{
+  const map={
+    production_connectivity:false,mode:'synthetic_location_schematic',
+    map_type:'fictional_district_plan_not_real_world_geolocation',
+    attention_count:1,
+    sites:[
+      {id:'ATM-042',x:62,y:65,status:'attention',live_connected:false},
+      {id:'ATM-011',x:15,y:70,status:'nominal',live_connected:false},
+    ],
+    approved_knowledge_matches:[],
+    fictional_history_examples:[{status:'unreviewed_fiction_not_an_actual_resolution'}],
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmNetwork(map))
+  assert.throws(()=>assertSyntheticAtmNetwork({...map,production_connectivity:true}),/real geospatial/)
+  assert.throws(()=>assertSyntheticAtmNetwork({...map,approved_knowledge_matches:[{review_status:'draft'}]}),/Unapproved/)
+})
+test('ATM audience response never returns native command execution or fake PATHCOM output',()=>{
+  const sample={
+    synthetic:true,production_connectivity:false,
+    execution_allowed:false,state_change_executed:false,
+    status:'guided_synthetic_investigation',
+    steps:[{title:'Check',evidence_ids:['SIM-ATM-042-001']}],
+    source_previews:[{
+      adapter:'pathcom',connected:false,
+      evidence_origin:'local_fixture_adapter',native_tool_status:'unknown',
+      observations:[],
+    }],
+    approved_knowledge_matches:[],
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmAssist(sample))
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,execution_allowed:true}),/native execution/)
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,source_previews:[{...sample.source_previews[0],observations:[{status:'RUNNING'}]}]}),/must remain UNKNOWN/)
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,approved_knowledge_matches:[{review_status:'submitted'}]}),/unapproved lessons/)
+})
+
+test('Chat-to-map triggers only for a bounded offline ATM response',()=>{
+  const investigation={
+    synthetic:true,production_connectivity:false,execution_allowed:false,
+    state_change_executed:false,status:'guided_synthetic_investigation',
+    steps:[{title:'Check',evidence_ids:['SIM-ATM-042-001']}],
+    source_previews:[{adapter:'pathcom',connected:false,
+      evidence_origin:'local_fixture_adapter',native_tool_status:'unknown',
+      observations:[]}],
+    approved_knowledge_matches:[],
+  }
+  const network={
+    production_connectivity:false,mode:'synthetic_location_schematic',
+    map_type:'fictional_district_plan_not_real_world_geolocation',
+    attention_count:1,
+    sites:[{id:'ATM-042',x:62,y:65,status:'attention',live_connected:false},
+      {id:'ATM-011',x:15,y:70,status:'nominal',live_connected:false}],
+    approved_knowledge_matches:[],
+    fictional_history_examples:[{status:'unreviewed_fiction_not_an_actual_resolution'}],
+  }
+  const msg={
+    status:'atm_visual_response',synthetic:true,mode:'local_rule_based_atm_router',
+    production_connectivity:false,execution_allowed:false,
+    state_change_executed:false,answer:'Fictional ATM warning.',
+    selected_atm_id:'ATM-042',audience:'frontline',map_triggered:true,
+    network,investigation,
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(msg))
+  assert.throws(()=>assertSyntheticAtmChat({...msg,execution_allowed:true}),/execution or connectivity/)
+  assert.throws(()=>assertSyntheticAtmChat({...msg,network:null}),/Missing inline map/)
+  assert.throws(()=>assertSyntheticAtmChat({...msg,network:{...network,
+    sites:[{...network.sites[0],live_connected:true},network.sites[1]]}}),/Untrusted ATM source/)
+  assert.throws(()=>assertSyntheticAtmChat({...msg,selected_atm_id:'ATM-999'}),/not in rendered map/)
+})
+test('Chat never renders ATM map for a refused or unrelated request',()=>{
+  const base={status:'out_of_scope',synthetic:true,mode:'local_rule_based_atm_router',
+    production_connectivity:false,execution_allowed:false,
+    state_change_executed:false,answer:'Ask about an ATM.',
+    selected_atm_id:null,audience:null,map_triggered:false,
+    network:null,investigation:null}
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(base))
+  assert.throws(()=>assertSyntheticAtmChat({...base,network:{fake:true}}),/unsafe or out-of-scope/)
+  assert.throws(()=>assertSyntheticAtmChat({...base,map_triggered:true}),/Missing inline map/)
+})
+test('Chat-to-map animated reveal is scoped, staged and accessible',()=>{
+  const ui=fs.readFileSync(path.join(root,'src','components','operations','AtmChat.tsx'),'utf8')
+  const css=fs.readFileSync(path.join(root,'src','components','operations','AtmChat.css'),'utf8')
+  assert.match(ui,/import '\.\/AtmChat\.css'/)
+  assert.match(ui,/\{network&&intent!=='retrieve_knowledge'&&<section className="atm-map-reveal/)
+  assert.match(ui,/className="atm-map-canvas/)
+  assert.match(ui,/atm-pin-alert/)
+  assert.match(ui,/animationDelay:site\.status==='attention'/)
+  assert.match(css,/@keyframes cail-atm-card-arrive/)
+  assert.match(css,/@keyframes cail-atm-map-unveil/)
+  assert.match(css,/@keyframes cail-atm-pin-pop/)
+  assert.match(css,/@keyframes cail-atm-alert-pulse/)
+  assert.match(css,/@media \(prefers-reduced-motion: reduce\)/)
+})
+
+test('Tailscale frontend bundle uses FastAPI backend and read-only API gateway',()=>{
+  // Frontend-only Docker contains /app; repository-root Compose and startup
+  // are separately verified on the Windows host before the full smoke.
+  const config=fs.readFileSync(path.join(root,'deploy','funnel-nginx.conf'),'utf8')
+  const image=fs.readFileSync(path.join(root,'deploy','funnel.Dockerfile'),'utf8')
+  assert.match(image,/ENV VITE_LEGACY_DATA_MODE=http/)
+  assert.match(image,/ENV VITE_CAIL_PUBLIC_DEMO=0/)
+  assert.match(image,/RUN npm run build/)
+  assert.match(config,/POST:\/api\/v1\/operations\/atm\/chat/)
+  assert.match(config,/POST:\/api\/v1\/operations\/lab\/ask/)
+  assert.match(config,/if \(\$cail_api_allowed = 0\) \{ return 403; \}/)
+  assert.doesNotMatch(config,/POST:\/api\/v1\/knowledge\/lessons/)
+  assert.doesNotMatch(config,/POST:\/api\/v1\/knowledge\/corpus\/documents/)
+  assert.doesNotMatch(config,/POST:\/api\/v1\/knowledge\/transcripts/)
+  assert.match(config,/limit_req_zone \S+ zone=cail_ai:/)
+})
+test('Tailscale gateway serves built React app and enforces allowed methods',()=>{
+  const config=fs.readFileSync(path.join(root,'deploy','funnel-nginx.conf'),'utf8')
+  const image=fs.readFileSync(path.join(root,'deploy','funnel.Dockerfile'),'utf8')
+  assert.match(config,/location \^~ \/api\/v1\//)
+  assert.match(config,/proxy_pass http:\/\/demo-backend:8000/)
+  assert.match(config,/location = \/api\/v1\/operations\/lab\/ask/)
+  assert.match(config,/if \(\$request_method != POST\) \{ return 403; \}/)
+  assert.match(config,/try_files \$uri \$uri\/ \/index.html/)
+  assert.match(image,/COPY --from=build \/app\/dist/)
+})
+
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)

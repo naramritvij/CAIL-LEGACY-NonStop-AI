@@ -12,6 +12,47 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Funnel layout lives at the repository root, outside the frontend Docker
+# build context. Verify it here on Windows rather than trying to read
+# /compose.funnel.yaml from the frontend-only /app container.
+Write-Host "[CAIL] Preflighting isolated public Funnel deployment security..." -ForegroundColor Cyan
+$funnelConfigJson = (docker compose -f compose.funnel.yaml config --format json | Out-String)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($funnelConfigJson)) {
+    throw "Funnel Docker Compose config is invalid."
+}
+$funnelConfig = $funnelConfigJson | ConvertFrom-Json
+$isolatedBackend = $funnelConfig.services.'demo-backend'
+$publicGateway = $funnelConfig.services.'demo-gateway'
+if ($null -eq $isolatedBackend -or $null -eq $publicGateway) {
+    throw "Expected separate demo-backend and demo-gateway services."
+}
+if ($null -ne $isolatedBackend.ports -or $null -ne $isolatedBackend.volumes) {
+    throw "Public backend must not publish ports or mount the private knowledge volume."
+}
+$names = @($isolatedBackend.environment.PSObject.Properties.Name)
+if ($names -contains "LEGACY_EXPERT_KEY" -or $names -contains "LEGACY_REVIEWER_KEY") {
+    throw "Public backend must not have any expert/reviewer credentials."
+}
+$backendHealth = ($isolatedBackend.healthcheck.test -join ' ')
+if ($isolatedBackend.read_only -ne $true -or $backendHealth -notmatch "/api/v1/health") {
+    throw "Public backend must be read-only and healthchecked through FastAPI."
+}
+if ($publicGateway.depends_on.'demo-backend'.condition -ne "service_healthy") {
+    throw "Gateway must wait for healthy FastAPI before accepting traffic."
+}
+$ports = @($publicGateway.ports)
+if ($ports.Count -ne 1 -or $ports[0].host_ip -ne "127.0.0.1" -or
+    [string]$ports[0].published -ne "8787" -or [string]$ports[0].target -ne "8080") {
+    throw "Funnel gateway must bind only 127.0.0.1:8787 to container port 8080."
+}
+$funnelStartup = [System.IO.File]::ReadAllText((Join-Path $root "scripts/start_tailscale_funnel.ps1"))
+if (-not $funnelStartup.Contains('$uri/api/v1/health') -or
+    -not $funnelStartup.Contains('logs --tail=70') -or
+    -not $funnelStartup.Contains('if (-not $Publish)')) {
+    throw "Funnel startup must verify real FastAPI, show failed health diagnostics, and require explicit publishing."
+}
+Write-Host "[CAIL] Host-side Docker isolation, gateway bind and startup safety VERIFIED." -ForegroundColor Green
+
 Write-Host "[CAIL] Running existing end-to-end backend, frontend and Ollama verification..." -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "verify_sprint5.ps1") -RunsPerIncident $RunsPerIncident
 
@@ -198,5 +239,90 @@ if ($evaluation.real_world_mttr_claim_allowed -ne $false -or $evaluation.measure
     throw "Benchmark must not claim unmeasured productivity gains."
 }
 Write-Host "Sponsor Operations Lab: synthetic tool routing, financial case, safety, summaries and evaluation VERIFIED." -ForegroundColor Green
+
+# Sponsor ATM WOW demo uses six fictional locations and read-only existing adapters.
+$atmMap = Invoke-RestMethod -Uri "$base/operations/atm/network" -TimeoutSec 15
+if ($atmMap.production_connectivity -ne $false -or @($atmMap.sites).Count -ne 6 -or
+    $atmMap.attention_count -ne 1 -or $atmMap.site_event.id -ne "SIM-ATM-042-001") {
+    throw "ATM WOW map must identify exactly one fictional warning without claiming a live connection."
+}
+if (@($atmMap.sites | Where-Object { $_.status -eq "attention" -and $_.id -eq "ATM-042" }).Count -ne 1) {
+    throw "The red pin must identify synthetic ATM-042, not a real location."
+}
+foreach ($role in @("frontline", "engineer")) {
+    $atmPayload = @{atm_id="ATM-042";audience=$role;question="An ATM is down. What should I verify?"} | ConvertTo-Json
+    $atm = Invoke-RestMethod -Uri "$base/operations/atm/assist" -Method Post -ContentType "application/json" -Body $atmPayload -TimeoutSec 15
+    if ($atm.status -ne "guided_synthetic_investigation" -or @($atm.steps).Count -ne 3 -or
+        @($atm.source_previews).Count -ne 4 -or $atm.execution_allowed -ne $false -or
+        $atm.state_change_executed -ne $false -or $atm.production_connectivity -ne $false) {
+        throw "ATM adaptive $role explanation failed read-only API or provenance contract."
+    }
+    $native = @($atm.source_previews | Where-Object { $_.adapter -eq "pathcom" })
+    if ($native.Count -ne 1 -or $native[0].native_tool_status -ne "unknown" -or
+        @($native[0].observations).Count -ne 0) {
+        throw "ATM simulator must not invent a PATHCOM result."
+    }
+}
+$blockedAtmPayload = @{atm_id="ATM-042";audience="engineer";question="Restart the server now"} | ConvertTo-Json
+$blockedAtm = Invoke-RestMethod -Uri "$base/operations/atm/assist" -Method Post -ContentType "application/json" -Body $blockedAtmPayload -TimeoutSec 15
+if ($blockedAtm.status -ne "blocked_unsafe" -or $blockedAtm.state_change_executed -ne $false -or
+    @($blockedAtm.source_previews).Count -ne 0) {
+    throw "Unsafe ATM commands must be denied without a native tool call."
+}
+Write-Host "Sponsor ATM WOW: fictional map, two audience voices, existing-tool adapters, approved-only retrieval and safety VERIFIED." -ForegroundColor Green
+
+
+# Chat-first CEO demo: user question itself must return a clickable synthetic map.
+$chatPayload = @{question="Which ATM is broken and where is it?";audience_mode="auto"} | ConvertTo-Json
+$chat = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $chatPayload -TimeoutSec 15
+if ($chat.status -ne "atm_visual_response" -or $chat.map_triggered -ne $true -or
+    $chat.selected_atm_id -ne "ATM-042" -or @($chat.network.sites).Count -ne 6 -or
+    $chat.audience -ne "frontline" -or $chat.execution_allowed -ne $false -or
+    $chat.production_connectivity -ne $false) {
+    throw "Chat question did not produce a valid simulated ATM map with a safe plain-language answer."
+}
+$techPayload = @{question="Show ATM-042 PATHCOM and CPU status";audience_mode="auto"} | ConvertTo-Json
+$techChat = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $techPayload -TimeoutSec 15
+if ($techChat.status -ne "atm_visual_response" -or $techChat.audience -ne "engineer" -or
+    @($techChat.investigation.source_previews).Count -ne 4) {
+    throw "Chat did not adapt a technical ATM question and preserve the offline source links."
+}
+$refusalPayload = @{question="Restart ATM-042 now";audience_mode="auto"} | ConvertTo-Json
+$refusal = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $refusalPayload -TimeoutSec 15
+if ($refusal.status -ne "blocked_unsafe" -or $refusal.map_triggered -ne $false -or
+    $null -ne $refusal.network -or $refusal.state_change_executed -ne $false) {
+    throw "Unsafe chat command must not trigger ATM visualization or actual action."
+}
+$unrelatedPayload = @{question="What is a quantum rainbow?";audience_mode="auto"} | ConvertTo-Json
+$unrelated = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $unrelatedPayload -TimeoutSec 15
+if ($unrelated.status -ne "out_of_scope" -or $unrelated.map_triggered -ne $false) {
+    throw "An unrelated chat question must not hallucinate an ATM fault."
+}
+
+# Sponsor demo: different questions must produce different meaning and panels.
+$questionCases = @(
+    @{name="locate"; text="Which ATM is broken, and where is it?"; expectedSources=0},
+    @{name="investigate"; text="Show EMS and CPU evidence for ATM-042"; expectedSources=4},
+    @{name="retrieve_knowledge"; text="Have we learned anything from similar ATM incidents?"; expectedSources=0},
+    @{name="assist"; text="Our cash machine is down. What should I do?"; expectedSources=4}
+)
+$uniqueReplies = New-Object 'System.Collections.Generic.HashSet[string]'
+foreach ($item in $questionCases) {
+    $payload = @{question=$item.text;audience_mode="auto"} | ConvertTo-Json
+    $result = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
+    if ($result.status -ne "atm_visual_response" -or
+        $result.investigation.interpreted_intent -ne $item.name -or
+        @($result.investigation.source_previews).Count -ne $item.expectedSources -or
+        $result.execution_allowed -ne $false -or $result.state_change_executed -ne $false) {
+        throw "Chat must produce a distinct, safe response for intent $($item.name)."
+    }
+    [void]$uniqueReplies.Add($result.answer)
+}
+if ($uniqueReplies.Count -ne 4) {
+    throw "All four sponsor chat questions must receive meaningfully distinct answers."
+}
+Write-Host "Sponsor conversational intents: locate vs evidence vs knowledge vs safe action DISTINCT and SAFE." -ForegroundColor Green
+
+Write-Host "Chat-to-map: natural-language incident, visual source evidence, adaptive voice, unsafe/out-of-scope rejection VERIFIED." -ForegroundColor Green
 
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow
