@@ -1,4 +1,6 @@
 # CAIL / Nonstop AI Operations Assistant
+> **18 Oct 2026 — new secure integration layer:** The backend now supports opt-in authenticated read-only HTTPS evidence gateway snapshots for ASAP, EMS, SCF, Guardian, and Pathway (`/api/v1/integrations/*`), and Ask CAIL can route general questions to locally hosted Qwen without treating those answers as incident evidence. Live source routes require admin-configured HTTPS URLs and separate server-side credentials and stay **disabled by default**. A new GitHub Actions CI checks Python tests, TypeScript/Vite and frontend safety contracts. Full gateway contract, private setup and outstanding certification gates: [Live source gateway](docs/LIVE_SOURCE_GATEWAY.md). **This is production-oriented infrastructure, not a claim that any HPE/CAIL customer system is connected or certified.**
+
 
 **CAIL Catalyst operator-facing product name.** The older repository identifiers are retained to avoid disrupting branches and API consumers. The canonical knowledge feature is **Knowledge Tree**. The new [Operator Command Center](docs/OPERATOR_COMMAND_CENTER.md) provides color-coded *synthetic* source evidence, ASAP/EMS/SCF-style drilldowns, safe display-only command previews, and review-gated transcript intake. No HPE tools or customer systems are connected.
 
