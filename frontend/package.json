@@ -8,8 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
-    "test:contract": "node scripts/verify-backend-contract.cjs",
-    "build:netlify": "tsc -b && vite build --mode netlify"
+    "test:contract": "node scripts/verify-backend-contract.cjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

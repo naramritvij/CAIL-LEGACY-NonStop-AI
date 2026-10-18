@@ -5,9 +5,6 @@ import {
 } from 'lucide-react'
 import './AtmChat.css'
 import { DATA_MODE } from '@/api/client'
-import { publicAtmChat } from '@/api/public-atm-demo'
-
-const PUBLIC_REHEARSAL = import.meta.env.VITE_CAIL_PUBLIC_DEMO === '1'
 import { assertSyntheticAtmChat } from '@/api/atm-guard'
 import { workflowRequest } from '@/api/workflows'
 import { useIncidentContext } from '@/app/IncidentContext'
@@ -136,7 +133,7 @@ function ChatResult({data, onPick}:{
       </ol>}
       {!!investigation.source_previews.length&&<div className="mt-3">
         <p className="flex items-center gap-2 text-xs font-semibold text-ink-muted">
-          <TerminalSquare className="size-4"/> {PUBLIC_REHEARSAL ? "Bundled fictional source snapshots" : "Existing-tool adapter results"}
+          <TerminalSquare className="size-4"/> Existing-tool adapter results
         </p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {investigation.source_previews.map(source=><details key={source.input}
@@ -176,14 +173,14 @@ function ChatResult({data, onPick}:{
           <span className="font-semibold text-gold">{e.title}:</span> {e.expert_approach}
         </p>)}
       </details>
-      {!PUBLIC_REHEARSAL&&<div className="mt-3 flex flex-wrap gap-3">
+      <div className="mt-3 flex flex-wrap gap-3">
         <button type="button" onClick={()=>navigate('tree')} className="tap text-xs text-cyan underline">
           Open approved Knowledge Tree →
         </button>
         <button type="button" onClick={()=>navigate('atm')} className="tap text-xs text-cyan underline">
           Open complete ATM investigation →
         </button>
-      </div>}
+      </div>
     </section>}
     <p className="text-[11px] text-ink-faint">
       Synthetic simulation; citation identifiers do not prove causality or a genuine repair.
@@ -209,17 +206,15 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
 
   async function send(text:string,selectedMode:Mode=mode,overrideId?:string){
     const clean=text.trim()
-    if(!clean||clean.length<3||clean.length>500||busy.current||(!PUBLIC_REHEARSAL&&DATA_MODE!=='http'))return
+    if(!clean||clean.length<3||clean.length>500||busy.current||DATA_MODE!=='http')return
     busy.current=true;setLoading(true);setError('')
     setMessages(old=>[...old,{id:++counter.current,role:'operator',text:clean}])
     setInput('')
     try{
-      const data:ChatReply=PUBLIC_REHEARSAL
-        ? publicAtmChat(clean,selectedMode,overrideId??selectedId) as ChatReply
-        : await workflowRequest<ChatReply>('/operations/atm/chat','POST',{
-            question:clean,audience_mode:selectedMode,
-            selected_atm_id:overrideId??selectedId,
-          })
+      const data=await workflowRequest<ChatReply>('/operations/atm/chat','POST',{
+        question:clean,audience_mode:selectedMode,
+        selected_atm_id:overrideId??selectedId,
+      })
       assertSyntheticAtmChat(data)
       if(data.selected_atm_id)setSelectedId(data.selected_atm_id)
       setMessages(old=>[...old,{id:++counter.current,role:'assistant',text:data.answer,reply:data}])
@@ -307,13 +302,13 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
         </div>
       </div>)}
       {loading&&<p className="flex items-center gap-2 text-xs text-cyan">
-        <BrainCircuit className="size-4 animate-pulse"/> Loading fictional scenario evidence…
+        <BrainCircuit className="size-4 animate-pulse"/> Routing to local synthetic tool adapters…
       </p>}
     </div>
     {error&&<p className="mt-3 text-xs text-coral" role="alert">{error}</p>}
     <div className="mt-3 flex flex-wrap gap-2">
       {SUGGESTIONS.map(example=><button key={example} type="button"
-        disabled={loading||(!PUBLIC_REHEARSAL&&DATA_MODE!=='http')} onClick={()=>void send(example)}
+        disabled={loading||DATA_MODE!=='http'} onClick={()=>void send(example)}
         className="tap rounded-lg border border-line px-3 py-2 text-xs text-ink-muted hover:text-cyan disabled:opacity-50">
         {example}
       </button>)}
@@ -327,22 +322,22 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
         value={input} maxLength={500} onChange={e=>setInput(e.target.value)}
         placeholder="Ask CAIL: which ATM failed, why, and what should I check?"
         className="neu-inset min-w-0 flex-1 rounded-xl px-4 py-3 text-sm"/>
-      <button type="submit" disabled={loading||input.trim().length<3||(!PUBLIC_REHEARSAL&&DATA_MODE!=='http')}
+      <button type="submit" disabled={loading||input.trim().length<3||DATA_MODE!=='http'}
         className="btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm disabled:opacity-50">
         <Send className="size-4"/> {loading?'Checking…':'Send to CAIL'}
       </button>
     </form>
-    {DATA_MODE!=='http'&&!PUBLIC_REHEARSAL&&<p className="mt-2 text-xs text-gold">
+    {DATA_MODE!=='http'&&<p className="mt-2 text-xs text-gold">
       Switch to Local API · Synthetic mode to use the conversational map.
     </p>}
     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
       <p className="text-[11px] text-ink-faint">
         Demo locations and history are fictional. No live GPS, bank systems or HPE connectivity.
       </p>
-      {!PUBLIC_REHEARSAL&&<button type="button" onClick={()=>navigate('atm')}
+      <button type="button" onClick={()=>navigate('atm')}
         className="tap inline-flex items-center gap-1 text-xs text-cyan underline">
         Full ATM workflow <ArrowRight className="size-3"/>
-      </button>}
+      </button>
     </div>
   </section>
 }

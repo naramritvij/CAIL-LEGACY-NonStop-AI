@@ -1,0 +1,35 @@
+name: cail-funnel-demo
+
+# Dedicated public Tailscale Funnel demo: isolated synthetic backend and
+# production-built frontend gateway. Does not reuse private local SQLite.
+# Usage: docker compose -f compose.funnel.yaml up -d --build
+services:
+  demo-backend:
+    build: ./backend
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen3:4b-instruct
+      LEGACY_DATABASE_PATH: /tmp/cail_public_funnel.sqlite3
+      # No LEGACY_EXPERT_KEY or LEGACY_REVIEWER_KEY.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Never publish backend port to the host or the internet.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  demo-gateway:
+    build:
+      context: ./frontend
+      dockerfile: deploy/funnel.Dockerfile
+    ports:
+      # Tailscale Funnel proxies this loopback-only port, not port 5173/8000.
+      - "127.0.0.1:8787:8080"
+    depends_on:
+      - demo-backend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
