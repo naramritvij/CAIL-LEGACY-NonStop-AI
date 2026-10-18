@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle, ArrowRight, BookOpen, CheckCircle2, CircleHelp, GitBranch,
-  MapPin, RefreshCw, Send, ShieldCheck, Sparkles, TerminalSquare, UserRoundCheck,
+  MapPin, RefreshCw, Send, Sparkles, TerminalSquare, UserRoundCheck,
 } from 'lucide-react'
 import { DATA_MODE } from '@/api/client'
 import { assertSyntheticAtmNetwork, assertSyntheticAtmAssist } from '@/api/atm-guard'
