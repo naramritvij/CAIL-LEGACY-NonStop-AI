@@ -144,7 +144,13 @@ export interface GroundedClaim {
 export interface GroundedInvestigationResponse {
   status?: string
   message?: string
-  source_registry?: { id: string; kind: string; source_text: string }[]
+  source_registry?: { id: string; kind: string; source_text: string; source_url?: string; section?: string; release?: string }[]
+  operator_brief?: {
+    heading: string; status: string; what_is_happening: string
+    why_it_matters: string; safe_next_checks: string[]
+    missing_evidence: string[]; source_event_ids: string[]
+    root_cause_status: string; generated_by: string; synthetic: boolean
+  }
   missing_evidence?: string[]
   incident_id: string
   question: string

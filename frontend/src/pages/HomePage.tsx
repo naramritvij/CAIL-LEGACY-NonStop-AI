@@ -9,7 +9,7 @@ import { formatTime } from '@/lib/format'
 
 export function HomePage() {
   const { incidents = [], selectIncident, navigate } = useIncidentContext()
-  const planned = NAV_ITEMS.filter((item) => item.status === 'planned')
+  const workflows = NAV_ITEMS.filter((item) => ['library', 'mentor', 'apprentice'].includes(item.id))
 
   return (
     <div className="flex flex-col gap-5">
@@ -20,7 +20,7 @@ export function HomePage() {
           <span className="text-gradient">Preserving human expertise.</span> Powering the next generation.
         </h1>
         <p className="relative mt-3 max-w-xl text-sm leading-relaxed text-pretty text-ink-muted sm:text-base">
-          Investigate simulated incidents with evidence-grounded analysis. Every claim links back to the evidence that supports it.
+          Investigate simulated incidents with evidence-grounded analysis. Generated claims reference registered sources; their relevance and accuracy still require human review.
         </p>
       </header>
 
@@ -65,17 +65,17 @@ export function HomePage() {
 
       <section aria-labelledby="roadmap-title" className="glass p-5 sm:p-6">
         <h2 id="roadmap-title" className="text-lg font-semibold">
-          Coming next
+          Knowledge transfer workflows
         </h2>
         <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {planned.map((item) => {
+          {workflows.map((item) => {
             const Icon = item.icon
             return (
               <li key={item.id}>
                 <button type="button" onClick={() => navigate(item.id)} className="tap glass-sub flex h-full w-full flex-col gap-2 p-4 text-left hover:border-line-strong">
                   <span className="flex items-center justify-between">
                     <Icon aria-hidden className="size-5 text-violet" />
-                    <Badge tone="slate">Planned · {item.milestone}</Badge>
+                    <Badge tone="cyan">Ready · Local demo</Badge>
                   </span>
                   <span className="text-sm font-semibold">{item.label}</span>
                   <span className="text-xs leading-relaxed text-ink-muted">{item.description}</span>

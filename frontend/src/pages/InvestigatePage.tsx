@@ -3,7 +3,7 @@ import type { IncidentWorkspace } from '@/api/types'
 import { useIncidentContext } from '@/app/IncidentContext'
 import { AnalysisPanel, type AnalysisTab } from '@/components/investigate/AnalysisPanel'
 import { AiInvestigation } from '@/components/investigate/AiInvestigation'
-import { CapturePlanned } from '@/components/investigate/CapturePlanned'
+import { DecisionCapture } from '@/components/investigate/DecisionCapture'
 import { EvidenceList } from '@/components/investigate/EvidenceList'
 import { IncidentHeader } from '@/components/investigate/IncidentHeader'
 import { InvestigationProgress, type StepId } from '@/components/investigate/InvestigationProgress'
@@ -39,7 +39,7 @@ export function InvestigatePage({ workspace, onSelectEvidence }: Props) {
       <div className="grid gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
           {step === 'capture' ? (
-            <CapturePlanned onBack={() => setStep('validate')} />
+            <DecisionCapture incidentId={workspace.incident.incident_id} eventIds={workspace.evidence.map(e=>e.evidence_id)} symptoms={workspace.incident.summary} />
           ) : (
             <AnalysisPanel
               analysis={workspace.analysis}
@@ -61,7 +61,7 @@ export function InvestigatePage({ workspace, onSelectEvidence }: Props) {
             limit={4}
             onViewAll={() => navigate('evidence', workspace.incident.incident_id)}
           />
-          <SafeChecks actionIds={workspace.preview_action_ids} />
+          <SafeChecks actionIds={workspace.preview_action_ids} incidentId={workspace.incident.incident_id} />
           <LegacyTreeTeaser pointers={workspace.knowledge_pointers} onOpen={() => navigate('tree')} />
         </div>
       </div>

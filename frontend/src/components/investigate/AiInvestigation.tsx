@@ -29,6 +29,7 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
   }
 
   const accepted = response?.status === 'generated_unverified_citation_ids_checked'
+    || response?.status === 'generated_unverified_reference_citation_ids_checked'
   const reference = response?.status === 'local_reference_explanation'
   const noReference = response?.status === 'reference_required' || response?.status === 'insufficient_relevant_evidence'
   const mock = DATA_MODE === 'mock'
@@ -62,11 +63,24 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
         </button>
       </form>
       {error && <p role="alert" className="mt-4 rounded-xl border border-coral/30 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
+      {response?.operator_brief && <section className="glass-sub mt-4 border border-cyan/25 p-4" aria-label="Structured operator briefing">
+        <h3 className="text-base font-semibold text-cyan">Operator briefing · {response.operator_brief.status.toUpperCase()} · synthetic</h3>
+        <p className="mt-2 text-xs font-semibold text-ink">What's happening?</p>
+        <p className="mt-1 text-sm leading-relaxed text-ink-muted">{response.operator_brief.what_is_happening}</p>
+        <p className="mt-3 text-xs font-semibold text-ink">Why does it matter?</p>
+        <p className="mt-1 text-sm leading-relaxed text-ink-muted">{response.operator_brief.why_it_matters}</p>
+        <p className="mt-3 text-xs font-semibold text-ink">Safe checks to inspect next</p>
+        <ol className="mt-1 list-inside list-decimal text-sm leading-relaxed text-ink-muted">
+          {response.operator_brief.safe_next_checks.map(check=><li key={check}>{check}</li>)}
+        </ol>
+        <p className="mt-2 text-xs text-ink-faint">Evidence: {response.operator_brief.source_event_ids.join(', ')} · Root cause: not established</p>
+        <p className="mt-1 text-xs text-ink-faint">Deterministic synthetic explanation, not a model diagnosis or live telemetry.</p>
+      </section>}
       {response && (
         <div aria-live="polite" className="glass-sub mt-4 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <ShieldAlert aria-hidden className="size-4 text-gold" />
-            <span className="text-sm font-semibold">{mock ? 'Mock template · not AI' : reference ? 'Local training reference · not AI-generated' : noReference ? 'No relevant reference available' : accepted ? 'Unverified model explanation' : 'Model claims unavailable'}</span>
+            <span className="text-sm font-semibold">{mock ? 'Mock template · not AI' : reference ? 'Local training reference · not AI-generated' : noReference ? 'No relevant reference available' : accepted ? 'Unverified source-grounded AI observations' : 'Model claims unavailable'}</span>
             <Badge tone="slate">{response.status ?? 'mock'}</Badge>
           </div>
           {response.message && <p className="mt-2 text-xs text-ink-muted">{response.message}</p>}
@@ -81,8 +95,8 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
                       <button
                         key={citation}
                         type="button"
-                        onClick={() => onSelectEvidence(citation)}
-                        title={registry.get(citation)?.source_text ?? 'Open evidence detail where available'}
+                        onClick={() => { if (citation.startsWith('DOC-')) window.location.hash='#/library'; else onSelectEvidence(citation) }}
+                        title={registry.get(citation)?.source_text ?? 'Open related source in Library or incident evidence'}
                         className="rounded-lg border border-cyan/30 bg-cyan/10 px-2 py-1 font-mono text-xs text-cyan"
                       >{citation}</button>
                     ))}
@@ -90,6 +104,7 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
                   {claim.evidence_ids.map((citation) => registry.get(citation) ? (
                     <p key={`source-${citation}`} className="mt-2 text-xs leading-relaxed text-ink-muted">
                       <span className="font-mono text-cyan">{citation}:</span> {registry.get(citation)?.source_text}
+                      {registry.get(citation)?.source_url?.startsWith('https://support.hpe.com/') && <a href={registry.get(citation)?.source_url} target="_blank" rel="noopener noreferrer" className="ml-2 text-cyan underline">HPE reference ↗</a>}
                     </p>
                   ) : null)}
                 </li>

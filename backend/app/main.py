@@ -405,3 +405,33 @@ def transcript_intake(body: TranscriptIngest,
         return _create_transcript(**body.model_dump())
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+# Knowledge Transfer UI: metadata listing and source-review details.
+# No nonapproved text is available without a valid expert/reviewer demo credential.
+from .corpus import list_corpus_documents as _list_corpus, get_corpus_document as _get_corpus
+
+@app.get('/api/v1/knowledge/corpus/documents')
+def corpus_documents(
+    status: Literal['approved','draft','submitted','rejected','all'] = 'approved',
+    limit: int = Query(default=50, ge=1, le=100),
+    x_legacy_expert_key: str | None = Header(default=None),
+    x_legacy_reviewer_key: str | None = Header(default=None),
+):
+    if status != 'approved':
+        require_either(x_legacy_expert_key or x_legacy_reviewer_key)
+    return _list_corpus(status=status, limit=limit)
+
+
+@app.get('/api/v1/knowledge/corpus/documents/{document_id}')
+def corpus_document_detail(
+    document_id: str,
+    x_legacy_expert_key: str | None = Header(default=None),
+    x_legacy_reviewer_key: str | None = Header(default=None),
+):
+    document = _get_corpus(document_id)
+    if document is None:
+        raise HTTPException(404, 'Document not found')
+    if document['status'] != 'approved':
+        require_either(x_legacy_expert_key or x_legacy_reviewer_key)
+    return document

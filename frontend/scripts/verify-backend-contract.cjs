@@ -158,6 +158,35 @@ test('general definitions remain a labeled non-model response without event cita
   assert.equal(response.claims.length,0)
   assert.match(response.message,/fault-tolerant/)
 })
+test('approved-document concepts preserve provenance and remain unverified', () => {
+  const response=fromBackendGrounded({
+    synthetic:true,operational_action_authorized:false,state_change_executed:false,
+    incident_id:'INC-DISK-001',status:'generated_unverified_reference_citation_ids_checked',
+    question_scope:'general_reference',
+    claims:[{text:'Locally reviewed reference describes HPE NonStop availability.',citations:['DOC-abcd1234-C01']}],
+    source_registry:[{id:'DOC-abcd1234-C01',kind:'locally_approved_user_supplied_excerpt',
+      source_text:'HPE NonStop availability training excerpt.',source_url:'https://support.hpe.com/hpesc/public/docDisplay?docId=a00099017en_us',release:'L23.08'}],
+    missing_evidence:[],excerpt_authenticity_verified:false,
+  })
+  assert.equal(response.claims.length,1)
+  assert.equal(response.claims[0].evidence_ids[0],'DOC-abcd1234-C01')
+  assert.equal(response.source_registry[0].release,'L23.08')
+  assert.equal(response.grounded,false)
+})
+test('deterministic operator briefing does not become an AI citation', () => {
+  const response=fromBackendGrounded({
+    synthetic:true,operational_action_authorized:false,state_change_executed:false,
+    incident_id:'INC-DISK-001',status:'model_unavailable',
+    claims:[],source_registry:[],missing_evidence:['File ownership'],
+    operator_brief:{heading:'$DATA03',status:'yellow',what_is_happening:'Capacity rose from 72% to 81%',
+      why_it_matters:'Potential storage pressure',safe_next_checks:['Inspect synthetic trend'],
+      source_event_ids:['SIM-EVT-103'],missing_evidence:['File ownership'],
+      root_cause_status:'not_established',generated_by:'deterministic_scenario_brief_not_ai',synthetic:true},
+  })
+  assert.equal(response.claims.length,0)
+  assert.equal(response.operator_brief.status,'yellow')
+  assert.equal(response.operator_brief.root_cause_status,'not_established')
+})
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)

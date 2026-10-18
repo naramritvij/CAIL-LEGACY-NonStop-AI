@@ -183,3 +183,53 @@ def create_transcript(title: str, recording_reference: str, release: str,
         'review_required': True, 'transcript_authenticity_verified': False,
         'message': 'Text-only local draft; only distinct-reviewer-approved chunks are searchable.',
     }
+
+
+def list_corpus_documents(status: str = 'approved', limit: int = 100) -> list[dict]:
+    """Only metadata; non-approved statuses must be role-gated at the API."""
+    if status not in ('approved', 'draft', 'submitted', 'rejected', 'all'):
+        raise ValueError('Unsupported review status')
+    if not 1 <= limit <= 100:
+        raise ValueError('Limit out of range')
+    with connect() as db:
+        _ensure_tables(db)
+        if status == 'all':
+            rows = db.execute(
+                'SELECT * FROM corpus_documents ORDER BY created_at DESC LIMIT ?', (limit,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                'SELECT * FROM corpus_documents WHERE status=? ORDER BY created_at DESC LIMIT ?',
+                (status, limit),
+            ).fetchall()
+    return [{
+        'id': row['id'], 'title': row['title'], 'source_url': row['url'],
+        'section': row['section'], 'release': row['release'],
+        'source_kind': row['source_kind'], 'status': row['status'],
+        'content_sha256': row['content_sha256'], 'created_at': row['created_at'],
+        'reviewed_at': row['reviewed_at'], 'reviewer_notes': row['reviewer_notes'],
+        'content_verified_against_url': False,
+    } for row in rows]
+
+
+def get_corpus_document(document_id: str) -> dict | None:
+    """Reviewable source text; nonapproved documents require role authorization."""
+    with connect() as db:
+        _ensure_tables(db)
+        row = db.execute('SELECT * FROM corpus_documents WHERE id=?', (document_id,)).fetchone()
+        if row is None:
+            return None
+        chunks = db.execute(
+            'SELECT id,ordinal,content,sha256 FROM corpus_chunks WHERE document_id=? ORDER BY ordinal',
+            (document_id,),
+        ).fetchall()
+    return {
+        'id': row['id'], 'title': row['title'], 'source_url': row['url'],
+        'section': row['section'], 'release': row['release'],
+        'source_kind': row['source_kind'], 'status': row['status'],
+        'content_sha256': row['content_sha256'], 'created_at': row['created_at'],
+        'reviewed_at': row['reviewed_at'], 'reviewer_notes': row['reviewer_notes'],
+        'content_verified_against_url': False,
+        'chunks': [{'citation_id': x['id'], 'ordinal': x['ordinal'],
+                    'excerpt': x['content'], 'sha256': x['sha256']} for x in chunks],
+    }

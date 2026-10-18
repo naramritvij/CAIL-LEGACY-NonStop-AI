@@ -1,104 +1,47 @@
-import { ChevronDown, Lock, ShieldCheck, Terminal } from 'lucide-react'
 import { useState } from 'react'
-import { Badge } from '@/components/ui/Badge'
-import { EmptyState } from '@/components/ui/States'
-import { cn } from '@/lib/format'
+import { ShieldCheck, Terminal, AlertTriangle } from 'lucide-react'
+import { workflowRequest, type SafePreview } from '@/api/workflows'
 
-/** Display copy for read-only preview actions. Execution is intentionally not wired in P0. */
-const ACTION_COPY: Record<string, { label: string; preview: string }> = {
-  inspect_disk_growth: {
-    label: 'Inspect disk trends and file metadata',
-    preview: 'Preview only: compare the provided synthetic capacity values and verify ownership/retention prerequisites. No actual NonStop command is executed.',
-  },
-  inspect_events: {
-    label: 'Review recent synthetic event timeline',
-    preview: 'Preview only: review the event IDs shown in the current incident. These are fictional fixtures, not official HPE event codes.',
-  },
+const LABELS: Record<string,string> = {
+  inspect_disk_growth:'Inspect disk trends and file metadata',
+  inspect_events:'Review recent synthetic event timeline',
 }
-
-export function SafeChecks({ actionIds }: { actionIds: string[] }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(actionIds))
-  const [expanded, setExpanded] = useState<string>()
-
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+export function SafeChecks({ actionIds, incidentId }: {actionIds:string[];incidentId:string}) {
+  const [selected,setSelected] = useState<string[]>(actionIds)
+  const [results,setResults] = useState<SafePreview[]>([])
+  const [busy,setBusy] = useState(false)
+  const [error,setError] = useState('')
+  async function preview() {
+    setBusy(true);setError('');setResults([])
+    try {
+      const output:SafePreview[]=[]
+      for (const id of selected) {
+        // Every preview is independently re-evaluated by the backend default-deny policy.
+        const result=await workflowRequest<SafePreview>('/diagnostics/preview','POST',{incident_id:incidentId,action_id:id})
+        output.push(result)
+      }
+      setResults(output)
+    } catch(e){setError(String(e))}
+    finally{setBusy(false)}
   }
-
-  return (
-    <section aria-labelledby="checks-title" className="glass p-5">
-      <header className="flex flex-wrap items-center gap-2">
-        <h2 id="checks-title" className="text-lg font-semibold">
-          Recommended safe checks
-        </h2>
-        <Badge tone="violet">Preview only</Badge>
-      </header>
-
-      {actionIds.length === 0 ? (
-        <EmptyState icon={ShieldCheck} title="No safe checks suggested" className="py-8">
-          The rules found no read-only diagnostic that applies to this incident yet.
-        </EmptyState>
-      ) : (
-        <>
-          <ul className="mt-4 flex flex-col gap-2">
-            {actionIds.map((id) => {
-              const copy = ACTION_COPY[id] ?? { label: id, preview: 'Preview not available for this action.' }
-              const isOpen = expanded === id
-              const panelId = `check-${id}`
-              return (
-                <li key={id} className="neu-inset rounded-xl">
-                  <div className="flex items-center gap-3 px-3 py-2.5">
-                    <input
-                      type="checkbox"
-                      id={`${panelId}-select`}
-                      checked={selected.has(id)}
-                      onChange={() => toggle(id)}
-                      className="size-4 shrink-0 accent-cyan"
-                    />
-                    <label htmlFor={`${panelId}-select`} className="min-w-0 flex-1 cursor-pointer text-sm">
-                      {copy.label}
-                    </label>
-                    <button
-                      type="button"
-                      aria-expanded={isOpen}
-                      aria-controls={panelId}
-                      onClick={() => setExpanded(isOpen ? undefined : id)}
-                      className="tap neu-raised inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
-                    >
-                      Preview
-                      <ChevronDown aria-hidden className={cn('size-3.5 transition-transform', isOpen && 'rotate-180')} />
-                    </button>
-                  </div>
-                  {isOpen && (
-                    <div id={panelId} className="animate-fade-up border-t border-line px-3 py-2.5">
-                      <p className="flex items-start gap-2 font-mono text-xs leading-relaxed break-words text-cyan">
-                        <Terminal aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-                        {copy.preview}
-                      </p>
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-          <button
-            type="button"
-            disabled
-            aria-describedby="checks-note"
-            className="btn-primary mt-4 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white opacity-55"
-          >
-            <Lock aria-hidden className="size-4" />
-            Run {selected.size} selected check{selected.size === 1 ? '' : 's'} (read-only)
-          </button>
-          <p id="checks-note" className="mt-2 text-center text-xs text-ink-faint">
-            Previews only. Read-only check execution ships in a later milestone.
-          </p>
-        </>
-      )}
-    </section>
-  )
+  return <section aria-label="Recommended safe checks" className="glass p-5">
+    <div className="flex items-center gap-2"><ShieldCheck className="size-5 text-teal"/><h2 className="text-lg font-semibold">Recommended safe checks</h2></div>
+    <p className="mt-2 text-xs text-ink-muted">Preview synthetic results only. No NonStop shell, SCF or TACL command is executed.</p>
+    {actionIds.length===0?<p className="mt-4 text-sm text-ink-muted">No read-only checks are suggested for this incident.</p>:
+      <div className="mt-4 flex flex-col gap-2">
+        {actionIds.map(id=><label key={id} className="neu-inset flex items-center gap-3 rounded-lg p-3 text-sm">
+          <input type="checkbox" checked={selected.includes(id)} onChange={e=>setSelected(v=>e.target.checked?[...v,id]:v.filter(x=>x!==id))}/>
+          {LABELS[id]??id}</label>)}
+        <button type="button" disabled={!selected.length || busy} onClick={()=>void preview()} className="btn-primary mt-2 flex items-center justify-center gap-2 rounded-xl p-3 text-sm disabled:opacity-50"><Terminal className="size-4"/>{busy?'Checking policy…':`Preview ${selected.length} selected read-only check(s)`}</button>
+      </div>}
+    {error&&<p role="alert" className="mt-3 text-sm text-coral">{error}</p>}
+    {results.map(item=><article key={item.action_id} className="glass-sub mt-3 p-3 text-xs">
+      <p className="font-semibold">{LABELS[item.action_id]??item.action_id}: {item.status}</p>
+      <p className="mt-1 text-ink-muted">{item.reason}</p>
+      {item.allowed&&item.simulation_only&&item.output?<div className="mt-2 text-ink-muted">
+        <p>Evidence: {item.output.event_ids.join(', ')}</p>
+        <p>Unverified: {item.output.unverified_conditions.join('; ')}</p>
+      </div>:<p className="mt-2 inline-flex items-center gap-2 text-coral"><AlertTriangle className="size-3"/> Blocked; no output or state change.</p>}
+    </article>)}
+  </section>
 }

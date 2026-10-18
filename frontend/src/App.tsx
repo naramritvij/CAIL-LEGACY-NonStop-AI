@@ -1,6 +1,5 @@
 import { SWRConfig } from 'swr'
 import { IncidentProvider, useIncidentContext } from '@/app/IncidentContext'
-import { getNavItem } from '@/app/routes'
 import { MobileNav } from '@/components/shell/MobileNav'
 import { Sidebar } from '@/components/shell/Sidebar'
 import { TopBar } from '@/components/shell/TopBar'
@@ -8,24 +7,23 @@ import { ErrorState } from '@/components/ui/States'
 import { HomePage } from '@/pages/HomePage'
 import { OperatorCommandCenter } from '@/components/operations/OperatorCommandCenter'
 import { LegacyTreePage } from '@/pages/LegacyTreePage'
-import { PlannedPage } from '@/pages/PlannedPage'
+import { MentorPage } from '@/pages/MentorPage'
+import { LibraryPage } from '@/pages/LibraryPage'
+import { ApprenticePage } from '@/pages/ApprenticePage'
 import { WorkspaceView } from '@/pages/WorkspaceView'
 
 function Content() {
-  const { section, incidentsError, retryIncidents, navigate, selectedId, selectIncident } = useIncidentContext()
-  const item = getNavItem(section)
-
-  if (item.status === 'planned') return <PlannedPage item={item} onBack={() => navigate('investigate', selectedId)} />
+  const { section, incidentsError, retryIncidents, selectedId, selectIncident } = useIncidentContext()
+  if (section === 'mentor') return <MentorPage />
+  if (section === 'library') return <LibraryPage />
+  if (section === 'apprentice') return <ApprenticePage />
   if (section === 'tree') return <LegacyTreePage />
   if (incidentsError) return <ErrorState error={incidentsError} onRetry={retryIncidents} />
   if (section === 'home') return <>
     <OperatorCommandCenter incidentId={selectedId} onSelectIncident={(id) => selectIncident(id, 'investigate')} />
     <HomePage />
   </>
-  return <>
-    {section === 'investigate' && <OperatorCommandCenter incidentId={selectedId} onSelectIncident={(id) => selectIncident(id, 'investigate')} />}
-    <WorkspaceView view={section === 'evidence' ? 'evidence' : 'investigate'} />
-  </>
+  return <WorkspaceView view={section === 'evidence' ? 'evidence' : 'investigate'} />
 }
 
 export function App() {

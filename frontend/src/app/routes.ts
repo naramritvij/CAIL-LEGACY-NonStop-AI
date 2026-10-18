@@ -40,8 +40,7 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'mentor',
     label: 'Mentor',
     icon: UserRoundCheck,
-    status: 'planned',
-    milestone: 'P1',
+    status: 'ready',
     description: 'Independent expert review of Decision DNA drafts before they become retrievable knowledge.',
   },
   {
@@ -57,8 +56,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Apprentice',
     shortLabel: 'Learn',
     icon: GraduationCap,
-    status: 'planned',
-    milestone: 'P2',
+    status: 'ready',
     description: 'Scenario challenges built from approved lessons, with safe-ops XP, levels and mentor recognition.',
   },
 ]
