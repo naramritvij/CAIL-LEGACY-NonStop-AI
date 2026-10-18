@@ -7,7 +7,7 @@ export const STEPS: { id: StepId; label: string; hint: string; planned?: boolean
   { id: 'understand', label: 'Understand', hint: 'Review observations' },
   { id: 'diagnose', label: 'Diagnose', hint: 'Weigh hypotheses' },
   { id: 'validate', label: 'Validate', hint: 'Close evidence gaps' },
-  { id: 'capture', label: 'Capture', hint: 'Decision DNA · P1', planned: true },
+  { id: 'capture', label: 'Capture', hint: 'Decision DNA review' },
 ]
 
 interface Props {

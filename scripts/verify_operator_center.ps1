@@ -87,5 +87,116 @@ if ($unrelated.status -ne "insufficient_relevant_evidence" -or
 }
 Write-Host "Concept routing and unrelated-evidence rejection verified." -ForegroundColor Green
 
+
+# Guided command playbook: links HPE-documented STATUS syntax to simulated
+# evidence without executing real SCF or PATHCOM commands.
+$diskGuide = Invoke-RestMethod -Uri "$base/operations/incidents/INC-DISK-001/playbook" -TimeoutSec 15
+$pathGuide = Invoke-RestMethod -Uri "$base/operations/incidents/INC-PATH-002/playbook" -TimeoutSec 15
+if (@($diskGuide.steps).Count -ne 4 -or @($pathGuide.steps).Count -ne 5 -or
+    $diskGuide.release_verified -ne $false -or $pathGuide.operator_authorized -ne $false) {
+    throw "Command playbook requires 4 disk / 5 Pathway synthetic guidance steps with unverified target."
+}
+$scfReference = @($diskGuide.steps | Where-Object { $_.id -eq "disk-scf-status" })
+$serverReference = @($pathGuide.steps | Where-Object { $_.id -eq "path-server" })
+if ($scfReference.Count -ne 1 -or $scfReference[0].command -ne 'STATUS DISK $DATA03' -or
+    $serverReference.Count -ne 1 -or $serverReference[0].command -ne 'STATUS SERVER <serverclass>, DETAIL') {
+    throw "HPE-documented storage or Pathway status reference missing."
+}
+$manualPayload = @{incident_id="INC-DISK-001";step_id="disk-scf-status"} | ConvertTo-Json
+$manual = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $manualPayload -TimeoutSec 15
+if ($manual.status -ne "manual_reference_only" -or $manual.execution_allowed -ne $false -or
+    $manual.state_change_executed -ne $false -or $manual.source.health_signal -ne "unknown" -or
+    @($manual.source.evidence).Count -ne 0) {
+    throw "SCF reference fabricated live status or permission to execute."
+}
+$previewPayload = @{incident_id="INC-PATH-002";step_id="path-events"} | ConvertTo-Json
+$syntheticPreview = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $previewPayload -TimeoutSec 15
+if ($syntheticPreview.status -ne "synthetic_preview" -or $syntheticPreview.state_change_executed -ne $false -or
+    @($syntheticPreview.source.evidence).Count -ne 2) {
+    throw "Pathway playbook event preview failed or used unregistered records."
+}
+# A syntactically valid but *unregistered* step must fail closed in the
+# playbook implementation: HTTP 200 with blocked_unknown_step and NO output.
+$rejectPayload = @{incident_id="INC-DISK-001";step_id="purge-files"} | ConvertTo-Json
+$rejectedStep = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $rejectPayload -TimeoutSec 15
+if ($rejectedStep.status -ne "blocked_unknown_step" -or $rejectedStep.execution_allowed -ne $false -or
+    $rejectedStep.state_change_executed -ne $false -or $null -ne $rejectedStep.preview) {
+    throw "Command playbook accepted an unregistered or unsafe step."
+}
+
+# An invalid identifier containing underscore is rejected earlier by FastAPI
+# request validation (HTTP 422). This is *also* a correct safety rejection:
+# do not treat it as a failure of the command executor.
+$invalidPayload = @{incident_id="INC-DISK-001";step_id="purge_files"} | ConvertTo-Json
+$invalidStatus = $null
+try {
+    $null = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $invalidPayload -TimeoutSec 15
+} catch {
+    if ($null -eq $_.Exception.Response) { throw }
+    $invalidStatus = [int]$_.Exception.Response.StatusCode
+}
+if ($invalidStatus -ne 422) {
+    throw "Invalid command identifier must be rejected by validation (HTTP 422); observed status: $invalidStatus"
+}
+Write-Host "Guided command playbooks, HPE reference-only statuses and both no-execution gates VERIFIED." -ForegroundColor Green
+
 Write-Host "CAIL Operator Command Center: status, provenance, safety, Knowledge Tree VERIFIED (local synthetic checks)." -ForegroundColor Green
+
+# Integrated sponsor workflow: manual references, command routing, five
+# synthetic tool views, financial failure chronology and honest handover.
+$labScenarios = Invoke-RestMethod -Uri "$base/operations/lab/scenarios" -TimeoutSec 15
+if ($labScenarios.live_connected -ne $false -or @($labScenarios.scenarios).Count -ne 3) {
+    throw "Expected exactly three local simulation scenarios and no HPE connectivity."
+}
+$financial = "INC-FIN-HW-003"
+$financialEventsPayload = @{incident_id=$financial;input="SHOW ALERTS"} | ConvertTo-Json
+$financialEvents = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $financialEventsPayload -TimeoutSec 15
+if ($financialEvents.adapter -ne "ems" -or @($financialEvents.evidence.observations).Count -ne 5 -or
+    $financialEvents.execution_allowed -ne $false -or $financialEvents.state_change_executed -ne $false) {
+    throw "Synthetic hardware failure missing five registered EMS-style events."
+}
+$nativePayload = @{incident_id=$financial;input="STATUS PATHWAY"} | ConvertTo-Json
+$native = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $nativePayload -TimeoutSec 15
+if ($native.status -ne "reference_only_unknown_status" -or $native.evidence.actual_tool_status -ne "unknown" -or
+    @($native.evidence.observations).Count -ne 0 -or $native.live_connected -ne $false) {
+    throw "PATHCOM reference must not fabricate actual server output."
+}
+$correlationPayload = @{incident_id=$financial;input="SHOW CORRELATION"} | ConvertTo-Json
+$correlation = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $correlationPayload -TimeoutSec 15
+if (@($correlation.correlation.ordered_evidence).Count -ne 5 -or $correlation.correlation.root_cause_confirmed -ne $false) {
+    throw "Hardware-to-transaction timeline missing or pretending verified causation."
+}
+$unsafePayload = @{incident_id=$financial;input="STOP PATHWAY"} | ConvertTo-Json
+$unsafe = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $unsafePayload -TimeoutSec 15
+if ($unsafe.status -ne "blocked_unsafe" -or $null -ne $unsafe.evidence -or
+    $unsafe.state_change_executed -ne $false) {
+    throw "Console must block unsafe commands before a tool adapter is called."
+}
+$mismatchPayload = @{incident_id="INC-DISK-001";input="Check server status in PATHCOM"} | ConvertTo-Json
+$mismatch = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $mismatchPayload -TimeoutSec 15
+if ($mismatch.status -ne "context_mismatch" -or $mismatch.suggested_incident_id -ne "INC-PATH-002") {
+    throw "Wrong-incident PATHCOM query was not redirected safely."
+}
+$shift = Invoke-RestMethod -Uri "$base/operations/lab/shift-summary" -TimeoutSec 15
+if ($shift.incident_count -ne 3 -or $shift.event_count -ne 10 -or
+    $shift.approved_resolutions_reported -ne 0 -or $shift.actual_cpu_normality_confirmed -ne $false) {
+    throw "Shift summary must derive counts without inventing restarts, health, or resolutions."
+}
+$toolDirectory = Invoke-RestMethod -Uri "$base/operations/lab/tools" -TimeoutSec 15
+if ($toolDirectory.real_cail_suite_integration -ne $false -or
+    $toolDirectory.native_command_execution -ne $false -or
+    @($toolDirectory.tools).Count -lt 11) {
+    throw "Tool capability inventory must disclose offline adapters and unavailable subsystems."
+}
+foreach ($registered in $toolDirectory.tools) {
+    if ($registered.live_connected -ne $false) {
+        throw "Tool directory falsely claims a connected NonStop subsystem."
+    }
+}
+$evaluation = Invoke-RestMethod -Uri "$base/operations/lab/evaluation-protocol" -TimeoutSec 15
+if ($evaluation.real_world_mttr_claim_allowed -ne $false -or $evaluation.measurement_status -ne "not_yet_measured") {
+    throw "Benchmark must not claim unmeasured productivity gains."
+}
+Write-Host "Sponsor Operations Lab: synthetic tool routing, financial case, safety, summaries and evaluation VERIFIED." -ForegroundColor Green
+
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

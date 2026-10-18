@@ -247,10 +247,10 @@ export function fromBackendGrounded(raw: unknown): GroundedInvestigationResponse
     throw new ApiError('contract_mismatch', 'Grounded investigation safety fields missing or unexpected.')
   }
   const status = id(w.status, 'Investigation status')
-  const accepted = status === 'generated_unverified_citation_ids_checked'
+  const accepted = status === 'generated_unverified_citation_ids_checked' || status === 'generated_unverified_reference_citation_ids_checked'
   const sources = arr(w.source_registry, 'AI source registry').map((entry) => {
     const x = record(entry, 'AI source')
-    return { id: id(x.id, 'Source ID'), kind: txt(x.kind), source_text: txt(x.source_text) }
+    return { id: id(x.id, 'Source ID'), kind: txt(x.kind), source_text: txt(x.source_text), source_url: txt(x.source_url), section: txt(x.section), release: txt(x.release) }
   })
   const registry = new Set(sources.map((source) => source.id))
   const claims = accepted ? arr(w.claims, 'AI claims').map((entry) => {
@@ -268,6 +268,8 @@ export function fromBackendGrounded(raw: unknown): GroundedInvestigationResponse
     // Source ID checking is not proof of semantic grounding.
     grounded: false, simulated: true, synthetic: true,
     status, message: txt(w.message), source_registry: sources,
+    operator_brief: w.operator_brief && typeof w.operator_brief === 'object'
+      ? (w.operator_brief as GroundedInvestigationResponse['operator_brief']) : undefined,
     missing_evidence: strs(w.missing_evidence),
     limitations: [txt(w.limitation) || 'Citation IDs exist, but the accuracy of the model explanation is not established.'],
   }

@@ -1,135 +1,88 @@
 import type { KnowledgeNode, KnowledgeRevision, LegacyTreeResponse } from '@/api/types'
 
 /**
- * Synthetic Showcase Mode only. Every lesson, incident and evidence id here is fictional and
- * exists to demonstrate the experience. It never flows through the API adapter.
+ * Fictional HPE NonStop-themed SHOWCASE for the hackathon narrative.
+ * These are invented training lessons, NOT approved expert knowledge.
+ * They never enter the backend corpus, real approved Tree, or model context.
  */
 function lesson(
   partial: Omit<KnowledgeNode, 'review_status' | 'revision' | 'updated_at' | 'synthetic'> & { revisions: KnowledgeRevision[] },
 ): KnowledgeNode {
-  const latest = partial.revisions[partial.revisions.length - 1]
-  return { ...partial, review_status: 'approved', revision: latest.revision, updated_at: latest.created_at, synthetic: true }
+  const last=partial.revisions[partial.revisions.length-1]
+  return {...partial,review_status:'approved',revision:last.revision,updated_at:last.created_at,synthetic:true}
 }
 
-const NODES: KnowledgeNode[] = [
+const NODES:KnowledgeNode[]=[
   lesson({
-    lesson_id: 'DEMO-LSN-001',
-    title: 'Emergency Stop Recovery',
-    knowledge_area: 'Safety',
-    asset_type: 'Robot',
-    summary: 'Safe sequence for recovering a cell after an emergency stop without re-triggering interlocks.',
-    operational_reasoning: 'Restarting before the light curtain resets re-latches the stop. Confirming the curtain state first avoids a second stop and a manual reset walk.',
-    related_incident_ids: ['DEMO-INC-0412'],
-    evidence_ids: ['DEMO-EV-0101', 'DEMO-EV-0102'],
-    derived_from_lesson_id: null,
-    revisions: [
-      { revision: 1, created_at: '2026-01-08T09:00:00Z', change_summary: 'Initial recovery sequence.' },
-      { revision: 2, created_at: '2026-02-19T09:00:00Z', change_summary: 'Added light-curtain check before restart.' },
+    lesson_id:'DEMO-NONSTOP-001',title:'Recognizing $DATA03 capacity pressure',
+    knowledge_area:'Monitoring',asset_type:'Disk',
+    summary:'Use baseline, growth and configured training thresholds to identify storage pressure without guessing the culprit.',
+    operational_reasoning:'A rising synthetic utilization signal should trigger evidence collection; it does not prove which file is responsible or authorize deletion.',
+    related_incident_ids:['INC-DISK-001'],evidence_ids:['SIM-EVT-101','SIM-EVT-103'],
+    derived_from_lesson_id:null,revisions:[
+      {revision:1,created_at:'2026-09-28T10:00:00Z',change_summary:'First synthetic shift capacity review.'},
+      {revision:2,created_at:'2026-10-10T10:00:00Z',change_summary:'Added ownership/retention verification before any action.'},
     ],
   }),
   lesson({
-    lesson_id: 'DEMO-LSN-002',
-    title: 'Robotic Arm Calibration',
-    knowledge_area: 'Equipment',
-    asset_type: 'Robot',
-    summary: 'When and how to recalibrate the pick arm after tooling changes or drift alarms.',
-    operational_reasoning: 'Drift alarms after a tooling swap usually mean the tool offset was not re-taught, not that the encoder is failing.',
-    related_incident_ids: ['DEMO-INC-0533'],
-    evidence_ids: ['DEMO-EV-0201'],
-    derived_from_lesson_id: null,
-    revisions: [
-      { revision: 1, created_at: '2025-11-02T09:00:00Z', change_summary: 'Initial calibration steps.' },
-      { revision: 2, created_at: '2026-01-14T09:00:00Z', change_summary: 'Clarified tool-offset re-teach.' },
-      { revision: 3, created_at: '2026-03-03T09:00:00Z', change_summary: 'Added drift-alarm triage.' },
+    lesson_id:'DEMO-NONSTOP-002',title:'Event timeline before intervention',
+    knowledge_area:'Troubleshooting',asset_type:'EMS',
+    summary:'Trace simulated events in order before inferring a cause or escalating.',
+    operational_reasoning:'A single alert is incomplete context. Related warnings, timestamps and known missing observations must be gathered before reaching a conclusion.',
+    related_incident_ids:['INC-DISK-001','INC-PATH-002'],evidence_ids:['SIM-EVT-102','SIM-EVT-201'],
+    derived_from_lesson_id:'DEMO-NONSTOP-001',
+    revisions:[{revision:1,created_at:'2026-10-11T08:30:00Z',change_summary:'Adds chronology and evidence-registration discipline.'}],
+  }),
+  lesson({
+    lesson_id:'DEMO-NONSTOP-003',title:'Pathway response degradation triage',
+    knowledge_area:'Operations',asset_type:'Pathway',
+    summary:'Differentiate a simulated high-latency alert from a non-responsive Pathway service instance.',
+    operational_reasoning:'Latency and availability signals warrant investigation. Process state and dependency health remain unknown without subsystem confirmation.',
+    related_incident_ids:['INC-PATH-002'],evidence_ids:['SIM-EVT-201','SIM-EVT-202'],
+    derived_from_lesson_id:null,revisions:[
+      {revision:1,created_at:'2026-10-02T12:00:00Z',change_summary:'Synthetic Pathway event review.'},
+      {revision:2,created_at:'2026-10-13T12:00:00Z',change_summary:'Added unknown primary/backup state checks.'},
     ],
   }),
   lesson({
-    lesson_id: 'DEMO-LSN-003',
-    title: 'Conveyor Jam Resolution',
-    knowledge_area: 'Operations',
-    asset_type: 'Conveyor',
-    summary: 'Clearing jams at the merge point and preventing immediate recurrence.',
-    operational_reasoning: 'Most repeat jams trace back to a mis-set side guide rather than product shape. Checking the guide first shortens recovery.',
-    related_incident_ids: ['DEMO-INC-0611'],
-    evidence_ids: ['DEMO-EV-0301', 'DEMO-EV-0302'],
-    derived_from_lesson_id: null,
-    revisions: [{ revision: 1, created_at: '2026-02-27T09:00:00Z', change_summary: 'Initial resolution steps.' }],
+    lesson_id:'DEMO-NONSTOP-004',title:'SCF source verification checklist',
+    knowledge_area:'Safety',asset_type:'SCF',
+    summary:'Distinguish missing subsystem status from a verified healthy signal.',
+    operational_reasoning:'A disconnected or absent SCF status is UNKNOWN, never GREEN. Command applicability varies by release, subsystem, access and approval.',
+    related_incident_ids:['INC-PATH-002'],evidence_ids:['SIM-EVT-202'],
+    derived_from_lesson_id:'DEMO-NONSTOP-003',
+    revisions:[{revision:1,created_at:'2026-10-14T09:00:00Z',change_summary:'Introduced unknown-status handling.'}],
   }),
   lesson({
-    lesson_id: 'DEMO-LSN-004',
-    title: 'Vacuum System Troubleshooting',
-    knowledge_area: 'Troubleshooting',
-    asset_type: 'Vacuum',
-    summary: 'Common causes and resolution steps for insufficient vacuum during picking: leaks, filter blockage and solenoid faults.',
-    operational_reasoning: 'Check the filter before the solenoid. A partially blocked filter produces the same symptom and is cheaper and safer to rule out first.',
-    related_incident_ids: ['DEMO-INC-0876'],
-    evidence_ids: ['DEMO-EV-0012', 'DEMO-EV-0034', 'DEMO-EV-0056'],
-    derived_from_lesson_id: null,
-    revisions: [
-      { revision: 1, created_at: '2025-12-12T09:00:00Z', change_summary: 'Based on the initial incident resolution.' },
-      { revision: 2, created_at: '2026-02-05T09:00:00Z', change_summary: 'Added troubleshooting order.' },
-      { revision: 3, created_at: '2026-03-09T09:00:00Z', change_summary: 'Included uncommon failure modes.' },
-    ],
+    lesson_id:'DEMO-NONSTOP-005',title:'Reading ASAP-style performance signals',
+    knowledge_area:'Monitoring',asset_type:'ASAP',
+    summary:'Read baseline and current synthetic metrics without presenting them as actual ASAP observations.',
+    operational_reasoning:'Simulated latency and availability can help prioritize an investigation but cannot authenticate real tool provenance or establish a root cause.',
+    related_incident_ids:['INC-PATH-002'],evidence_ids:['SIM-EVT-201'],
+    derived_from_lesson_id:'DEMO-NONSTOP-003',
+    revisions:[{revision:1,created_at:'2026-10-15T09:00:00Z',change_summary:'Added source labels and simulation caveats.'}],
   }),
   lesson({
-    lesson_id: 'DEMO-LSN-005',
-    title: 'PLC Communication Loss',
-    knowledge_area: 'Process Control',
-    asset_type: 'PLC',
-    summary: 'Diagnosing intermittent loss of communication between line PLCs and the supervisory system.',
-    operational_reasoning: 'Intermittent drops that correlate with shift changes point to a shared switch being power-cycled, not to PLC firmware.',
-    related_incident_ids: ['DEMO-INC-0702'],
-    evidence_ids: ['DEMO-EV-0501'],
-    derived_from_lesson_id: null,
-    revisions: [
-      { revision: 1, created_at: '2026-01-21T09:00:00Z', change_summary: 'Initial diagnosis path.' },
-      { revision: 2, created_at: '2026-03-01T09:00:00Z', change_summary: 'Added switch power-cycle check.' },
-    ],
+    lesson_id:'DEMO-NONSTOP-006',title:'Human-approved Decision DNA',
+    knowledge_area:'Knowledge Transfer',asset_type:'Decision DNA',
+    summary:'Turn incident evidence, reasoning, rejected options, and missing prerequisites into a reviewed reusable lesson.',
+    operational_reasoning:'An AI response or expert-authored draft is not approved evidence. A distinct review gate is necessary before the Tree or learning exercises use it.',
+    related_incident_ids:['INC-DISK-001'],evidence_ids:['SIM-EVT-103'],
+    derived_from_lesson_id:'DEMO-NONSTOP-001',
+    revisions:[{revision:1,created_at:'2026-10-16T10:00:00Z',change_summary:'Formalized independent review and source link requirements.'}],
   }),
   lesson({
-    lesson_id: 'DEMO-LSN-006',
-    title: 'Sensor False Positive',
-    knowledge_area: 'Maintenance',
-    asset_type: 'Sensor',
-    summary: 'Recognising photo-eye false triggers caused by reflective packaging and ambient light.',
-    operational_reasoning: 'False triggers that only happen on one product line are usually reflections. Re-angling the sensor beats raising its threshold.',
-    related_incident_ids: ['DEMO-INC-0655'],
-    evidence_ids: ['DEMO-EV-0601'],
-    derived_from_lesson_id: null,
-    revisions: [
-      { revision: 1, created_at: '2026-01-30T09:00:00Z', change_summary: 'Initial lesson.' },
-      { revision: 2, created_at: '2026-02-24T09:00:00Z', change_summary: 'Added re-angling guidance.' },
-    ],
-  }),
-  lesson({
-    lesson_id: 'DEMO-LSN-007',
-    title: 'Vision System Lighting',
-    knowledge_area: 'Equipment',
-    asset_type: 'Vision',
-    summary: 'Keeping inspection lighting stable so the vision system does not reject good parts.',
-    operational_reasoning: 'Extends the sensor false-positive lesson: the same ambient-light changes that fool photo-eyes also shift vision thresholds.',
-    related_incident_ids: ['DEMO-INC-0690'],
-    evidence_ids: ['DEMO-EV-0701'],
-    derived_from_lesson_id: 'DEMO-LSN-006',
-    revisions: [{ revision: 1, created_at: '2026-03-06T09:00:00Z', change_summary: 'Branched from Sensor False Positive.' }],
-  }),
-  lesson({
-    lesson_id: 'DEMO-LSN-008',
-    title: 'Gripper Wear Inspection',
-    knowledge_area: 'Maintenance',
-    asset_type: 'Robot',
-    summary: 'Spotting gripper pad wear before it causes dropped picks.',
-    operational_reasoning: 'Builds on arm calibration: once offsets are confirmed good, repeated slips almost always mean worn pads.',
-    related_incident_ids: [],
-    evidence_ids: ['DEMO-EV-0801'],
-    derived_from_lesson_id: 'DEMO-LSN-002',
-    revisions: [{ revision: 1, created_at: '2026-03-11T09:00:00Z', change_summary: 'Branched from Robotic Arm Calibration.' }],
+    lesson_id:'DEMO-NONSTOP-007',title:'Apprentice handover under changed conditions',
+    knowledge_area:'Learning',asset_type:'Training',
+    summary:'Practice a revised synthetic incident with safe first actions, supported observations and prerequisites.',
+    operational_reasoning:'A training pass requires both correct read-only diagnostics and evidence; a score does not prove production competence.',
+    related_incident_ids:['INC-DISK-001','INC-PATH-002'],evidence_ids:['SIM-EVT-101','SIM-EVT-201'],
+    derived_from_lesson_id:'DEMO-NONSTOP-006',
+    revisions:[{revision:1,created_at:'2026-10-17T10:00:00Z',change_summary:'Added gated, non-persisted simulation assessment.'}],
   }),
 ]
 
-export const SHOWCASE_TREE: LegacyTreeResponse = {
-  synthetic: true,
-  generated_at: '2026-03-14T15:00:00Z',
-  nodes: NODES,
-  withheld_count: 0,
+export const SHOWCASE_TREE:LegacyTreeResponse={
+  synthetic:true,generated_at:'2026-10-17T10:00:00Z',
+  nodes:NODES,withheld_count:0,
 }

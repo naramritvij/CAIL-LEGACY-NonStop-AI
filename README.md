@@ -295,3 +295,34 @@ The backend now supports **user-supplied, authorized** documentation excerpts wi
 ### Sprint 5 — Citation-bounded local AI investigations
 
 Use `POST /api/v1/investigate/grounded` to request a structured local Qwen3 explanation of the **synthetic** incident, optionally augmented by release-matched, locally approved document chunks. Every generated claim must identify a registered `SIM-EVT-*` or `DOC-*` citation; invented IDs or malformed model JSON cause the claim output to be suppressed. **Matching an ID is not verifying the claim's truth or the document's authenticity.** The AI cannot execute or approve commands, and the existing frontend is unchanged. See [API contract and verification steps](docs/BACKEND_SPRINT5_GROUNDED_AI.md).
+
+## Knowledge Transfer demo (draft PR #15)
+
+The integrated Maggie v0 interface now includes review-gated **Library**, **Mentor**, **Apprentice**, and **Capture Decision DNA** flows, plus simulated **safe check previews** and a structured operator briefing. Synthetic Showcase tree lessons are NonStop-themed, while the actual Knowledge Tree still shows only locally approved lessons.
+
+See [Knowledge Transfer demo guide](docs/KNOWLEDGE_TRANSFER_DEMO.md) for the one-time Windows demo-key setup, complete scenario flow, review constraints, and limitations. These features are opt-in **local synthetic training only** and have not yet been verified by the user's full local Docker/Qwen run. Never import live customer data or treat the pasted HPE URL as authenticated source content without verification. Do not merge this draft branch until its tests and manual demo pass.
+
+
+## Guided Command Playbook (draft PR #15 update)
+
+The Investigate screen now starts with an issue-specific **Guided Command Playbook** for the synthetic disk and Pathway incidents: read-only CAIL fixture previews, documentation-only SCF/PATHCOM status syntax, evidence buttons, interpretation/unknowns, and contextual next steps. A deterministic symptom selector routes questions to registered checks, not free-form executable commands. Published HPE document links are included for each real command reference; the project-supplied `a00099017en_us` link was not directly verifiable as a command manual. There is no live HPE integration or execution endpoint.
+
+See [document/source audit, exact commands, and safety boundaries](docs/GUIDED_COMMAND_PLAYBOOK.md). The additional tests and UI have **not yet been locally verified** and must pass the full Windows check before this draft PR is merged.
+
+## Integrated CAIL Sponsor Operations Lab — synthetic completeness milestone
+
+The local prototype now has an **Operations Lab** route with an allowlisted
+operator command console, CAIL Suite-style offline adapters (EMS, ASAP,
+Guardian/process, SCF and PATHCOM references), an interdependent financial
+hardware-capacity failure, a generated management/overnight briefing and a
+browser-based timed evaluation protocol. Existing Investigate pages share
+the same console. Commands that might change system state are blocked;
+recognized native STATUS commands are documentation references, not executed
+subsystem queries.
+
+See [sponsor mission and realistic acceptance/limitations](docs/SPONSOR_MISSION_ACCEPTANCE.md).
+
+The CAIL brochure permits a read-only advisory prototype, but a real CAIL
+Suite deployment requires authorized connectivity, verified NonStop release,
+RBAC, site-specific policy and genuine data; none is claimed. Do not present
+temporary fictional incident chronology as an authenticated hardware failure.

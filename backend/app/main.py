@@ -405,3 +405,113 @@ def transcript_intake(body: TranscriptIngest,
         return _create_transcript(**body.model_dump())
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+# Knowledge Transfer UI: metadata listing and source-review details.
+# No nonapproved text is available without a valid expert/reviewer demo credential.
+from .corpus import list_corpus_documents as _list_corpus, get_corpus_document as _get_corpus
+
+@app.get('/api/v1/knowledge/corpus/documents')
+def corpus_documents(
+    status: Literal['approved','draft','submitted','rejected','all'] = 'approved',
+    limit: int = Query(default=50, ge=1, le=100),
+    x_legacy_expert_key: str | None = Header(default=None),
+    x_legacy_reviewer_key: str | None = Header(default=None),
+):
+    if status != 'approved':
+        require_either(x_legacy_expert_key or x_legacy_reviewer_key)
+    return _list_corpus(status=status, limit=limit)
+
+
+@app.get('/api/v1/knowledge/corpus/documents/{document_id}')
+def corpus_document_detail(
+    document_id: str,
+    x_legacy_expert_key: str | None = Header(default=None),
+    x_legacy_reviewer_key: str | None = Header(default=None),
+):
+    document = _get_corpus(document_id)
+    if document is None:
+        raise HTTPException(404, 'Document not found')
+    if document['status'] != 'approved':
+        require_either(x_legacy_expert_key or x_legacy_reviewer_key)
+    return document
+
+
+# Incident-specific evidence-to-command learning guide. No shell, HPE transport,
+# arbitrary command string, or state-changing action is accepted.
+from .command_playbook import build_playbook as _build_playbook, preview_playbook as _preview_playbook
+
+class PlaybookPreviewRequest(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=64)
+    step_id: str = Field(min_length=1, max_length=80, pattern=r'^[a-z0-9-]+$')
+
+@app.get('/api/v1/operations/incidents/{incident_id}/playbook')
+def operator_playbook(incident_id: str):
+    return _build_playbook(incident_or_404(incident_id))
+
+@app.post('/api/v1/operations/playbook/preview')
+def operator_playbook_preview(body: PlaybookPreviewRequest):
+    return _preview_playbook(incident_or_404(body.incident_id), body.step_id)
+
+
+# Deterministic symptom-to-step mapping; never accepts an executable command.
+from .command_playbook import recommend_step as _recommend_playbook_step
+
+class PlaybookQuestion(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=64)
+    question: str = Field(min_length=3, max_length=500)
+
+@app.post('/api/v1/operations/playbook/recommend')
+def operator_playbook_recommend(body: PlaybookQuestion):
+    return _recommend_playbook_step(incident_or_404(body.incident_id), body.question)
+
+
+# CAIL Suite-compatible offline operator command router.
+# A future authenticated adapter would require a separate reviewed security milestone.
+from .operations_lab import (
+    scenarios as _lab_scenarios, command as _lab_command,
+    shift_summary as _lab_summary, evaluation_protocol as _lab_evaluation,
+    incident as _lab_incident,
+)
+
+class UnifiedCommandRequest(BaseModel):
+    incident_id: str = Field(min_length=3, max_length=64)
+    input: str = Field(min_length=3, max_length=500)
+
+@app.get('/api/v1/operations/lab/scenarios')
+def lab_scenarios():
+    return {'mode':'simulation_only','scenarios':_lab_scenarios(),'live_connected':False}
+
+@app.post('/api/v1/operations/lab/command')
+def lab_command(body: UnifiedCommandRequest):
+    if _lab_incident(body.incident_id) is None:
+        raise HTTPException(404, 'Unknown incident')
+    try:
+        return _lab_command(body.incident_id, body.input)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+@app.get('/api/v1/operations/lab/shift-summary')
+def lab_shift_summary():
+    return _lab_summary()
+
+@app.get('/api/v1/operations/lab/evaluation-protocol')
+def lab_evaluation_protocol():
+    return _lab_evaluation()
+
+
+# Optional locally grounded Qwen assessment of the fictional financial outage.
+# Same validated citation-ID rules as the two existing incident investigations;
+# still not verified semantic entailment or an executable command recommendation.
+@app.post('/api/v1/operations/lab/ask')
+def lab_explain(body: GroundedInvestigationRequest):
+    selected=_lab_incident(body.incident_id)
+    if selected is None:
+        raise HTTPException(404, 'Unknown incident')
+    return investigate_with_corpus(body.question, selected, body.release, body.max_chunks)
+
+
+@app.get('/api/v1/operations/lab/tools')
+def lab_tool_capabilities():
+    from .operations_lab import tool_capabilities
+    return tool_capabilities()

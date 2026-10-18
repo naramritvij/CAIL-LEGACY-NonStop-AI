@@ -6,11 +6,12 @@ import {
   LibraryBig,
   type LucideIcon,
   ScanSearch,
+  TerminalSquare,
   Sprout,
   UserRoundCheck,
 } from 'lucide-react'
 
-export type SectionId = 'home' | 'investigate' | 'evidence' | 'tree' | 'apprentice' | 'mentor' | 'library'
+export type SectionId = 'home' | 'operations' | 'investigate' | 'evidence' | 'tree' | 'apprentice' | 'mentor' | 'library'
 
 export interface NavItem {
   id: SectionId
@@ -26,6 +27,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', icon: House, status: 'ready', description: 'Overview of open simulated incidents.' },
+  { id: 'operations', label: 'Operations Lab', icon: TerminalSquare, status: 'ready', description: 'Unified native-reference and natural-language command router with financial failure simulation, tool evidence, shift summary and evaluation.' },
   { id: 'investigate', label: 'Investigate', icon: ScanSearch, status: 'ready', incidentScoped: true, description: 'Guided, evidence-grounded investigation.' },
   { id: 'evidence', label: 'Evidence', icon: FileSearch, status: 'ready', incidentScoped: true, description: 'Every evidence item for the selected incident.' },
   {
@@ -40,26 +42,23 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'mentor',
     label: 'Mentor',
     icon: UserRoundCheck,
-    status: 'planned',
-    milestone: 'P1',
+    status: 'ready',
     description: 'Independent expert review of Decision DNA drafts before they become retrievable knowledge.',
   },
   {
     id: 'library',
     label: 'Library',
     icon: LibraryBig,
-    status: 'planned',
-    milestone: 'P1',
-    description: 'Searchable Decision DNA records: symptoms, evidence, reasoning, rejected alternatives and open questions.',
+    status: 'ready',
+    description: 'Search approved source excerpts and Decision DNA, or submit authorized text for review.',
   },
   {
     id: 'apprentice',
     label: 'Apprentice',
     shortLabel: 'Learn',
     icon: GraduationCap,
-    status: 'planned',
-    milestone: 'P2',
-    description: 'Scenario challenges built from approved lessons, with safe-ops XP, levels and mentor recognition.',
+    status: 'ready',
+    description: 'Synthetic challenges using approved lessons and a deterministic safety-and-evidence rubric.'
   },
 ]
 

@@ -213,6 +213,7 @@ function TreeView({ tree, showcase, onShowcase }: { tree: LegacyTreeResponse; sh
 export function LegacyTreePage() {
   const [source, setSource] = useState<Source>('approved')
   const { data, error, isLoading, mutate } = useLegacyTree()
+  useEffect(() => { void mutate() }, [mutate])
   const showcase = source === 'showcase'
   const tree = showcase ? SHOWCASE_TREE : data
 
@@ -234,7 +235,7 @@ export function LegacyTreePage() {
         <p className="leading-relaxed text-pretty text-ink-muted">
           {showcase
             ? 'Synthetic Showcase Mode: every lesson, incident and evidence reference shown is fictional, created only to demonstrate the experience. None of it is verified knowledge.'
-            : `Only expert-approved knowledge from GET /api/v1/knowledge/legacy-tree is shown. Drafts and unreviewed content are never displayed.${api.mode === 'http' ? '' : ' The mock adapter is active, so no approved lessons exist yet.'}`}
+            : `Only locally reviewer-approved knowledge from GET /api/v1/knowledge/knowledge-tree is shown. Drafts and unreviewed content are never displayed.${api.mode === 'http' ? '' : ' The mock adapter is active, so no approved lessons exist yet.'}`}
         </p>
       </div>
 

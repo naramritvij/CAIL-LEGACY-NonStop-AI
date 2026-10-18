@@ -29,8 +29,8 @@ function NavLink({ item, active, onSelect }: { item: NavItem; active: boolean; o
 
 export function Sidebar() {
   const { section, navigate, selectedId } = useIncidentContext()
-  const ready = NAV_ITEMS.filter((item) => item.status === 'ready')
-  const planned = NAV_ITEMS.filter((item) => item.status === 'planned')
+  const ready = NAV_ITEMS.filter((item) => item.status === 'ready' && !['mentor','library','apprentice'].includes(item.id))
+  const workflows = NAV_ITEMS.filter((item) => ['mentor','library','apprentice'].includes(item.id))
 
   const go = (item: NavItem) => navigate(item.id, item.incidentScoped ? selectedId : undefined)
 
@@ -49,9 +49,9 @@ export function Sidebar() {
           ))}
         </ul>
         <div>
-          <p className="px-3 text-[11px] font-semibold tracking-[0.14em] text-ink-faint uppercase">Coming next</p>
+          <p className="px-3 text-[11px] font-semibold tracking-[0.14em] text-ink-faint uppercase">Knowledge transfer</p>
           <ul className="mt-2 flex flex-col gap-1">
-            {planned.map((item) => (
+            {workflows.map((item) => (
               <li key={item.id}>
                 <NavLink item={item} active={section === item.id} onSelect={() => go(item)} />
               </li>
