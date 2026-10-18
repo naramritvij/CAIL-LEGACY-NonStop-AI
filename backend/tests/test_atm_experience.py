@@ -178,9 +178,9 @@ def test_plain_language_chat_automatically_renders_the_flagged_map(client):
     assert data['network']['attention_count']==1
     assert len(data['network']['sites'])==6
     assert data['investigation']['status']=='guided_synthetic_investigation'
-    assert [x['adapter'] for x in data['investigation']['source_previews']]==[
-        'ems','asap','guardian','pathcom'
-    ]
+    assert data['investigation']['interpreted_intent']=='locate'
+    assert data['investigation']['source_previews']==[]
+    assert 'North Exchange' in data['answer']
     assert data['execution_allowed'] is False
     assert data['production_connectivity'] is False
 
