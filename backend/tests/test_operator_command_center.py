@@ -44,7 +44,11 @@ def test_registered_sources_never_invent_scf_status(client):
 
 def test_command_id_allowlist_and_no_execution(client):
     cat = client.get(API + "/operations/incidents/INC-DISK-001/commands").json()
-    assert len(cat["commands"]) == 6\n    assert len(cat["documented_commands"]) == 1\n    assert cat["documented_commands"][0]["command"] == "STATUS DISK $DATA03"\n    assert cat["documented_commands"][0]["execution_allowed"] is False\n    assert cat["documented_commands"][0]["references"]
+    assert len(cat["commands"]) == 6
+    assert len(cat["documented_commands"]) == 1
+    assert cat["documented_commands"][0]["command"] == "STATUS DISK $DATA03"
+    assert cat["documented_commands"][0]["execution_allowed"] is False
+    assert cat["documented_commands"][0]["references"]
     assert all(not cmd["execution_allowed"] for cmd in cat["commands"])
     for cmd in ["check_health", "show_alerts", "open_asap", "open_ems", "open_scf",
                 "show_scf_reference", "restart_service; DROP"]:
