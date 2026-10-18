@@ -1,6 +1,6 @@
 # CAIL sponsor mission: integrated synthetic acceptance matrix
 
-**Status:** code implemented on feature branch, local verification required.
+**Status (18 Oct 2026):** code merged into `main` through PRs #14 and #15. Complete local automated verification passed; manual browser acceptance pending. All tooling remains synthetic or reference-only.
 
 The official CAIL brochure describes three inputs—CAIL Suite, HPE NonStop
 operational data, and enterprise knowledge—augmented by generative AI. It

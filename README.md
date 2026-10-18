@@ -120,7 +120,7 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-Latest team-verified local baseline: **95 backend tests passed** (17 Oct 2026), six local Ollama investigation calls accepted, and frontend build/safety smokes passed. The **pending backend foundation review branch adds 14 pytest cases** (Legacy Tree, Incident Workspace, and Windows seed compatibility), targeting **109 tests**; this new total has not yet been verified on Windows. A Starlette/httpx deprecation warning is currently non-blocking. The local baseline is not a CI guarantee.
+Latest developer-run verification (18 Oct 2026, feature head `6d92fd4`, now merged into `main`): **184 backend tests passed**, **17 frontend contract checks passed**, **2/2 synthetic local Qwen investigation runs accepted and reported safe**, and TypeScript/Vite production build completed (2,005 modules transformed). Local Docker/safety/Operations Lab smoke tests passed. A Starlette/httpx deprecation warning is non-blocking. These are developer-run local checks, not independent CI, production connectivity, or manual browser acceptance.
 
 ## 👩‍💻 Maggie's frontend development guide
 
@@ -296,18 +296,18 @@ The backend now supports **user-supplied, authorized** documentation excerpts wi
 
 Use `POST /api/v1/investigate/grounded` to request a structured local Qwen3 explanation of the **synthetic** incident, optionally augmented by release-matched, locally approved document chunks. Every generated claim must identify a registered `SIM-EVT-*` or `DOC-*` citation; invented IDs or malformed model JSON cause the claim output to be suppressed. **Matching an ID is not verifying the claim's truth or the document's authenticity.** The AI cannot execute or approve commands, and the existing frontend is unchanged. See [API contract and verification steps](docs/BACKEND_SPRINT5_GROUNDED_AI.md).
 
-## Knowledge Transfer demo (draft PR #15)
+## Knowledge Transfer demo (merged into main)
 
 The integrated Maggie v0 interface now includes review-gated **Library**, **Mentor**, **Apprentice**, and **Capture Decision DNA** flows, plus simulated **safe check previews** and a structured operator briefing. Synthetic Showcase tree lessons are NonStop-themed, while the actual Knowledge Tree still shows only locally approved lessons.
 
-See [Knowledge Transfer demo guide](docs/KNOWLEDGE_TRANSFER_DEMO.md) for the one-time Windows demo-key setup, complete scenario flow, review constraints, and limitations. These features are opt-in **local synthetic training only** and have not yet been verified by the user's full local Docker/Qwen run. Never import live customer data or treat the pasted HPE URL as authenticated source content without verification. Do not merge this draft branch until its tests and manual demo pass.
+See [Knowledge Transfer demo guide](docs/KNOWLEDGE_TRANSFER_DEMO.md) for the one-time Windows demo-key setup, complete scenario flow, review constraints, and limitations. These features are opt-in **local synthetic training only** and passed the 18 October local automated verification. Browser review flows still require manual acceptance. Never import live customer data or treat a pasted HPE URL as authenticated source content without verification.
 
 
-## Guided Command Playbook (draft PR #15 update)
+## Guided Command Playbook (merged into main)
 
 The Investigate screen now starts with an issue-specific **Guided Command Playbook** for the synthetic disk and Pathway incidents: read-only CAIL fixture previews, documentation-only SCF/PATHCOM status syntax, evidence buttons, interpretation/unknowns, and contextual next steps. A deterministic symptom selector routes questions to registered checks, not free-form executable commands. Published HPE document links are included for each real command reference; the project-supplied `a00099017en_us` link was not directly verifiable as a command manual. There is no live HPE integration or execution endpoint.
 
-See [document/source audit, exact commands, and safety boundaries](docs/GUIDED_COMMAND_PLAYBOOK.md). The additional tests and UI have **not yet been locally verified** and must pass the full Windows check before this draft PR is merged.
+See [document/source audit, exact commands, and safety boundaries](docs/GUIDED_COMMAND_PLAYBOOK.md). The additional tests and UI passed the full local Windows verification on 18 October. Browser interaction testing and sponsor-specific applicability checks remain separate.
 
 ## Integrated CAIL Sponsor Operations Lab — synthetic completeness milestone
 

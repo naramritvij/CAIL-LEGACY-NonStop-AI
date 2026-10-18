@@ -1,6 +1,6 @@
 # CAIL/Nonstop AI Operations Assistant — Sponsor Acceptance Traceability
 
-**Updated 18 October 2026 · PR #15 DRAFT, local verification pending for current commit.**
+**Updated 18 October 2026 · PRs #14 and #15 merged into `main`. Full developer-run local automated verification passed; browser acceptance pending.**
 
 The CAIL challenge asks: "How might we use AI to help the next generation
 of IT operators understand, monitor, and troubleshoot mission-critical
@@ -28,10 +28,9 @@ Reference: `docs/SPONSOR_MISSION_ACCEPTANCE.md`.
 | CAIL Suite / HPE operational integration | Local connector-shaped synthetic adapter layer and 11-subsystem inventory | **Not connected to real tools**; requires sponsor's authorized API/test environment |
 | User-friendly / safe / $0 local | React/Vite UI, Python/FastAPI, SQLite, local Ollama, Docker | $0 software/API architecture; no production hardening claim |
 
-## Completion gate
+## Browser acceptance and production dependencies
 
-Run `scripts/verify_operator_center.ps1 -RunsPerIncident 1`.
-Then manually test:
+Automated verification passed on 18 October 2026 (184 Python tests, 17 frontend contract checks, 2/2 local Qwen samples, Vite build and synthetic HTTP smoke tests). The following browser checks are still pending:
 1. All 3 Operations Lab incidents and routing of native/status/query forms.
 2. Wrong-incident redirect, blocked command, UNKNOWN SCF/PATHCOM source states.
 3. Financial hardware investigation and local Qwen citation transparency.

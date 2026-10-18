@@ -1,6 +1,6 @@
 # CAIL/Nonstop AI Operations Assistant — Current Architecture
 
-**18 October 2026 · synthetic sponsor-completion PR #15, pending local verification.**
+**18 October 2026 · PRs #14 and #15 merged into `main`; locally verified synthetic sponsor prototype. Browser acceptance pending.**
 
 The React/Vite interface communicates with a FastAPI backend. The backend
 collects only hand-authored synthetic incident fixtures, applies a default-deny
@@ -83,10 +83,9 @@ claimed.
 
 ## Verification and limitations
 
-The **previous** commit passed 146/146 Python tests, 15/15 frontend
-contracts, 2/2 local Qwen investigations and safe PowerShell smoke checks.
-The sponsor-completion commit contains new tests and **has not yet been
-verified by the user's local Docker/Ollama suite**.
+The latest complete developer-run local verification (18 October 2026, commit `6d92fd4`, now merged) passed **184 Python tests**, **17 frontend safety/API contract checks**, **2/2 bounded local Qwen investigations**, TypeScript/Vite build (2,005 modules transformed), Docker startup, and all synthetic Operations Lab and command-safety HTTP smoke checks. One Starlette/httpx deprecation warning remains nonblocking.
+
+Browser interaction acceptance, production integration, and independent expert source validation remain pending.
 
 Do not invent new passing test counts, live uptime, authenticated source
 provenance, real MTTR improvements or recovery results. See

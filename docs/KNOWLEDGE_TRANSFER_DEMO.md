@@ -1,6 +1,6 @@
 # Knowledge Transfer & Operator Guidance — Integrated Demo
 
-This branch extends the working unified CAIL/Nonstop AI Operations Assistant.
+This module is included in the unified CAIL/Nonstop AI Operations Assistant on `main` (merged through PRs #14 and #15).
 
 ## What now works in Local API · Synthetic mode
 
