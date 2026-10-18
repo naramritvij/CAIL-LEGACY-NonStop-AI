@@ -132,3 +132,29 @@ def test_operator_brief_cites_existing_events_and_only_read_only_previews():
     path=build_operator_brief(get_incident('INC-PATH-002'))
     assert path['status']=='red'
     assert path['root_cause_status']=='not_established'
+
+
+def test_reviewed_excerpt_allows_other_explicit_concept_questions(monkeypatch):
+    import hashlib
+    text='MOMI is a synthetic local training topic about a monitoring interface. This example is not authenticated vendor documentation.'
+    hit={
+        'citation_id':'DOC-abcdef01-C01','excerpt':text,
+        'chunk_sha256':hashlib.sha256(text.encode('utf-8')).hexdigest(),
+        'source_url':'https://support.hpe.com/hpesc/public/docDisplay?docId=a00099017en_us',
+        'section':'Monitoring','release':'L23.08',
+    }
+    monkeypatch.setattr(gi,'search_approved',lambda *args:{'matches':[hit]})
+    calls=[]
+    def model(payload):
+        calls.append(payload)
+        return json.dumps({'claims':[{
+            'text':'The locally reviewed excerpt describes a monitoring interface.',
+            'citations':['DOC-abcdef01-C01']}]})
+    monkeypatch.setattr(gi,'_call_local_model',model)
+    result=gi.investigate_with_corpus(
+        'What is MOMI?', get_incident('INC-DISK-001'), 'L23.08'
+    )
+    assert result['status']=='generated_unverified_reference_citation_ids_checked'
+    assert result['claims'][0]['citations']==['DOC-abcdef01-C01']
+    assert len(calls)==1
+    assert result['state_change_executed'] is False
