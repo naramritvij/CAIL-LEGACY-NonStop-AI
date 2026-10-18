@@ -105,6 +105,13 @@ def example_knowledge():
     }
 
 
+from .knowledge_readiness import readiness as _knowledge_readiness
+
+@app.get('/api/v1/knowledge/workflow-readiness')
+def knowledge_workflow_readiness():
+    return _knowledge_readiness()
+
+
 @app.get('/api/v1/knowledge/lessons')
 def approved_or_role_scoped_lessons(
     incident_id: str | None = None,
