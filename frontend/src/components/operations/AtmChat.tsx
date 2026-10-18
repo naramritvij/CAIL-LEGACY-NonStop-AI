@@ -3,6 +3,7 @@ import {
   ArrowRight, Bot, BookOpen, BrainCircuit, CircleAlert, MapPin,
   MessageCircle, Send, ShieldCheck, TerminalSquare, UserRound,
 } from 'lucide-react'
+import './AtmChat.css'
 import { DATA_MODE } from '@/api/client'
 import { assertSyntheticAtmChat } from '@/api/atm-guard'
 import { workflowRequest } from '@/api/workflows'
@@ -68,7 +69,7 @@ function ChatResult({data, onPick}:{
     {data.audience&&<p className="text-[11px] text-ink-faint">
       Response style: {data.audience==='engineer'?'Technical engineer':'Frontline operator'} · {data.audience_basis?.replaceAll('_',' ')}
     </p>}
-    {network&&<section className="overflow-hidden rounded-xl border border-cyan/30 bg-[#091c2b] p-3">
+    {network&&<section className="atm-map-reveal overflow-hidden rounded-xl border border-cyan/30 bg-[#091c2b] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="flex items-center gap-2 text-sm font-semibold text-cyan"><MapPin className="size-4"/> ATM incident locator</h4>
         <span className="rounded-lg bg-coral/15 px-2 py-1 text-xs font-semibold text-coral">
@@ -76,7 +77,7 @@ function ChatResult({data, onPick}:{
         </span>
       </div>
       <p className="mt-1 text-[11px] text-ink-muted">Fictional district diagram · positions are NOT GPS coordinates</p>
-      <div className="relative mt-3 aspect-[1.8] min-h-[180px] overflow-hidden rounded-xl border border-line bg-[#0a2334]">
+      <div className="atm-map-canvas relative mt-3 aspect-[1.8] min-h-[180px] overflow-hidden rounded-xl border border-line bg-[#0a2334]">
         <svg viewBox="0 0 800 440" preserveAspectRatio="xMidYMid slice"
           className="absolute inset-0 size-full" aria-hidden="true">
           <path d="M0 90 H800 M0 220 H800 M0 380 H800 M150 0 V440 M365 0 V440 M620 0 V440"
@@ -87,16 +88,23 @@ function ChatResult({data, onPick}:{
             strokeWidth="2" opacity=".45" strokeDasharray="10 10" fill="none"/>
           <text x="36" y="43" fontSize="16" fill="#87a7b7">FICTIONAL METRO DISTRICT</text>
         </svg>
-        {network.sites.map(site=><button type="button" key={site.id}
+        {network.sites.map((site,index)=><button type="button" key={site.id}
           aria-label={'Inspect '+site.id+' '+site.location}
           title={site.id+' — '+site.location}
-          style={{left:site.x+'%',top:site.y+'%'}}
+          style={{
+            left:site.x+'%',top:site.y+'%',
+            // Pins appear after the map has begun revealing; the affected ATM
+            // enters last so the incident visually becomes the focal point.
+            animationDelay:site.status==='attention'
+              ? '1050ms, 1550ms'
+              : (620+index*100)+'ms',
+          }}
           onClick={()=>onPick(site.id)}
-          className={'tap absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 p-2 shadow-lg focus:outline-2 focus:outline-white '+
+          className={'atm-pin tap absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 p-2 shadow-lg focus:outline-2 focus:outline-white '+
             (site.status==='attention'
-              ? 'border-white bg-coral text-white ring-8 ring-coral/20'
+              ? 'atm-pin-alert border-white bg-coral text-white ring-8 ring-coral/20'
               : 'border-cyan/50 bg-emerald text-midnight')+
-            (data.selected_atm_id===site.id?' outline-2 outline-offset-2 outline-cyan':'')}>
+            (data.selected_atm_id===site.id?' atm-pin-selected outline-2 outline-offset-2 outline-cyan':'')}>
           <MapPin className="size-4" aria-hidden="true"/>
         </button>)}
       </div>

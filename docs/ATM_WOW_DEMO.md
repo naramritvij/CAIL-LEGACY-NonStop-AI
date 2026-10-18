@@ -37,6 +37,17 @@ inline, without inventing incident-specific ATM telemetry. The ATM
 chat itself is deterministic and local. The optional Qwen button on the
 full ATM page is separate and only analyzes synthetic backend events.
 
+## Question-triggered map motion
+
+When an operator submits an ATM question, the inline assistant response makes
+the map card fade/slide in, reveals the schematic horizontally, and then
+introduces fictional ATM pins in sequence. The affected red ATM-042 receives
+a gentle pulse. The animation replays for each **new map-containing assistant
+reply**; it does not animate unrelated replies or authorize new tool actions.
+Users with `prefers-reduced-motion: reduce` see the complete map and every
+marker immediately. No animation package, new live data feed or API expense is
+required. Source: `frontend/src/components/operations/AtmChat.css`.
+
 ## How to demonstrate (3-4 minutes)
 
 1. On localhost:5173 open **ATM Mission Demo**, or navigate to #/atm.

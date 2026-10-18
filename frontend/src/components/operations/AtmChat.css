@@ -1,0 +1,78 @@
+/*
+ * CAIL Ask Chat — map-first presentation motion.
+ * Only applies when a new assistant reply includes a synthetic ATM network.
+ * Uses CSS instead of runtime timers or a new animation dependency.
+ */
+
+@keyframes cail-atm-card-arrive {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes cail-atm-map-unveil {
+  from {
+    opacity: 0.35;
+    clip-path: inset(0 100% 0 0 round 12px);
+    transform: scale(1.012);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 12px);
+    transform: scale(1);
+  }
+}
+
+/* Animate scale only: Tailwind's -translate-x/y-1/2 positions each pin,
+   and adding another translate() in keyframes would displace it. */
+@keyframes cail-atm-pin-pop {
+  0%   { opacity: 0; transform: scale(0.3); }
+  70%  { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cail-atm-alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 113, 133, 0.36); }
+  50% { box-shadow: 0 0 0 15px rgba(251, 113, 133, 0); }
+}
+
+.atm-map-reveal {
+  transform-origin: top center;
+  animation: cail-atm-card-arrive 560ms ease-out both;
+}
+
+.atm-map-canvas {
+  transform-origin: center center;
+  animation: cail-atm-map-unveil 840ms ease-out 160ms both;
+}
+
+.atm-pin {
+  /* React supplies per-pin delays so the terminals appear sequentially. */
+  animation: cail-atm-pin-pop 470ms cubic-bezier(.2, .9, .25, 1.25) both;
+}
+
+.atm-pin-alert {
+  /* The alert receives a final pop, then a gentle continuous status pulse. */
+  animation-name: cail-atm-pin-pop, cail-atm-alert-pulse;
+  animation-duration: 470ms, 2.2s;
+  animation-timing-function: cubic-bezier(.2, .9, .25, 1.25), ease-in-out;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: both, none;
+}
+
+.atm-pin-selected {
+  filter: brightness(1.1);
+}
+
+/* Avoid reveal clipping, pulsing and delayed interactive pins for people
+   who prefer reduced motion. The entire map and all markers stay visible. */
+@media (prefers-reduced-motion: reduce) {
+  .atm-map-reveal,
+  .atm-map-canvas,
+  .atm-pin,
+  .atm-pin-alert {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+}
