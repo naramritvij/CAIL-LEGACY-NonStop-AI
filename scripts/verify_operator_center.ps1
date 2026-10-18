@@ -69,5 +69,23 @@ if ($null -eq $workspace.knowledge_tree -or
     throw "Knowledge Tree new and compatibility contracts diverged."
 }
 
+# Screenshot regression: definition requests must not cite unrelated disk
+# evidence, and unrelated incident questions must not reach local Ollama.
+$conceptPayload = @{incident_id="INC-DISK-001";question="What do you mean by Nonstop?";release="L23.08";max_chunks=3} | ConvertTo-Json
+$concept = Invoke-RestMethod -Uri "$base/investigate/grounded" -Method Post -ContentType "application/json" -Body $conceptPayload -TimeoutSec 20
+if ($concept.status -ne "local_reference_explanation" -or $concept.model_attempts -ne 0 -or
+    @($concept.claims).Count -ne 0 -or $concept.message -notmatch "fault-tolerant" -or
+    $concept.message -like '*$DATA03*') {
+    throw "General NonStop definition incorrectly fell back to incident evidence."
+}
+
+$unrelatedPayload = @{incident_id="INC-DISK-001";question="Why is Kubernetes scheduler offline?";release="L23.08";max_chunks=3} | ConvertTo-Json
+$unrelated = Invoke-RestMethod -Uri "$base/investigate/grounded" -Method Post -ContentType "application/json" -Body $unrelatedPayload -TimeoutSec 20
+if ($unrelated.status -ne "insufficient_relevant_evidence" -or
+    $unrelated.model_attempts -ne 0 -or @($unrelated.claims).Count -ne 0) {
+    throw "Unrelated question should fail closed before incident Qwen inference."
+}
+Write-Host "Concept routing and unrelated-evidence rejection verified." -ForegroundColor Green
+
 Write-Host "CAIL Operator Command Center: status, provenance, safety, Knowledge Tree VERIFIED (local synthetic checks)." -ForegroundColor Green
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

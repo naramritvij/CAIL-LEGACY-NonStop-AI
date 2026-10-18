@@ -58,7 +58,7 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
         />
         <button type="submit" disabled={loading || question.trim().length < 3} className="btn-primary flex items-center justify-center gap-2 self-start rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
           {loading ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : <FileSearch aria-hidden className="size-4" />}
-          {loading ? 'Reviewing source IDs…' : mock ? 'Preview mock response' : 'Ask local Ollama'}
+          {loading ? 'Reviewing source IDs…' : mock ? 'Preview mock response' : 'Ask CAIL assistant'}
         </button>
       </form>
       {error && <p role="alert" className="mt-4 rounded-xl border border-coral/30 bg-coral/10 p-3 text-sm text-coral">{error}</p>}

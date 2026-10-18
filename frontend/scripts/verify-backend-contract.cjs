@@ -144,6 +144,20 @@ test('AI citation must appear in source registry', () => {
     claims:[{text:'Unverified statement',citations:['SIM-EVT-999']}],source_registry:[],
   }), /unregistered/i)
 })
+test('general definitions remain a labeled non-model response without event citations', () => {
+  const response = fromBackendGrounded({
+    synthetic:true,operational_action_authorized:false,state_change_executed:false,
+    incident_id:'INC-DISK-001',status:'local_reference_explanation',
+    model_attempts:0,question_scope:'general_reference',
+    claims:[{text:'An unrelated disk claim should never render',citations:['SIM-EVT-103']}],
+    source_registry:[],missing_evidence:[],
+    message:'HPE NonStop is a fault-tolerant server platform.',
+  })
+  assert.equal(response.status,'local_reference_explanation')
+  assert.equal(response.model,'not_called')
+  assert.equal(response.claims.length,0)
+  assert.match(response.message,/fault-tolerant/)
+})
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)

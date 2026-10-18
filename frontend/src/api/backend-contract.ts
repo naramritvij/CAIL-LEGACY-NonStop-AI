@@ -264,7 +264,7 @@ export function fromBackendGrounded(raw: unknown): GroundedInvestigationResponse
   return {
     incident_id: id(w.incident_id, 'Investigation incident ID'),
     question: '', claims, cited_evidence_ids: [...new Set(claims.flatMap((claim) => claim.evidence_ids))],
-    model: txt(w.model) || 'local Ollama',
+    model: ['local_reference_explanation', 'reference_required', 'insufficient_relevant_evidence'].includes(status) ? 'not_called' : (txt(w.model) || 'local Ollama'),
     // Source ID checking is not proof of semantic grounding.
     grounded: false, simulated: true, synthetic: true,
     status, message: txt(w.message), source_registry: sources,
