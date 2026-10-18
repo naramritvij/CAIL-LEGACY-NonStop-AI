@@ -579,3 +579,16 @@ from .general_assistant import GeneralQuestion as _GeneralQuestion, ask_general 
 @app.post('/api/v1/assistant/ask')
 def general_ai_question(body: _GeneralQuestion):
     return _ask_general(body.question)
+
+
+# Model can interpret registered read-only live gateway records but cannot execute.
+from .live_investigation import (
+    LiveInvestigationQuestion as _LiveInvestigationQuestion,
+    investigate_source as _investigate_live_source,
+)
+
+@app.post('/api/v1/integrations/ask')
+def live_integration_investigation(body: _LiveInvestigationQuestion,
+                                   x_cail_operator_key: str | None = Header(default=None)):
+    _require_live_operator(x_cail_operator_key)
+    return _investigate_live_source(body.tool_id, body.question)
