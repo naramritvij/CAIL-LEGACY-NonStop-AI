@@ -12,6 +12,47 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Funnel layout lives at the repository root, outside the frontend Docker
+# build context. Verify it here on Windows rather than trying to read
+# /compose.funnel.yaml from the frontend-only /app container.
+Write-Host "[CAIL] Preflighting isolated public Funnel deployment security..." -ForegroundColor Cyan
+$funnelConfigJson = (docker compose -f compose.funnel.yaml config --format json | Out-String)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($funnelConfigJson)) {
+    throw "Funnel Docker Compose config is invalid."
+}
+$funnelConfig = $funnelConfigJson | ConvertFrom-Json
+$isolatedBackend = $funnelConfig.services.'demo-backend'
+$publicGateway = $funnelConfig.services.'demo-gateway'
+if ($null -eq $isolatedBackend -or $null -eq $publicGateway) {
+    throw "Expected separate demo-backend and demo-gateway services."
+}
+if ($null -ne $isolatedBackend.ports -or $null -ne $isolatedBackend.volumes) {
+    throw "Public backend must not publish ports or mount the private knowledge volume."
+}
+$names = @($isolatedBackend.environment.PSObject.Properties.Name)
+if ($names -contains "LEGACY_EXPERT_KEY" -or $names -contains "LEGACY_REVIEWER_KEY") {
+    throw "Public backend must not have any expert/reviewer credentials."
+}
+$backendHealth = ($isolatedBackend.healthcheck.test -join ' ')
+if ($isolatedBackend.read_only -ne $true -or $backendHealth -notmatch "/api/v1/health") {
+    throw "Public backend must be read-only and healthchecked through FastAPI."
+}
+if ($publicGateway.depends_on.'demo-backend'.condition -ne "service_healthy") {
+    throw "Gateway must wait for healthy FastAPI before accepting traffic."
+}
+$ports = @($publicGateway.ports)
+if ($ports.Count -ne 1 -or $ports[0].host_ip -ne "127.0.0.1" -or
+    [string]$ports[0].published -ne "8787" -or [string]$ports[0].target -ne "8080") {
+    throw "Funnel gateway must bind only 127.0.0.1:8787 to container port 8080."
+}
+$funnelStartup = [System.IO.File]::ReadAllText((Join-Path $root "scripts/start_tailscale_funnel.ps1"))
+if (-not $funnelStartup.Contains('$uri/api/v1/health') -or
+    -not $funnelStartup.Contains('logs --tail=70') -or
+    -not $funnelStartup.Contains('if (-not $Publish)')) {
+    throw "Funnel startup must verify real FastAPI, show failed health diagnostics, and require explicit publishing."
+}
+Write-Host "[CAIL] Host-side Docker isolation, gateway bind and startup safety VERIFIED." -ForegroundColor Green
+
 Write-Host "[CAIL] Running existing end-to-end backend, frontend and Ollama verification..." -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "verify_sprint5.ps1") -RunsPerIncident $RunsPerIncident
 

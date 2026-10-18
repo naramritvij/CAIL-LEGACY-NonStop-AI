@@ -352,7 +352,7 @@ test('Chat-to-map animated reveal is scoped, staged and accessible',()=>{
   const ui=fs.readFileSync(path.join(root,'src','components','operations','AtmChat.tsx'),'utf8')
   const css=fs.readFileSync(path.join(root,'src','components','operations','AtmChat.css'),'utf8')
   assert.match(ui,/import '\.\/AtmChat\.css'/)
-  assert.match(ui,/\{network&&<section className="atm-map-reveal/)
+  assert.match(ui,/\{network&&intent!=='retrieve_knowledge'&&<section className="atm-map-reveal/)
   assert.match(ui,/className="atm-map-canvas/)
   assert.match(ui,/atm-pin-alert/)
   assert.match(ui,/animationDelay:site\.status==='attention'/)
@@ -363,20 +363,14 @@ test('Chat-to-map animated reveal is scoped, staged and accessible',()=>{
   assert.match(css,/@media \(prefers-reduced-motion: reduce\)/)
 })
 
-test('Tailscale public gateway uses only isolated synthetic API, no reviewer access',()=>{
-  const rootDir=path.resolve(root,'..')
-  const compose=fs.readFileSync(path.join(rootDir,'compose.funnel.yaml'),'utf8')
+test('Tailscale frontend bundle uses FastAPI backend and read-only API gateway',()=>{
+  // Frontend-only Docker contains /app; repository-root Compose and startup
+  // are separately verified on the Windows host before the full smoke.
   const config=fs.readFileSync(path.join(root,'deploy','funnel-nginx.conf'),'utf8')
   const image=fs.readFileSync(path.join(root,'deploy','funnel.Dockerfile'),'utf8')
-  const preBackend=compose.slice(compose.indexOf('  demo-backend:'),compose.indexOf('  demo-gateway:'))
-  assert.match(compose,/name: cail-funnel-demo/)
-  assert.doesNotMatch(preBackend,/^\s+ports:/m)
-  assert.doesNotMatch(preBackend,/^\s+volumes:/m)
-  assert.doesNotMatch(preBackend,/^\s+LEGACY_EXPERT_KEY:/m)
-  assert.doesNotMatch(preBackend,/^\s+LEGACY_REVIEWER_KEY:/m)
-  assert.match(compose,/"127\.0\.0\.1:8787:8080"/)
   assert.match(image,/ENV VITE_LEGACY_DATA_MODE=http/)
   assert.match(image,/ENV VITE_CAIL_PUBLIC_DEMO=0/)
+  assert.match(image,/RUN npm run build/)
   assert.match(config,/POST:\/api\/v1\/operations\/atm\/chat/)
   assert.match(config,/POST:\/api\/v1\/operations\/lab\/ask/)
   assert.match(config,/if \(\$cail_api_allowed = 0\) \{ return 403; \}/)
@@ -385,17 +379,15 @@ test('Tailscale public gateway uses only isolated synthetic API, no reviewer acc
   assert.doesNotMatch(config,/POST:\/api\/v1\/knowledge\/transcripts/)
   assert.match(config,/limit_req_zone \S+ zone=cail_ai:/)
 })
-
-test('Tailscale startup waits for live FastAPI health and shows logs on 502',()=>{
-  const rootDir=path.resolve(root,'..')
-  const compose=fs.readFileSync(path.join(rootDir,'compose.funnel.yaml'),'utf8')
-  const script=fs.readFileSync(path.join(rootDir,'scripts','start_tailscale_funnel.ps1'),'utf8')
-  assert.match(compose,/condition: service_healthy/)
-  assert.match(compose,/healthcheck:/)
-  assert.match(compose,/127\.0\.0\.1:8000\/api\/v1\/health/)
-  assert.match(script,/\$uri\/api\/v1\/health/)
-  assert.match(script,/Get-Content|logs --tail=70/)
-  assert.match(script,/No Tailscale Funnel was published/)
+test('Tailscale gateway serves built React app and enforces allowed methods',()=>{
+  const config=fs.readFileSync(path.join(root,'deploy','funnel-nginx.conf'),'utf8')
+  const image=fs.readFileSync(path.join(root,'deploy','funnel.Dockerfile'),'utf8')
+  assert.match(config,/location \^~ \/api\/v1\//)
+  assert.match(config,/proxy_pass http:\/\/demo-backend:8000/)
+  assert.match(config,/location = \/api\/v1\/operations\/lab\/ask/)
+  assert.match(config,/if \(\$request_method != POST\) \{ return 403; \}/)
+  assert.match(config,/try_files \$uri \$uri\/ \/index.html/)
+  assert.match(image,/COPY --from=build \/app\/dist/)
 })
 
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
