@@ -12,10 +12,12 @@ import { LibraryPage } from '@/pages/LibraryPage'
 import { ApprenticePage } from '@/pages/ApprenticePage'
 import { OperationsLabPage } from '@/pages/OperationsLabPage'
 import { AtmExperiencePage } from '@/pages/AtmExperiencePage'
+import { AtmChat } from '@/components/operations/AtmChat'
 import { WorkspaceView } from '@/pages/WorkspaceView'
 
 function Content() {
   const { section, incidentsError, retryIncidents, selectedId, selectIncident } = useIncidentContext()
+  if (section === 'chat') return <AtmChat />
   if (section === 'atm') return <AtmExperiencePage />
   if (section === 'operations') return <OperationsLabPage />
   if (section === 'mentor') return <MentorPage />

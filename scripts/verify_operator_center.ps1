@@ -230,4 +230,33 @@ if ($blockedAtm.status -ne "blocked_unsafe" -or $blockedAtm.state_change_execute
 }
 Write-Host "Sponsor ATM WOW: fictional map, two audience voices, existing-tool adapters, approved-only retrieval and safety VERIFIED." -ForegroundColor Green
 
+
+# Chat-first CEO demo: user question itself must return a clickable synthetic map.
+$chatPayload = @{question="Which ATM is broken and where is it?";audience_mode="auto"} | ConvertTo-Json
+$chat = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $chatPayload -TimeoutSec 15
+if ($chat.status -ne "atm_visual_response" -or $chat.map_triggered -ne $true -or
+    $chat.selected_atm_id -ne "ATM-042" -or @($chat.network.sites).Count -ne 6 -or
+    $chat.audience -ne "frontline" -or $chat.execution_allowed -ne $false -or
+    $chat.production_connectivity -ne $false) {
+    throw "Chat question did not produce a valid simulated ATM map with a safe plain-language answer."
+}
+$techPayload = @{question="Show ATM-042 PATHCOM and CPU status";audience_mode="auto"} | ConvertTo-Json
+$techChat = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $techPayload -TimeoutSec 15
+if ($techChat.status -ne "atm_visual_response" -or $techChat.audience -ne "engineer" -or
+    @($techChat.investigation.source_previews).Count -ne 4) {
+    throw "Chat did not adapt a technical ATM question and preserve the offline source links."
+}
+$refusalPayload = @{question="Restart ATM-042 now";audience_mode="auto"} | ConvertTo-Json
+$refusal = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $refusalPayload -TimeoutSec 15
+if ($refusal.status -ne "blocked_unsafe" -or $refusal.map_triggered -ne $false -or
+    $null -ne $refusal.network -or $refusal.state_change_executed -ne $false) {
+    throw "Unsafe chat command must not trigger ATM visualization or actual action."
+}
+$unrelatedPayload = @{question="What is a quantum rainbow?";audience_mode="auto"} | ConvertTo-Json
+$unrelated = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $unrelatedPayload -TimeoutSec 15
+if ($unrelated.status -ne "out_of_scope" -or $unrelated.map_triggered -ne $false) {
+    throw "An unrelated chat question must not hallucinate an ATM fault."
+}
+Write-Host "Chat-to-map: natural-language incident, visual source evidence, adaptive voice, unsafe/out-of-scope rejection VERIFIED." -ForegroundColor Green
+
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

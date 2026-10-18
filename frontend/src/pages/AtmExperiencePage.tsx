@@ -7,6 +7,7 @@ import { DATA_MODE } from '@/api/client'
 import { assertSyntheticAtmNetwork, assertSyntheticAtmAssist } from '@/api/atm-guard'
 import { workflowRequest, type DecisionLesson } from '@/api/workflows'
 import { useIncidentContext } from '@/app/IncidentContext'
+import { AtmChat } from '@/components/operations/AtmChat'
 
 type Audience = 'frontline' | 'engineer'
 interface AtmSite {
@@ -161,6 +162,7 @@ export function AtmExperiencePage(){
         DEMO ONLY · Fictional district layout and ATM identities · No live ATM, GPS, CAIL Suite or HPE connection
       </p>
     </header>
+    <AtmChat compact />
     {DATA_MODE!=='http'&&<p className="glass p-4 text-gold">Use Local API · Synthetic mode for this interactive workflow.</p>}
     {error&&<p role="alert" className="glass border border-coral/40 p-4 text-sm text-coral">{error}</p>}
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(340px,0.7fr)]">

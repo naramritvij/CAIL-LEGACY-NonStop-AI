@@ -2,9 +2,9 @@ import { useIncidentContext } from '@/app/IncidentContext'
 import { NAV_ITEMS } from '@/app/routes'
 import { cn } from '@/lib/format'
 
-const MOBILE_IDS = ['home', 'atm', 'investigate', 'tree', 'apprentice'] as const
+const MOBILE_IDS = ['home', 'chat', 'investigate', 'tree', 'apprentice'] as const
 
-/** The sponsor ATM demo is a primary mobile tab; Evidence, Mentor and Library remain reachable from Home. */
+/** The Ask CAIL chat demo is a primary mobile tab; ATM, Evidence, Mentor and Library remain reachable from Home. */
 export function MobileNav() {
   const { section, navigate, selectedId } = useIncidentContext()
   const items = NAV_ITEMS.filter((item) => (MOBILE_IDS as readonly string[]).includes(item.id))

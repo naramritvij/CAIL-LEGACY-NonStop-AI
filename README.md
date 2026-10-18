@@ -326,3 +326,21 @@ The CAIL brochure permits a read-only advisory prototype, but a real CAIL
 Suite deployment requires authorized connectivity, verified NonStop release,
 RBAC, site-specific policy and genuine data; none is claimed. Do not present
 temporary fictional incident chronology as an authenticated hardware failure.
+
+
+## Chat-to-map investor demo (ATM, synthetic only)
+
+The **Ask CAIL Chat** navigation entry (#/chat) now accepts ordinary ATM
+questions and renders a **clickable six-location fictional ATM map inside
+the chat reply**. The assistant reuses existing local synthetic EMS/ASAP/
+Guardian adapters, displays HPE PATHCOM status as UNKNOWN, retrieves only
+locally approved Knowledge Tree lessons, and explains the same events for
+frontline staff or technical engineers. Follow-up turns keep the selected
+fictional ATM. A new restricted POST /api/v1/operations/atm/chat endpoint
+performs only deterministic local routing, no shell/NonStop execution or
+real-ATM lookup. Existing incident Ask CAIL panels also offer this rich
+ATM-specific route. See docs/ATM_WOW_DEMO.md for the live stage walkthrough.
+
+The map and past-history examples remain explicitly fictional. A demo
+requires local Docker services; it cannot claim real CAIL Suite/ATM
+integrations or measured investor/MTTR outcomes.

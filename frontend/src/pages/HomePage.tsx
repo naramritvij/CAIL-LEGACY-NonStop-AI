@@ -24,6 +24,16 @@ export function HomePage() {
         </p>
       </header>
 
+      <section className="glass glow-cyan p-5" aria-label="Investor chat-to-map demo">
+        <p className="text-xs font-semibold uppercase tracking-widest text-cyan">Interactive sponsor demonstration</p>
+        <h2 className="mt-2 text-xl font-semibold">Ask CAIL a question. Watch the ATM map appear.</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-ink-muted">
+          Enter “Which ATM is down?” in the real chat. CAIL generates a fictional map, traces local EMS/ASAP/Guardian evidence, and surfaces independently approved operational lessons—not an ordinary text-only chatbot.
+        </p>
+        <button type="button" onClick={() => navigate('chat')} className="btn-primary mt-4 rounded-xl px-4 py-3 text-sm">
+          Launch Ask CAIL interactive chat →
+        </button>
+      </section>
       <section className="glass glow-cyan p-5" aria-label="CEO ATM mission demo">
         <p className="text-xs font-semibold uppercase tracking-widest text-cyan">CEO mission demonstration</p>
         <h2 className="mt-2 text-xl font-semibold">CAIL / Nonstop AI Operations Assistant · ATM incident</h2>

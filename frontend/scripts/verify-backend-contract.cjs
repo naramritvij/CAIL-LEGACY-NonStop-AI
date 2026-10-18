@@ -55,7 +55,7 @@ for (const filename of ['errors.ts', 'backend-contract.ts']) {
 const requireTmp = createRequire(path.join(tmp, 'verify.cjs'))
 const { assertSafePlaybook } = requireTmp('./playbook-guard.js')
 const { assertSafeConsoleResult } = requireTmp('./console-guard.js')
-const { assertSyntheticAtmNetwork, assertSyntheticAtmAssist } = requireTmp('./atm-guard.js')
+const { assertSyntheticAtmNetwork, assertSyntheticAtmAssist, assertSyntheticAtmChat } = requireTmp('./atm-guard.js')
 const { fromBackendIncidents, fromBackendWorkspace, fromBackendTree, fromBackendGrounded } = requireTmp('./backend-contract.js')
 
 const disk = {
@@ -303,6 +303,50 @@ test('ATM audience response never returns native command execution or fake PATHC
   assert.throws(()=>assertSyntheticAtmAssist({...sample,execution_allowed:true}),/native execution/)
   assert.throws(()=>assertSyntheticAtmAssist({...sample,source_previews:[{...sample.source_previews[0],observations:[{status:'RUNNING'}]}]}),/must remain UNKNOWN/)
   assert.throws(()=>assertSyntheticAtmAssist({...sample,approved_knowledge_matches:[{review_status:'submitted'}]}),/unapproved lessons/)
+})
+
+test('Chat-to-map triggers only for a bounded offline ATM response',()=>{
+  const investigation={
+    synthetic:true,production_connectivity:false,execution_allowed:false,
+    state_change_executed:false,status:'guided_synthetic_investigation',
+    steps:[{title:'Check',evidence_ids:['SIM-ATM-042-001']}],
+    source_previews:[{adapter:'pathcom',connected:false,
+      evidence_origin:'local_fixture_adapter',native_tool_status:'unknown',
+      observations:[]}],
+    approved_knowledge_matches:[],
+  }
+  const network={
+    production_connectivity:false,mode:'synthetic_location_schematic',
+    map_type:'fictional_district_plan_not_real_world_geolocation',
+    attention_count:1,
+    sites:[{id:'ATM-042',x:62,y:65,status:'attention',live_connected:false},
+      {id:'ATM-011',x:15,y:70,status:'nominal',live_connected:false}],
+    approved_knowledge_matches:[],
+    fictional_history_examples:[{status:'unreviewed_fiction_not_an_actual_resolution'}],
+  }
+  const msg={
+    status:'atm_visual_response',synthetic:true,mode:'local_rule_based_atm_router',
+    production_connectivity:false,execution_allowed:false,
+    state_change_executed:false,answer:'Fictional ATM warning.',
+    selected_atm_id:'ATM-042',audience:'frontline',map_triggered:true,
+    network,investigation,
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(msg))
+  assert.throws(()=>assertSyntheticAtmChat({...msg,execution_allowed:true}),/execution or connectivity/)
+  assert.throws(()=>assertSyntheticAtmChat({...msg,network:null}),/Missing inline map/)
+  assert.throws(()=>assertSyntheticAtmChat({...msg,network:{...network,
+    sites:[{...network.sites[0],live_connected:true},network.sites[1]]}}),/Untrusted ATM source/)
+  assert.throws(()=>assertSyntheticAtmChat({...msg,selected_atm_id:'ATM-999'}),/not in rendered map/)
+})
+test('Chat never renders ATM map for a refused or unrelated request',()=>{
+  const base={status:'out_of_scope',synthetic:true,mode:'local_rule_based_atm_router',
+    production_connectivity:false,execution_allowed:false,
+    state_change_executed:false,answer:'Ask about an ATM.',
+    selected_atm_id:null,audience:null,map_triggered:false,
+    network:null,investigation:null}
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(base))
+  assert.throws(()=>assertSyntheticAtmChat({...base,network:{fake:true}}),/unsafe or out-of-scope/)
+  assert.throws(()=>assertSyntheticAtmChat({...base,map_triggered:true}),/Missing inline map/)
 })
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})

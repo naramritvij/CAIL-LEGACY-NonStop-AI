@@ -87,7 +87,10 @@ def _intent(question):
     if any(word in text for word in ('where','which atm','locate','map','position')):
         return 'locate'
     if any(word in text for word in ('atm','terminal','payment','outage','down','broken',
-                                     'not responding','what should','what do','help')):
+                                     'not responding','what should','what do','help',
+                                     'cash','withdraw','dispens','machine','card',
+                                     'not working','offline','issue','problem',
+                                     'explain','technically','engineer','next step','why')):
         return 'assist'
     return 'needs_clarification'
 
@@ -150,4 +153,83 @@ def assist(atm_id, audience, question):
         'fictional_history_examples':EXAMPLES,
         'unknowns':FINANCIAL['unknowns']+['Real ATM heartbeat','Actual terminal location'],
         'knowledge_gate':'A lesson requires independent reviewer approval before retrieval.',
+    }
+
+
+# Ask CAIL chat-to-visualization: bounded router, never LLM-authorized tooling.
+import re
+
+_ATM_TERMS = (
+    'atm', 'cash machine', 'cash dispenser', 'cashpoint', 'cash point',
+    'terminal', 'cash withdrawal', 'card stuck', 'dispense cash', 'bank machine',
+    'broken machine', 'north exchange', 'south market', 'civic square',
+    'west gateway', 'riverside', 'harbour point',
+)
+_TECH_TERMS = (
+    'pathcom','pathmon','ems','asap','scf','tacl','cpu','latency',
+    'process','server class','serverclass','metrics','logs',
+    'network path','dependency','read-only status','trace','technical',
+)
+
+def chat(question: str, audience_mode: str = 'auto',
+         selected_atm_id: str | None = None) -> dict:
+    """Turn one operator message into a safe inline visualization response.
+
+    Context is only a previously selected synthetic ATM ID supplied by client.
+    No conversation text is used for command execution or privileged retrieval.
+    """
+    if not 3 <= len(question.strip()) <= 500:
+        raise ValueError('Provide a 3-500 character question')
+    if any(x in question for x in (';', '|', '\n', '\r', chr(96), '&&')):
+        raise ValueError('Compound or executable-syntax requests are unsupported')
+    if audience_mode not in ('auto', 'frontline', 'engineer'):
+        raise ValueError('Unknown explanation mode')
+    known = {s['id'] for s in SITES}
+    if selected_atm_id is not None and selected_atm_id not in known:
+        raise ValueError('Selected ATM is not in the fictional registry')
+    lower = question.lower()
+    explicit = re.search(r'\bATM-[0-9]{3}\b', question.upper())
+    atm_topic = explicit is not None or any(term in lower for term in _ATM_TERMS)
+    if not atm_topic and selected_atm_id is None:
+        return {
+            'status':'out_of_scope','synthetic':True,
+            'mode':'local_rule_based_atm_router','production_connectivity':False,
+            'execution_allowed':False,'state_change_executed':False,
+            'answer':'This chat is connected only to the fictional ATM incident demonstration. Ask which ATM has an alert or describe a cash-machine symptom.',
+            'selected_atm_id':None,'audience':None,
+            'network':None,'investigation':None,'map_triggered':False,
+        }
+    atm_id = (explicit.group() if explicit else
+              selected_atm_id if selected_atm_id else
+              next((s['id'] for s in SITES if s['status']=='attention'), None))
+    if atm_id not in known:
+        return {
+            'status':'unknown_atm','synthetic':True,
+            'mode':'local_rule_based_atm_router','production_connectivity':False,
+            'execution_allowed':False,'state_change_executed':False,
+            'answer':'That ATM identifier is not in the six-site fictional training map.',
+            'selected_atm_id':None,'audience':None,
+            'network':None,'investigation':None,'map_triggered':False,
+        }
+    role = (audience_mode if audience_mode != 'auto'
+            else 'engineer' if any(term in lower for term in _TECH_TERMS)
+            else 'frontline')
+    result = assist(atm_id, role, question)
+    # The map must NOT appear after an unsafe question. An unsupported input
+    # must not appear to have triggered a fresh valid diagnosis.
+    show_map = result['status'] in ('guided_synthetic_investigation',
+                                    'no_synthetic_incident')
+    network_data = network() if show_map else None
+    return {
+        'status':'atm_visual_response' if show_map else result['status'],
+        'synthetic':True,'mode':'local_rule_based_atm_router',
+        'production_connectivity':False,
+        'execution_allowed':False,'state_change_executed':False,
+        'answer':result['explanation'],
+        'selected_atm_id':atm_id,'audience':role,
+        'audience_basis':('explicit_operator_selection' if audience_mode != 'auto'
+                          else 'bounded_technical_vocabulary' if role=='engineer'
+                          else 'default_plain_language'),
+        'network':network_data,'investigation':result,
+        'map_triggered':show_map,
     }

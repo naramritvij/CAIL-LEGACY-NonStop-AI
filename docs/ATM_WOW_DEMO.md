@@ -13,6 +13,30 @@ The product title uses the exact six-page CAIL brochure form:
 AI, Operations and Assistant; confirm capitalization/word order with the
 team before printing the physical pitch deck.
 
+## Chat-first opening (the investor-facing WOW moment)
+
+Start on **Ask CAIL Chat** (#/chat), without opening any map yourself. Type
+**"Which ATM is broken, and where is it?"** CAIL turns the question into a
+**clickable fictional map inside its answer** and highlights ATM-042. Under
+the map, expand EMS/ASAP/Guardian records and show PATHCOM as **UNKNOWN**,
+because no native status was queried. Approved Decision DNA appears in that
+same response when a distinct Mentor reviewer has approved a relevant
+training lesson. Fictitious history examples are never relabeled as verified
+repairs. Click a different ATM marker to see a new contextual chat response.
+
+Next ask **"Show ATM-042 PATHCOM, EMS and CPU evidence"**: the backend
+automatically switches to an engineer explanation using bounded keyword
+rules, preserving the same synthetic evidence. Then ask **"What did we
+learn last time?"**: the reply uses the previously selected ATM as context
+and retrieves only review-approved lessons. Try **"Restart ATM-042 now"**
+and demonstrate safety refusal.
+
+You can also enter an ATM question in the existing **Ask CAIL · optional
+AI** box on an incident page; it opens the same map-and-evidence assistant
+inline, without inventing incident-specific ATM telemetry. The ATM
+chat itself is deterministic and local. The optional Qwen button on the
+full ATM page is separate and only analyzes synthetic backend events.
+
 ## How to demonstrate (3-4 minutes)
 
 1. On localhost:5173 open **ATM Mission Demo**, or navigate to #/atm.

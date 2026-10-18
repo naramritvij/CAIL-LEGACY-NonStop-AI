@@ -537,3 +537,19 @@ def atm_assist(body: AtmAssistRequest):
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+# Same safe synthetic ATM evidence presented as a live, interactive chat response.
+from .atm_experience import chat as _atm_chat
+
+class AtmChatRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    audience_mode: Literal['auto', 'frontline', 'engineer'] = 'auto'
+    selected_atm_id: str | None = Field(default=None, pattern=r'^ATM-[0-9]{3}$')
+
+@app.post('/api/v1/operations/atm/chat')
+def atm_chat(body: AtmChatRequest):
+    try:
+        return _atm_chat(body.question, body.audience_mode, body.selected_atm_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc

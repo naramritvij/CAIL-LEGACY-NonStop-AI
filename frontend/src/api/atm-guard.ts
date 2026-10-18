@@ -60,3 +60,43 @@ export function assertSyntheticAtmAssist(value:unknown):void{
       data.approved_knowledge_matches.some(x=>record(x).review_status!=='approved')))
     throw new Error('ATM response returned unapproved lessons as approved')
 }
+
+
+/** Fail closed if the chat bridge pretends to control or authenticate any ATM. */
+export function assertSyntheticAtmChat(value:unknown):void {
+  const data=record(value)
+  if(data.synthetic!==true||data.production_connectivity!==false||
+    data.execution_allowed!==false||data.state_change_executed!==false||
+    data.mode!=='local_rule_based_atm_router')
+    throw new Error('Unsafe chat-to-tool execution or connectivity claim')
+  const valid=new Set([
+    'out_of_scope','unknown_atm','atm_visual_response',
+    'blocked_unsafe','needs_clarification','context_mismatch',
+  ])
+  if(!valid.has(String(data.status))||typeof data.answer!=='string')
+    throw new Error('Unexpected ATM chat response')
+  if(data.map_triggered!==true){
+    if(data.network!==null)
+      throw new Error('Map data delivered on an unsafe or out-of-scope response')
+  }else{
+    if(data.status!=='atm_visual_response'||data.network===null||
+      data.investigation===null)
+      throw new Error('Missing inline map and evidence response')
+    assertSyntheticAtmNetwork(data.network)
+  }
+  if(data.investigation!==null){
+    assertSyntheticAtmAssist(data.investigation)
+    const result=record(data.investigation)
+    if(data.map_triggered && !['guided_synthetic_investigation','no_synthetic_incident'].includes(String(result.status)))
+      throw new Error('Unsafe incident result triggered map visualization')
+  }
+  if(data.selected_atm_id!==null&&
+    (typeof data.selected_atm_id!=='string'||!/^ATM-[0-9]{3}$/.test(data.selected_atm_id)))
+    throw new Error('Invalid selected ATM identifier')
+  if(data.network!==null){
+    const network=record(data.network)
+    const sites=network.sites as Obj[]
+    if(!sites.some(site=>site.id===data.selected_atm_id))
+      throw new Error('Selected site is not in rendered map')
+  }
+}

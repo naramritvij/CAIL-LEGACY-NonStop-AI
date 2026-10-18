@@ -3,6 +3,7 @@ import { BrainCircuit, FileSearch, LoaderCircle, ShieldAlert } from 'lucide-reac
 import { api, DATA_MODE } from '@/api/client'
 import type { GroundedInvestigationResponse } from '@/api/types'
 import { Badge } from '@/components/ui/Badge'
+import { AtmChat } from '@/components/operations/AtmChat'
 
 /** User-triggered optional local Ollama request. Never grants or executes any action. */
 export function AiInvestigation({ incidentId, onSelectEvidence, suggestedQuestion }: {
@@ -14,9 +15,16 @@ export function AiInvestigation({ incidentId, onSelectEvidence, suggestedQuestio
   const [response, setResponse] = useState<GroundedInvestigationResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [atmPrompt,setAtmPrompt] = useState<{text:string;token:number}|null>(null)
   useEffect(()=>{if(suggestedQuestion)setQuestion(suggestedQuestion)},[suggestedQuestion])
 
   async function ask() {
+    if (/\bATM(?:-[0-9]{3})?\b|cash machine|cash dispenser|cashpoint|cash point|bank machine/i.test(question)) {
+      setAtmPrompt(prev=>({text:question.trim(),token:(prev?.token??0)+1}))
+      setResponse(null);setError('')
+      return
+    }
+    setAtmPrompt(null)
     setLoading(true)
     setError('')
     setResponse(null)
@@ -65,6 +73,10 @@ export function AiInvestigation({ incidentId, onSelectEvidence, suggestedQuestio
         </button>
       </form>
       {error && <p role="alert" className="mt-4 rounded-xl border border-coral/30 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
+      {atmPrompt&&<div className="mt-4">
+        <p className="mb-2 text-xs text-cyan">CAIL recognized an ATM request and opened its contextual map-and-evidence assistant. The synthetic ATM scope is separate from this selected incident.</p>
+        <AtmChat compact incomingPrompt={atmPrompt.text} promptToken={atmPrompt.token} />
+      </div>}
       {response?.operator_brief && <section className="glass-sub mt-4 border border-cyan/25 p-4" aria-label="Structured operator briefing">
         <h3 className="text-base font-semibold text-cyan">Operator briefing · {response.operator_brief.status.toUpperCase()} · synthetic</h3>
         <p className="mt-2 text-xs font-semibold text-ink">What's happening?</p>

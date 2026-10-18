@@ -159,3 +159,92 @@ def test_a_different_explicit_atm_id_cannot_reuse_selected_site_evidence(client)
               question='Can you explain the issue with ATM-011?').json()
     assert data['status']=='context_mismatch'
     assert data['source_previews']==[]
+
+
+def chat_post(client, question, mode='auto', selected=None):
+    return client.post(ROOT+'/chat',json={
+        'question':question,'audience_mode':mode,'selected_atm_id':selected,
+    })
+
+def test_plain_language_chat_automatically_renders_the_flagged_map(client):
+    response=chat_post(client,'Which ATM is broken, and where is it?')
+    assert response.status_code==200,response.text
+    data=response.json()
+    assert data['status']=='atm_visual_response'
+    assert data['map_triggered'] is True
+    assert data['mode']=='local_rule_based_atm_router'
+    assert data['audience']=='frontline'
+    assert data['selected_atm_id']=='ATM-042'
+    assert data['network']['attention_count']==1
+    assert len(data['network']['sites'])==6
+    assert data['investigation']['status']=='guided_synthetic_investigation'
+    assert [x['adapter'] for x in data['investigation']['source_previews']]==[
+        'ems','asap','guardian','pathcom'
+    ]
+    assert data['execution_allowed'] is False
+    assert data['production_connectivity'] is False
+
+def test_chat_auto_adapts_to_engineer_language_with_identical_sources(client):
+    plain=chat_post(client,'The ATM is broken, help me').json()
+    technical=chat_post(client,'Show ATM-042 PATHCOM, EMS and CPU evidence').json()
+    assert plain['audience']=='frontline'
+    assert technical['audience']=='engineer'
+    assert technical['audience_basis']=='bounded_technical_vocabulary'
+    assert plain['investigation']['source_previews']==technical['investigation']['source_previews']
+    assert plain['investigation']['steps']!=technical['investigation']['steps']
+    assert technical['investigation']['source_previews'][-1]['observations']==[]
+
+def test_chat_continues_a_followup_without_repeat_atm_identifier(client):
+    data=chat_post(client,'Explain this technically.',selected='ATM-042').json()
+    assert data['status']=='atm_visual_response'
+    assert data['selected_atm_id']=='ATM-042'
+    assert data['audience']=='engineer'
+    assert data['investigation']['interpreted_intent']=='assist'
+    previous=chat_post(client,'What did we learn last time?',selected='ATM-042').json()
+    assert previous['status']=='atm_visual_response'
+    assert previous['investigation']['interpreted_intent']=='retrieve_knowledge'
+    assert previous['network']['approved_knowledge_matches']==[]
+
+def test_chat_respects_operator_selected_plain_explanation(client):
+    data=chat_post(client,'Show ATM-042 PATHCOM and CPU',mode='frontline').json()
+    assert data['audience']=='frontline'
+    assert data['audience_basis']=='explicit_operator_selection'
+
+def test_unknown_atm_and_out_of_scope_question_do_not_render_a_map(client):
+    unknown=chat_post(client,'Explain ATM-999 status').json()
+    assert unknown['status']=='unknown_atm'
+    assert unknown['map_triggered'] is False
+    assert unknown['network'] is None
+    unrelated=chat_post(client,'What is a quantum rainbow?').json()
+    assert unrelated['status']=='out_of_scope'
+    assert unrelated['map_triggered'] is False
+    assert unrelated['investigation'] is None
+
+@pytest.mark.parametrize('text', [
+    'Restart ATM-042 now',
+    'Purge records from ATM-042',
+    'STOP PATHWAY for the ATM',
+])
+def test_chat_never_renders_map_or_tool_output_for_unsafe_request(client,text):
+    data=chat_post(client,text).json()
+    assert data['status']=='blocked_unsafe'
+    assert data['map_triggered'] is False
+    assert data['network'] is None
+    assert data['investigation']['source_previews']==[]
+    assert data['state_change_executed'] is False
+
+@pytest.mark.parametrize('text', [
+    'Show ATM-042; restart PATHWAY',
+    'Show ATM-042 | shell',
+    'Show ATM-042\nrun command',
+])
+def test_chat_rejects_compound_request_syntax(client,text):
+    assert chat_post(client,text).status_code==422
+
+def test_chat_other_demo_terminal_is_not_labeled_broken(client):
+    data=chat_post(client,'What is the issue with ATM-011?').json()
+    assert data['status']=='atm_visual_response'
+    assert data['selected_atm_id']=='ATM-011'
+    assert data['investigation']['status']=='no_synthetic_incident'
+    assert data['investigation']['source_previews']==[]
+    assert data['network']['attention_count']==1
