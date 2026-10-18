@@ -79,10 +79,12 @@ def network():
 def _intent(question):
     """Conservative glossary of allowed operator questions, not general AI intent."""
     text=question.lower()
-    if any(word in text for word in ('last time','previous','similar','knowledge','resolved','history','expert')):
+    if any(word in text for word in ('last time','previous','similar','knowledge','resolved','history','expert',
+                                      'what did we learn','lesson','mentor','decision dna','reviewed')):
         return 'retrieve_knowledge'
     if any(word in text for word in ('ems','asap','pathcom','cpu','process','metrics','log',
-                                     'diagnose','cause','status','latency','evidence')):
+                                     'diagnose','cause','status','latency','evidence',
+                                     'why is','why did','what happened','root cause','health check')):
         return 'investigate'
     if any(word in text for word in ('where','which atm','locate','map','position')):
         return 'locate'
@@ -125,23 +127,117 @@ def assist(atm_id, audience, question):
         return {**common,'status':'no_synthetic_incident','headline':'No demo alert at '+atm_id,
                 'explanation':'This only describes the fictional fixture; actual health is unknown.',
                 'steps':[],'source_previews':[],'approved_knowledge_matches':[],'unknowns':['Real ATM status']}
-    commands = ['SHOW ALERTS','SHOW CPU METRICS','SHOW FAILED PROCESSES','STATUS PATHWAY']
-    routed = [command(FINANCIAL_ID,text) for text in commands]
+    # Not every question is a request for a full investigation. Give the
+    # operator exactly the kind of answer requested, with only relevant panels.
+    site_name = site['location']
+    reviewed = approved_matches()
+    if intent == 'locate':
+        headline = 'Fictional alert located: ATM-042 at '+site_name
+        explanation = (
+            'ATM-042 at fictional North Exchange (North district) is the only '
+            'one of six demo terminals flagged for a missed heartbeat at 01:18 '
+            '(SIM-ATM-042-001). This is a schematic location, NOT a real street '
+            'address or proof the physical terminal is offline.'
+        )
+        steps = [
+            {'title':'Pinpoint the training alert',
+             'instruction':'The red pin marks ATM-042 in the fictional North district; the five green pins have no demo alert.',
+             'evidence_ids':['SIM-ATM-042-001']},
+            {'title':'Confirm on an authorized system',
+             'instruction':'Real location, reachability and customer impact remain UNKNOWN until a real operator checks authorized records.',
+             'evidence_ids':['SIM-ATM-042-001']},
+        ]
+        commands = []
+        unknowns = ['Actual ATM location','Real terminal reachability']
+    elif intent == 'retrieve_knowledge':
+        if reviewed:
+            headline = 'Reviewed lessons available, but not verified ATM repairs'
+            explanation = (
+                'CAIL found '+str(len(reviewed))+' independently approved local '
+                'Pathway training lesson(s). Each shows reviewer-accepted reasoning '
+                'and source event IDs. Their connection to ATM-042 remains UNVERIFIED; '
+                'none establishes a successful ATM repair. See the lesson cards below.'
+            )
+        else:
+            headline = 'No independently approved previous ATM resolution'
+            explanation = (
+                'There is no reviewer-approved matching Decision DNA in this '
+                'isolated training database. Two fictional historical examples '
+                'can illustrate how an expert might investigate, but neither '
+                'is an actual previous fix or an approved lesson. CAIL will '
+                'not pretend it has solved this before.'
+            )
+        steps = [
+            {'title':'Check independently reviewed knowledge',
+             'instruction':'Only lessons accepted by a separate reviewer can appear as reusable Decision DNA.',
+             'evidence_ids':[]},
+            {'title':'Treat illustrative examples as examples',
+             'instruction':'Do not use unreviewed fictional cases as a confirmed fix. A new lesson requires evidence and a distinct reviewer approval.',
+             'evidence_ids':[]},
+        ]
+        commands = []
+        unknowns = ['Whether any reviewed Pathway lesson applies to this ATM']
+    elif intent == 'investigate':
+        headline = ('What synthetic monitoring actually shows for ATM-042'
+                    if audience == 'frontline' else
+                    'ATM-042: EMS / ASAP / Guardian evidence, PATHCOM UNKNOWN')
+        explanation = (
+            'The demo logs show a missed terminal heartbeat (01:18), '
+            'CPU 3 at 94%, payment response latency of 980 ms and payment '
+            'success at 89%. EMS, ASAP and Guardian below are LOCAL '
+            'SIMULATED observations, not authenticated monitoring output. '
+            'PATHCOM returned no live data. None of this proves the terminal '
+            'heartbeat and payment slowdown share a root cause.'
+            if audience == 'frontline' else
+            'Synthetic event sequence: capacity reduction SIM-EVT-301 (01:08), '
+            'CPU 3 at 94% SIM-EVT-302 (01:11), Pathway warning SIM-EVT-303 '
+            '(01:13), transaction latency 980 ms / success 89% SIM-EVT-304 '
+            '(01:15), worker exit SIM-EVT-305 (01:17), and ATM heartbeat '
+            'SIM-ATM-042-001 (01:18). See EMS/ASAP/Guardian fixtures below; '
+            'real PATHCOM state is UNKNOWN. Temporal association is not causation.'
+        )
+        steps = [
+            {'title':'Inspect simulated alerts and metrics',
+             'instruction':'Expand EMS and ASAP snapshots to inspect the fictional observations and their timestamps.',
+             'evidence_ids':['SIM-EVT-301','SIM-EVT-302','SIM-EVT-304']},
+            {'title':'Compare process and Pathway signals',
+             'instruction':'Review the fictional worker exit; PATHCOM is only a manual reference, not a successful live status query.',
+             'evidence_ids':['SIM-EVT-303','SIM-EVT-305']},
+            {'title':'Verify before diagnosing',
+             'instruction':'An authorized engineer would need actual reachability, dependency and server-class telemetry before claiming a root cause.',
+             'evidence_ids':['SIM-ATM-042-001']},
+        ]
+        commands = ['SHOW ALERTS','SHOW CPU METRICS','SHOW FAILED PROCESSES','STATUS PATHWAY']
+        unknowns = FINANCIAL['unknowns']+['Real ATM heartbeat']
+    else:
+        headline = ('Next safe actions for a frontline ATM operator' if audience=='frontline'
+                    else 'Engineer triage checklist for synthetic ATM-042')
+        explanation = (
+            'For the fictional ATM-042 at North Exchange: identify the red '
+            'terminal, share the missed-heartbeat alert with operations, and '
+            'ask an authorized engineer to verify reachability. Do not reset '
+            'the terminal or tell customers a root cause is confirmed.'
+            if audience=='frontline' else
+            'For synthetic ATM-042: compare the 01:18 heartbeat with the '
+            '01:08–01:17 fictional backend events; request actual terminal, '
+            'network, process and PATHMON status through approved channels. '
+            'Do not restart or fail over without authorization.'
+        )
+        steps = FRONTLINE if audience=='frontline' else ENGINEER
+        commands = ['SHOW ALERTS','SHOW CPU METRICS','SHOW FAILED PROCESSES','STATUS PATHWAY']
+        unknowns = FINANCIAL['unknowns']+['Real ATM heartbeat','Actual terminal location']
+
+    routed = [command(FINANCIAL_ID, text) for text in commands]
     assert all(x['execution_allowed'] is False and x['live_connected'] is False
                and x['state_change_executed'] is False for x in routed)
     return {
         **common,'status':'guided_synthetic_investigation',
         'interpreted_intent':intent,
         'routing_basis':'bounded_operator_vocabulary_not_unrestricted_llm',
-        'headline':('ATM-042 needs operator attention' if audience=='frontline'
-                    else 'ATM-042 heartbeat loss and payment-system degradation'),
-        'explanation':('A synthetic ATM heartbeat was missed and synthetic payment metrics worsened. '
-                       'We do not know whether these observations share a cause.'
-                       if audience=='frontline' else
-                       'Fictional terminal heartbeat and backend hardware, CPU, Pathway, '
-                       'transaction and process signals occurred near one another; causality is unverified.'),
+        'headline':headline,
+        'explanation':explanation,
         'site_event':SITE_EVENT,
-        'steps': FRONTLINE if audience=='frontline' else ENGINEER,
+        'steps':steps,
         'source_previews':[{
             'input':query,'adapter':out['adapter'],'route_kind':out['route_kind'],
             'status':out['status'],'evidence_origin':out['evidence']['transport'],
@@ -149,9 +245,9 @@ def assist(atm_id, audience, question):
             'observations':out['evidence']['observations'],
             'connected':False,
         } for query,out in zip(commands,routed)],
-        'approved_knowledge_matches':approved_matches(),
+        'approved_knowledge_matches':reviewed,
         'fictional_history_examples':EXAMPLES,
-        'unknowns':FINANCIAL['unknowns']+['Real ATM heartbeat','Actual terminal location'],
+        'unknowns':unknowns,
         'knowledge_gate':'A lesson requires independent reviewer approval before retrieval.',
     }
 

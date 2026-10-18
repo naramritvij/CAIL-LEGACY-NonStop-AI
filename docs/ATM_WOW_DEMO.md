@@ -107,3 +107,25 @@ local Qwen checks and HTTP smoke tests must pass *on this new branch* before
 merging. Then manually run the complete role-switch, source panels, approved
 knowledge review and responsive mobile-browser walkthrough. Keep private keys
 off screenshots, recordings and the demo stage.
+
+
+## Chat responses are intentionally question-specific
+
+The sponsor example buttons MUST NOT return the same canned breakdown:
+
+| Question | Routing | Answer and emphasized panels |
+|---|---|---|
+| Which ATM is broken, and where is it? | Locate | ATM-042 at fictional North Exchange; six-node animated map, missed heartbeat; no unrelated backend snapshots |
+| Show EMS and CPU evidence for ATM-042 | Investigate | Timestamped fictional CPU/payment metrics and visible EMS/ASAP/Guardian records, plus PATHCOM **UNKNOWN** |
+| Have we learned anything from similar ATM incidents? | Retrieve knowledge | Approved-only Decision DNA matches if any; otherwise explicit absence of an approved repair and clearly marked fictional examples, **no misleading new diagnosis** |
+| Our cash machine is down. What should I do? | Assist | Plain-language identification, escalation, and no-restart steps, with optional simulated evidence |
+
+A technical vocabulary question defaults to engineer language; the audience buttons
+can explicitly override that. The response is still a **bounded deterministic
+router over fictional evidence, not a free-form model-generated answer**.
+Optional Qwen inference remains a separately gated evidence-citation workflow.
+Unrelated questions and unsafe commands must never yield a synthetic
+diagnosis or executable system action.
+
+Acceptance: backend pytest includes four distinct-answer regression checks;
+the PowerShell sponsor smoke sends all four questions through the HTTP API.

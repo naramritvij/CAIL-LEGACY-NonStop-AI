@@ -255,3 +255,53 @@ def test_atmospheric_question_does_not_false_trigger_atm_locator(client):
     assert result['status']=='out_of_scope'
     assert result['network'] is None
     assert result['map_triggered'] is False
+
+
+def test_distinct_questions_get_four_distinct_safe_responses(client):
+    prompts={
+        'locate':'Which ATM is broken, and where is it?',
+        'investigate':'Show EMS and CPU evidence for ATM-042',
+        'retrieve_knowledge':'Have we learned anything from similar ATM incidents?',
+        'assist':'Our cash machine is down. What should I do?',
+    }
+    results={name:chat_post(client,q).json() for name,q in prompts.items()}
+    assert {k:v['investigation']['interpreted_intent'] for k,v in results.items()}=={k:k for k in prompts}
+    assert len({v['answer'] for v in results.values()})==4
+    assert len({v['investigation']['headline'] for v in results.values()})==4
+    assert 'North Exchange' in results['locate']['answer']
+    assert '01:18' in results['locate']['answer']
+    assert results['locate']['investigation']['source_previews']==[]
+    assert '94%' in results['investigate']['answer']
+    assert len(results['investigate']['investigation']['source_previews'])==4
+    assert 'no reviewer-approved' in results['retrieve_knowledge']['answer'].lower()
+    assert results['retrieve_knowledge']['investigation']['source_previews']==[]
+    assert 'Do not' in results['assist']['answer']
+    assert len(results['assist']['investigation']['steps'])==3
+    assert all(v['execution_allowed'] is False and v['state_change_executed'] is False for v in results.values())
+
+def test_why_question_invokes_evidence_not_generic_guidance(client):
+    data=chat_post(client,'Why is ATM-042 down?').json()
+    assert data['status']=='atm_visual_response'
+    assert data['investigation']['interpreted_intent']=='investigate'
+    assert 'Causality is not established' in data['answer'] or 'None of this proves' in data['answer']
+
+def test_history_question_never_invents_a_prior_repair(client):
+    data=chat_post(client,'What did we learn last time?',selected='ATM-042').json()
+    assert data['investigation']['interpreted_intent']=='retrieve_knowledge'
+    assert data['network']['approved_knowledge_matches']==[]
+    assert 'neither is an actual previous fix' in data['answer'].lower()
+    assert data['investigation']['source_previews']==[]
+
+def test_previous_history_only_mentions_approved_local_lesson(client,monkeypatch):
+    nodes={'review_scope':'approved_only','nodes':[{
+        'id':'LESSON-APPROVED-DEMO','title':'Check Pathway signals',
+        'reasoning_preview':'Compare registered synthetic events before escalating.',
+        'review_status':'approved','reviewed_at':'2026-10-18T00:00:00Z',
+        'source_event_ids':['SIM-EVT-202'],
+    }]}
+    monkeypatch.setattr(atm,'build_legacy_tree',lambda incident_id:nodes)
+    data=chat_post(client,'Have we learned anything from similar ATM incidents?').json()
+    assert data['investigation']['interpreted_intent']=='retrieve_knowledge'
+    assert '1 independently approved' in data['answer']
+    assert data['network']['approved_knowledge_matches'][0]['relation_verified'] is False
+    assert 'UNVERIFIED' in data['answer']

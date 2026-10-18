@@ -257,6 +257,31 @@ $unrelated = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -Co
 if ($unrelated.status -ne "out_of_scope" -or $unrelated.map_triggered -ne $false) {
     throw "An unrelated chat question must not hallucinate an ATM fault."
 }
+
+# Sponsor demo: different questions must produce different meaning and panels.
+$questionCases = @(
+    @{name="locate"; text="Which ATM is broken, and where is it?"; expectedSources=0},
+    @{name="investigate"; text="Show EMS and CPU evidence for ATM-042"; expectedSources=4},
+    @{name="retrieve_knowledge"; text="Have we learned anything from similar ATM incidents?"; expectedSources=0},
+    @{name="assist"; text="Our cash machine is down. What should I do?"; expectedSources=4}
+)
+$uniqueReplies = New-Object 'System.Collections.Generic.HashSet[string]'
+foreach ($item in $questionCases) {
+    $payload = @{question=$item.text;audience_mode="auto"} | ConvertTo-Json
+    $result = Invoke-RestMethod -Uri "$base/operations/atm/chat" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
+    if ($result.status -ne "atm_visual_response" -or
+        $result.investigation.interpreted_intent -ne $item.name -or
+        @($result.investigation.source_previews).Count -ne $item.expectedSources -or
+        $result.execution_allowed -ne $false -or $result.state_change_executed -ne $false) {
+        throw "Chat must produce a distinct, safe response for intent $($item.name)."
+    }
+    [void]$uniqueReplies.Add($result.answer)
+}
+if ($uniqueReplies.Count -ne 4) {
+    throw "All four sponsor chat questions must receive meaningfully distinct answers."
+}
+Write-Host "Sponsor conversational intents: locate vs evidence vs knowledge vs safe action DISTINCT and SAFE." -ForegroundColor Green
+
 Write-Host "Chat-to-map: natural-language incident, visual source evidence, adaptive voice, unsafe/out-of-scope rejection VERIFIED." -ForegroundColor Green
 
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

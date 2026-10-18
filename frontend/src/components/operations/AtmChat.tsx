@@ -29,7 +29,7 @@ interface Preview {
   native_tool_status:string;observations:Record<string,unknown>[];connected:false
 }
 interface Investigation {
-  status:string;headline:string;explanation:string
+  status:string;headline:string;explanation:string;interpreted_intent?:string
   steps:{title:string;instruction:string;evidence_ids:string[]}[]
   source_previews:Preview[];approved_knowledge_matches:Match[]
   unknowns?:string[]
@@ -64,12 +64,20 @@ function ChatResult({data, onPick}:{
   const {navigate}=useIncidentContext()
   const network=data.network
   const investigation=data.investigation
+  const intent=investigation?.interpreted_intent
+  const topicLabel=({
+    locate:'Location found', investigate:'Monitoring evidence',
+    retrieve_knowledge:'Reviewed knowledge lookup', assist:'Safe next steps',
+  } as Record<string,string>)[intent??''] ?? 'ATM status'
   return <div className="mt-3 space-y-3" aria-label="CAIL interactive ATM response">
+    <p className="inline-flex rounded-lg border border-cyan/25 bg-cyan/5 px-2 py-1 text-[11px] font-semibold text-cyan">
+      {topicLabel}
+    </p>
     <p className="text-sm leading-relaxed">{data.answer}</p>
     {data.audience&&<p className="text-[11px] text-ink-faint">
       Response style: {data.audience==='engineer'?'Technical engineer':'Frontline operator'} · {data.audience_basis?.replaceAll('_',' ')}
     </p>}
-    {network&&<section className="atm-map-reveal overflow-hidden rounded-xl border border-cyan/30 bg-[#091c2b] p-3">
+    {network&&intent!=='retrieve_knowledge'&&<section className="atm-map-reveal overflow-hidden rounded-xl border border-cyan/30 bg-[#091c2b] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="flex items-center gap-2 text-sm font-semibold text-cyan"><MapPin className="size-4"/> ATM incident locator</h4>
         <span className="rounded-lg bg-coral/15 px-2 py-1 text-xs font-semibold text-coral">
@@ -154,7 +162,7 @@ function ChatResult({data, onPick}:{
         Unverified: {investigation.unknowns.slice(0,3).join('; ')}
       </p>}
     </section>}
-    {network&&<section className="rounded-xl border border-violet/30 p-3">
+    {network&&intent==='retrieve_knowledge'&&<section className="rounded-xl border border-violet/30 p-3">
       <h4 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="size-4 text-violet"/>
         Similar reviewed operational knowledge
       </h4>
@@ -168,7 +176,7 @@ function ChatResult({data, onPick}:{
         </article>)
       }
       <details className="mt-3 rounded-lg border border-line p-3 text-xs text-ink-muted">
-        <summary className="cursor-pointer">Show fictional unreviewed historical examples</summary>
+        <summary className="cursor-pointer">Illustrative past scenarios — NOT verified resolutions</summary>
         {network.fictional_history_examples.map(e=><p key={e.id} className="mt-2">
           <span className="font-semibold text-gold">{e.title}:</span> {e.expert_approach}
         </p>)}
