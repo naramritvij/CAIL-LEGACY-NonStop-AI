@@ -1,0 +1,15 @@
+# Netlify hosts only the scripted fictional public rehearsal, NOT FastAPI/Ollama.
+[build]
+  base = "frontend"
+  command = "npm run build:netlify"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  VITE_CAIL_PUBLIC_DEMO = "1"
+  VITE_LEGACY_DATA_MODE = "mock"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

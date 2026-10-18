@@ -52,10 +52,21 @@ for (const filename of ['errors.ts', 'backend-contract.ts']) {
     throw Error('ATM guard did not transpile')
   fs.writeFileSync(path.join(tmp,'atm-guard.js'),output.outputText)
 }
+{
+  const src=fs.readFileSync(path.join(root,'src','api','public-atm-demo.ts'),'utf8')
+  const output=ts.transpileModule(src,{
+    fileName:'public-atm-demo.ts',reportDiagnostics:true,
+    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,isolatedModules:true},
+  })
+  if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))
+    throw Error('Public scripted ATM module failed transpilation')
+  fs.writeFileSync(path.join(tmp,'public-atm-demo.js'),output.outputText)
+}
 const requireTmp = createRequire(path.join(tmp, 'verify.cjs'))
 const { assertSafePlaybook } = requireTmp('./playbook-guard.js')
 const { assertSafeConsoleResult } = requireTmp('./console-guard.js')
 const { assertSyntheticAtmNetwork, assertSyntheticAtmAssist, assertSyntheticAtmChat } = requireTmp('./atm-guard.js')
+const { publicAtmChat } = requireTmp('./public-atm-demo.js')
 const { fromBackendIncidents, fromBackendWorkspace, fromBackendTree, fromBackendGrounded } = requireTmp('./backend-contract.js')
 
 const disk = {
@@ -363,6 +374,50 @@ test('Chat-to-map animated reveal is scoped, staged and accessible',()=>{
   assert.match(css,/@media \(prefers-reduced-motion: reduce\)/)
 })
 
+
+test('Netlify offline rehearsal generates the same guard-approved animated ATM response',()=>{
+  const plain=publicAtmChat('Which ATM is broken, and where is it?')
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(plain))
+  assert.equal(plain.map_triggered,true)
+  assert.equal(plain.selected_atm_id,'ATM-042')
+  assert.equal(plain.network.sites.length,6)
+  assert.equal(plain.audience,'frontline')
+  assert.deepEqual(plain.network.approved_knowledge_matches,[])
+  assert.equal(plain.investigation.source_previews.at(-1).native_tool_status,'unknown')
+  assert.deepEqual(plain.investigation.source_previews.at(-1).observations,[])
+  assert.equal(plain.production_connectivity,false)
+})
+test('Netlify static demo adapts the same evidence without invoking a backend',()=>{
+  const plain=publicAtmChat('Our ATM is broken, help me')
+  const tech=publicAtmChat('Show ATM-042 PATHCOM and CPU evidence')
+  assert.equal(tech.audience,'engineer')
+  assert.equal(plain.audience,'frontline')
+  assert.deepEqual(tech.investigation.source_previews,plain.investigation.source_previews)
+  assert.notDeepEqual(tech.investigation.steps,plain.investigation.steps)
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(tech))
+})
+test('Netlify rehearsal blocks dangerous, unrelated and unknown ATM requests',()=>{
+  const refusal=publicAtmChat('Restart ATM-042 now')
+  assert.equal(refusal.status,'blocked_unsafe')
+  assert.equal(refusal.map_triggered,false)
+  assert.equal(refusal.state_change_executed,false)
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(refusal))
+  const unrelated=publicAtmChat('How does atmospheric pressure work?')
+  assert.equal(unrelated.status,'out_of_scope')
+  assert.equal(unrelated.network,null)
+  assert.doesNotThrow(()=>assertSyntheticAtmChat(unrelated))
+  assert.equal(publicAtmChat('Explain ATM-999 status').status,'unknown_atm')
+})
+test('Netlify deploys the bundled scenario, not localhost or production API secrets',()=>{
+  const config=fs.readFileSync(path.join(root,'..','netlify.toml'),'utf8')
+  const entry=fs.readFileSync(path.join(root,'src','main.tsx'),'utf8')
+  const chat=fs.readFileSync(path.join(root,'src','components','operations','AtmChat.tsx'),'utf8')
+  assert.match(config,/base = "frontend"/)
+  assert.match(config,/publish = "dist"/)
+  assert.match(config,/VITE_CAIL_PUBLIC_DEMO = "1"/)
+  assert.match(entry,/VITE_CAIL_PUBLIC_DEMO === '1'/)
+  assert.match(chat,/PUBLIC_REHEARSAL\s*\?\s*publicAtmChat/)
+})
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)
