@@ -83,6 +83,9 @@ _STOP_WORDS = {
     "cause", "causing", "root", "risk", "wrong", "impact", "unknown",
     "diagnose", "investigate", "any", "there", "available", "signal",
     "signals", "please", "operations", "operator", "operators",
+    # These general diagnosis words are not evidence topics on their own.
+    "broken", "unhealthy", "unavailable", "down", "failing", "failed",
+    "failure", "failures", "alarm", "alarms", "symptom", "symptoms",
 }
 _EXPLICIT_DEFINITION = re.compile(
     r"^(?:what (?:do you mean by|is|are) |what does |"
@@ -92,7 +95,8 @@ _EXPLICIT_DEFINITION = re.compile(
 _INCIDENT_WORDS = re.compile(
     r"\b(?:currently|happening|incident|issue|status|alert|warning|red|yellow|"
     r"capacity|utilization|increasing|latency|outage|degradation|"
-    r"failed|failing|cause|causing|threshold|error|problem|81|80)\b|\$data\d+",
+    r"failed|failing|failure|failures|broken|wrong|unhealthy|unavailable|down|"
+    r"alarm|alarms|symptom|symptoms|cause|causing|threshold|error|problem|81|80)\b|\$data\d+",
     re.IGNORECASE,
 )
 
@@ -110,6 +114,7 @@ def classify_question(question: str) -> tuple[str, str | None]:
     # "What does the disk evidence show?" is NOT a definition request.
     if value.startswith("what does ") and not value.endswith(" mean"):
         return "incident", None
+    # An operator asking "What is wrong?" wants incident analysis, not a definition.
     if _INCIDENT_WORDS.search(value):
         return "incident", None
     subject = re.sub(

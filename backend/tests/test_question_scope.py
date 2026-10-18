@@ -59,7 +59,9 @@ def test_unrelated_question_returns_no_incident_claims(monkeypatch):
 def test_incident_questions_keep_incident_scope():
     for question in ('Why is disk growing?', 'What does the disk evidence show?',
                      'What happened?', 'Why did Pathway latency increase?',
-                     'What is the current disk status?'):
+                     'What is the current disk status?',
+                     'What is wrong?', 'What is broken?', 'What is failing?',
+                     'What are the symptoms?'):
         assert classify_question(question)[0] == 'incident'
     assert 'disk' in focus_terms('Why is disk growing?')
 
@@ -80,3 +82,28 @@ def test_incident_question_still_reaches_qwen_with_only_registered_ids(monkeypat
     assert result['status'] == 'generated_unverified_citation_ids_checked'
     assert len(calls) == 1
     assert result['claims'][0]['citations'] == ['SIM-EVT-103']
+
+
+def test_ambiguous_diagnostic_question_preserves_invalid_citation_retries(monkeypatch):
+    """The incident route must invoke and reject fabricated citations twice."""
+    monkeypatch.setattr(gi, 'search_approved', lambda *args: {'matches': []})
+    calls = []
+    def forged(_payload):
+        calls.append(1)
+        return json.dumps({'claims': [{
+            'text': 'Synthetic evidence proves that all problems are resolved.',
+            'citations': ['SIM-EVT-999'],
+        }]})
+    monkeypatch.setattr(gi, '_call_local_model', forged)
+    result = gi.investigate_with_corpus(
+        'What is wrong?', get_incident('INC-PATH-002'), 'L23.08'
+    )
+    assert len(calls) == 2
+    assert result['status'] == 'model_output_rejected'
+    assert result['validation_attempt_reasons'] == [
+        'duplicate_or_unknown_citation', 'duplicate_or_unknown_citation'
+    ]
+    assert result['claims'] == []
+    assert result['model_attempts'] == 2
+    assert result['operational_action_authorized'] is False
+    assert result['state_change_executed'] is False
