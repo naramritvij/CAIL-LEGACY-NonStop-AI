@@ -1,8 +1,6 @@
 # CAIL / Nonstop AI Operations Assistant
-> **18 Oct 2026 — new secure integration layer:** The backend now supports opt-in authenticated read-only HTTPS evidence gateway snapshots for ASAP, EMS, SCF, Guardian, and Pathway (`/api/v1/integrations/*`), and Ask CAIL can route general questions to locally hosted Qwen without treating those answers as incident evidence. Live source routes require admin-configured HTTPS URLs and separate server-side credentials and stay **disabled by default**. A new GitHub Actions CI checks Python tests, TypeScript/Vite and frontend safety contracts. Full gateway contract, private setup and outstanding certification gates: [Live source gateway](docs/LIVE_SOURCE_GATEWAY.md). **This is production-oriented infrastructure, not a claim that any HPE/CAIL customer system is connected or certified.**
 
-
-**CAIL Catalyst operator-facing product name.** The older repository identifiers are retained to avoid disrupting branches and API consumers. The canonical knowledge feature is **Knowledge Tree**. The new [Operator Command Center](docs/OPERATOR_COMMAND_CENTER.md) provides color-coded *synthetic* source evidence, ASAP/EMS/SCF-style drilldowns, safe display-only command previews, and review-gated transcript intake. No HPE tools or customer systems are connected.
+> **Current release, 18 October 2026:** React/Vite, FastAPI, Ollama Qwen, real local runtime checks, evidence-first synthetic NonStop operations, secure optional read-only gateway infrastructure, and persistent, independently reviewed knowledge transfer. Verified CI: **240 backend tests**, **26 frontend contracts**, TypeScript check and Vite build. **HPE customer systems are not connected; this is not a production-certified system.**
 
 <div align="center">
 
@@ -16,6 +14,67 @@
 **[Quick start](#-quick-start-clone--run) · [Ask CAIL + ATM demo](#-ask-cail-interactive-chat--atm-mission) · [Public Tailscale demo](#-public-demo-tailscale-funnel) · [Architecture](#-system-architecture) · [API map](#-api-map) · [Confluence](https://northeastern-team-mx3hi3ad.atlassian.net/wiki/spaces/CAILLEG26)**
 
 </div>
+
+## Current project snapshot · 18 October 2026
+
+The features below are implemented in the merged GitHub main branch, but their evidence boundaries matter:
+
+| Feature | Working operator experience | Current limitation |
+|---|---|---|
+| **Home / System Health Command Center** | Readable ASAP metrics, EMS events, SCF UNKNOWN state; CLICK CHECK HEALTH to perform fresh local FastAPI and Ollama/model inventory checks; inspect incident-specific HPE command references. | Actual HPE health is UNKNOWN without an authorized source connection. |
+| **Investigate / Evidence** | Detailed synthetic incident evidence, citations, documented Guided Command Playbook, safe previews and Decision DNA capture. | Events are fictional; text generation cannot establish a proven root cause. |
+| **HPE read-only command guidance** | Documented STATUS DISK $DATA03, STATUS PATHWAY and STATUS SERVER (serverclass), DETAIL references with official source links and prerequisites. | Display-only: release/object names and privileges must be verified; no TACL, SCF or PATHCOM execution. |
+| **Operations Lab** | Synthetic financial-system failure investigation, read-only source projections, safe command-reference router, shift briefing and evaluation protocol. | No production connector to CAIL Suite or customer HPE tooling. |
+| **Ask CAIL / ATM Mission** | Fictional six-location interactive map, evidence-linked ATM discussion, and locally generated general Qwen explanations. | No real ATM locations, GPS, authenticated bank data or incident-command execution. |
+| **Library** | Local SQLite-backed approved source excerpts and Decision DNA records, release-filtered search, and authorized text/transcript submission. | No automatic HPE document download or verified source authenticity. |
+| **Mentor** | Independent reviewer queue, review notes, approval/rejection and retrieval gating using a separate local demo credential. | Real human mentor identities, enterprise SSO/RBAC and assignments are not supported. |
+| **Apprentice** | Practice on a changed synthetic incident generated from an approved lesson; receive a deterministic score and feedback about missing conditions. | Requires at least one approved local lesson; assessment attempts are not persisted and scores are not certification. |
+| **Knowledge Tree** | Interactive graph of independently approved local lessons and lineage. | An empty tree is correct before local lesson approval. |
+| **Optional live gateway** | Read-only HTTPS snapshot adapters for ASAP, EMS, SCF, Guardian, and Pathway, with host allowlisting, separate operator authorization and freshness checks. | Configurable infrastructure, NOT a configured or verified native HPE connection. |
+
+### Verified state, tests and open boundaries
+
+- The latest verified merged CI run was [#39158917167](https://github.com/naramritvij/CAIL-LEGACY-NonStop-AI/actions/runs/39158917167), at commit [6a303cb](https://github.com/naramritvij/CAIL-LEGACY-NonStop-AI/commit/6a303cbd1dca255c6de3e5c56772538d77eae3d5): **240 Python tests passed** (one non-blocking warning), **26 frontend contract tests passed**, and TypeScript/Vite production build succeeded. PRs #17–#20 introduced the secure gateway, general AI, readable source cards, runtime health checks and knowledge workflow UX improvements.
+- On Windows the owner independently verified successful Git pull/Docker start, a generated response from Qwen3:4b-instruct, the runtime-health API reporting FastAPI responding and Ollama model installed, and the knowledge-workflow readiness API reporting SQLite and distinct expert/reviewer keys configured.
+- **At the last known local check:** 0 approved excerpts, 0 approved lessons and 0 available Apprentice challenges, while local review was ready. These are observations from that one check, not promised fixed counts or invented seeded data.
+- CI does not measure every button click, zero-lag performance, real employee mentoring, customer integrations or public Tailscale HTTPS reachability. The Funnel URL previously experienced an SSL protocol error; retest public TLS from another network before sharing.
+
+### Quick update, setup and real health checks (Windows PowerShell)
+
+If already cloned, inspect git status first. Preserve any local edits before switching branches or pulling.
+
+~~~powershell
+Set-Location "$HOME\Projects\CAIL-LEGACY-NonStop-AI"
+git status --short
+git switch main
+git pull --ff-only origin main
+docker compose up -d --build
+docker compose ps
+Invoke-RestMethod "http://localhost:8000/api/v1/health"
+Invoke-RestMethod "http://localhost:8000/api/v1/operations/runtime-health" | Format-List
+Invoke-RestMethod "http://localhost:8000/api/v1/knowledge/workflow-readiness" | Format-List
+Invoke-RestMethod "http://localhost:8000/api/v1/integrations/capabilities" | Format-List
+~~~
+
+Browse [Home](http://localhost:5173/#/home), [Chat](http://localhost:5173/#/chat), [ATM](http://localhost:5173/#/atm), [Operations Lab](http://localhost:5173/#/operations), [Investigate](http://localhost:5173/#/investigate/INC-DISK-001), [Knowledge Tree](http://localhost:5173/#/tree), [Library](http://localhost:5173/#/library), [Mentor](http://localhost:5173/#/mentor), [Apprentice](http://localhost:5173/#/apprentice), or [OpenAPI](http://localhost:8000/docs).
+
+### Make Library, Mentor and Apprentice usable with actual local records
+
+When independent local review credentials are missing, create two different demo role keys in the ignored local .env (existing valid keys are preserved):
+
+~~~powershell
+.\scripts\setup_local_knowledge_demo.ps1
+docker compose up -d --force-recreate backend
+Invoke-RestMethod "http://localhost:8000/api/v1/knowledge/workflow-readiness" | Format-List
+~~~
+
+Keep private keys out of GitHub, browser bundles, screenshots, chat and public Funnel. The workflow does not auto-approve source material or generate fake experts. To demonstrate real local persistence: **Investigate → Capture Decision DNA using expert key → Mentor approve/reject using distinct reviewer key → Library and Knowledge Tree show approved lessons → Apprentice practice and score.** Approved excerpt search is release-filtered and separate from the lesson listing. HTTP knowledge requests are bounded to 15 seconds, with no automatic retry of writes. [Detailed walkthrough](docs/KNOWLEDGE_TRANSFER_DEMO.md).
+
+### Production gateway status and download
+
+The live-source capability endpoint reports only server configuration, **not verified connectivity**. Authentic HPE data requires approved HTTPS gateways, customer authorization, source credentials and release-specific interpretation. Missing or stale evidence must stay UNKNOWN; no state-changing command is executed. [Gateway contract and security boundary](docs/LIVE_SOURCE_GATEWAY.md).
+
+To get the **complete repository ZIP**, log into the GitHub account with private repository access and choose **Code → Download ZIP**, or use the [main-branch ZIP download](https://github.com/naramritvij/CAIL-LEGACY-NonStop-AI/archive/refs/heads/main.zip). This archive excludes your private untracked .env, SQLite Docker data, and local Ollama models; extract it and follow the quick-start instructions. Git pull is preferable to ZIP extraction for regular updates.
 
 > [!IMPORTANT]
 > **Educational prototype only.** This repository does **not** connect to live HPE NonStop systems, execute system commands, or claim production safety. Events (`SIM-EVT-*`), expert lessons created for the demo, and replay outcomes are **synthetic**. HPE manual links are general references—not evidence that an invented event matches an official HPE message.
@@ -122,7 +181,7 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-**Verification status (18 Oct 2026):** The last supplied Windows run passed **221/221 Python backend tests** and the TypeScript/Vite production build (**2,009 modules**). That run passed **21** frontend contracts while **three verification assertions failed** (one outdated map markup assertion, two tests incorrectly reading host-only Compose files inside the frontend Docker image). Those three checks were corrected in the subsequent branch commit; **a complete successful 24/24 frontend run and full final verification have not yet been supplied**. An isolated Funnel gateway health check and separate local Qwen request passed. A real Chrome browser nevertheless reported **`ERR_SSL_PROTOCOL_ERROR`** at the public Tailscale address, so external availability remains **unverified**. Previous completed end-to-end automated results apply to earlier revisions; do not represent this head as independently production-tested.
+**Verification status (18 Oct 2026):** The latest merged CI passed **240 backend tests**, **26 frontend contract checks**, TypeScript checking and a production Vite build. The owner additionally verified local Docker startup, FastAPI health, a live local Qwen response, runtime-health output and role-specific knowledge workflow readiness. These are not proof of live HPE device integration, zero lag, every browser interaction or a working public Funnel TLS endpoint. The public Funnel previously returned an SSL protocol error; check it separately before sharing.
 
 ## 🏧 Ask CAIL: interactive chat & ATM mission
 
