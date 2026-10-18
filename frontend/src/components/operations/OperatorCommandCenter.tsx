@@ -13,6 +13,10 @@ type HealthStatus = {
   source_mode: string
 }
 type Overview = { tools_connected: boolean; statuses: HealthStatus[]; warning: string }
+type LiveCapabilities = {
+  mode: string; connectivity_checked: false
+  sources: { tool_id: string; configured: boolean; connected: null; execution_allowed: false }[]
+}
 type Command = { id: string; label: string; execution_allowed: boolean; source_href: string | null }
 type Source = {
   tool_id: string; connected: boolean; mode: string
@@ -41,6 +45,7 @@ export function OperatorCommandCenter({
   onSelectIncident: (incidentId: string) => void
 }) {
   const [overview, setOverview] = useState<Overview | null>(null)
+  const [liveCapabilities, setLiveCapabilities] = useState<LiveCapabilities | null>(null)
   const [commands, setCommands] = useState<Command[]>([])
   const [source, setSource] = useState<Source | null>(null)
   const [preview, setPreview] = useState<unknown>(null)
@@ -53,6 +58,9 @@ export function OperatorCommandCenter({
     getJson<Overview>(`${API_BASE}/operations/overview`, { signal: controller.signal })
       .then(setOverview)
       .catch((e: unknown) => { if (!controller.signal.aborted) setError(String(e)) })
+    getJson<LiveCapabilities>(`${API_BASE}/integrations/capabilities`, { signal: controller.signal })
+      .then(setLiveCapabilities)
+      .catch(() => { /* Older demo API has no live gateway registry. */ })
     return () => controller.abort()
   }, [])
 
@@ -125,6 +133,24 @@ export function OperatorCommandCenter({
       ) : (
         <>
           {error && <p role="alert" className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
+          {liveCapabilities && <div className="glass-sub p-4" aria-label="Production source gateway configuration">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <LockKeyhole aria-hidden className="size-4 text-cyan" />
+              Authenticated source adapters · configuration only
+            </h3>
+            <p className="mt-1 text-xs text-ink-muted">
+              The cards below reflect server configuration, NOT proven connections.
+              Live snapshots require a separate operator credential and authorized HTTPS gateway.
+              Public demo never receives those credentials.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {liveCapabilities.sources.map((tool) => <span key={tool.tool_id}
+                className={'rounded-lg border px-2.5 py-1.5 text-xs font-semibold '+
+                  (tool.configured ? 'border-gold/35 text-gold' : 'border-line text-ink-muted')}>
+                {tool.tool_id.toUpperCase()} · {tool.configured ? 'Configured, unverified' : 'Not connected'}
+              </span>)}
+            </div>
+          </div>}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {!overview && <p role="status" className="text-sm text-ink-muted">Checking synthetic health signals…</p>}
             {overview?.statuses.map((item) => (

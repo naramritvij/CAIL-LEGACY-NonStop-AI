@@ -553,3 +553,42 @@ def atm_chat(body: AtmChatRequest):
         return _atm_chat(body.question, body.audience_mode, body.selected_atm_id)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+# Opt-in enterprise read-only evidence gateway. NEVER exposed through the public
+# Funnel allowlist. Separate operator credential; no native command transport.
+from .live_sources import (
+    capabilities as _live_capabilities, read_source as _live_read_source,
+    require_operator as _require_live_operator,
+)
+
+@app.get('/api/v1/integrations/capabilities')
+def live_integration_capabilities():
+    return _live_capabilities()
+
+@app.get('/api/v1/integrations/sources/{tool_id}')
+def live_integration_source(tool_id: str, x_cail_operator_key: str | None = Header(default=None)):
+    _require_live_operator(x_cail_operator_key)
+    return _live_read_source(tool_id)
+
+
+# General questions have a dedicated Ollama route. These answers carry NO
+# incident citations and cannot be interpreted as live diagnostic evidence.
+from .general_assistant import GeneralQuestion as _GeneralQuestion, ask_general as _ask_general
+
+@app.post('/api/v1/assistant/ask')
+def general_ai_question(body: _GeneralQuestion):
+    return _ask_general(body.question)
+
+
+# Model can interpret registered read-only live gateway records but cannot execute.
+from .live_investigation import (
+    LiveInvestigationQuestion as _LiveInvestigationQuestion,
+    investigate_source as _investigate_live_source,
+)
+
+@app.post('/api/v1/integrations/ask')
+def live_integration_investigation(body: _LiveInvestigationQuestion,
+                                   x_cail_operator_key: str | None = Header(default=None)):
+    _require_live_operator(x_cail_operator_key)
+    return _investigate_live_source(body.tool_id, body.question)

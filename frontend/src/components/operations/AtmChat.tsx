@@ -41,9 +41,25 @@ interface ChatReply {
   audience:'frontline'|'engineer'|null;audience_basis?:string
   network:Network|null;investigation:Investigation|null;map_triggered:boolean
 }
+interface GeneralReply {
+  status:'generated_unverified'|'model_unavailable'
+  scope:'general_knowledge_no_incident_evidence'
+  answer:string;model:string|null;citations:string[]
+  execution_allowed:false;state_change_executed:false
+}
 interface Turn {
   id:number;role:'operator'|'assistant';text:string
   reply?:ChatReply
+  general?:GeneralReply
+}
+// General education is not an incident claim. A technical/ATM request always
+// remains in the strictly guarded synthetic ATM workflow.
+function isGeneralQuestion(question:string):boolean {
+  const operational=/\b(?:atm(?:-\d{3})?|cash machine|terminal|ems|asap|scf|guardian|pathway|pathcom|tacl|cpu|restart|failover|incident|alerts?|outage|payment|heartbeat)\b/i
+  const explicitConcept=/^(?:what is|what are|what does|define|explain|tell me about|how does|who is)\b/i
+  const incidentLanguage=/\b(?:wrong|down|broken|failed|failing|status|warning|health|live|current|today|incident|atm-\d{3})\b/i
+  if(explicitConcept.test(question)&&!incidentLanguage.test(question))return true
+  return !operational.test(question)
 }
 const SUGGESTIONS=[
   'Which ATM is broken, and where is it?',
@@ -219,13 +235,23 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
     setMessages(old=>[...old,{id:++counter.current,role:'operator',text:clean}])
     setInput('')
     try{
-      const data=await workflowRequest<ChatReply>('/operations/atm/chat','POST',{
-        question:clean,audience_mode:selectedMode,
-        selected_atm_id:overrideId??selectedId,
-      })
-      assertSyntheticAtmChat(data)
-      if(data.selected_atm_id)setSelectedId(data.selected_atm_id)
-      setMessages(old=>[...old,{id:++counter.current,role:'assistant',text:data.answer,reply:data}])
+      if(!overrideId&&isGeneralQuestion(clean)){
+        const general=await workflowRequest<GeneralReply>('/assistant/ask','POST',{question:clean})
+        if(general.scope!=='general_knowledge_no_incident_evidence'||
+          general.execution_allowed!==false||general.state_change_executed!==false||
+          !Array.isArray(general.citations)||general.citations.length!==0){
+          throw new Error('General AI response failed its trust contract')
+        }
+        setMessages(old=>[...old,{id:++counter.current,role:'assistant',text:general.answer,general}])
+      }else{
+        const data=await workflowRequest<ChatReply>('/operations/atm/chat','POST',{
+          question:clean,audience_mode:selectedMode,
+          selected_atm_id:overrideId??selectedId,
+        })
+        assertSyntheticAtmChat(data)
+        if(data.selected_atm_id)setSelectedId(data.selected_atm_id)
+        setMessages(old=>[...old,{id:++counter.current,role:'assistant',text:data.answer,reply:data}])
+      }
     }catch(err){
       const message=err instanceof Error?err.message:String(err)
       setError(message)
@@ -263,9 +289,9 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
           <MessageCircle className="size-5 text-cyan"/> Ask CAIL · Interactive Operations Chat
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
-          Describe an ATM problem naturally. CAIL selects the fictional terminal,
-          displays its map, inspects existing synthetic tools, and retrieves only
-          reviewer-approved operational knowledge.
+          Ask about the fictional ATM incident to see source evidence, maps and reviewed
+          knowledge—or ask an unrelated question for a local Qwen general-knowledge
+          answer, kept separate from operational evidence.
         </p>
       </div>
       <span className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-xs font-semibold text-gold">
@@ -306,11 +332,20 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
           </p>
           {message.reply?<ChatResult data={message.reply}
             onPick={id=>{void send('What is happening with '+id+'?',mode,id)}}/>:
+            message.general?<div className="mt-2 space-y-2">
+              <p className="text-xs font-semibold text-gold">
+                General AI · {message.general.status.replaceAll('_',' ')}
+              </p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>
+              <p className="text-[11px] text-ink-faint">
+                Local Qwen answer. No authenticated HPE source, operational citation, or system action.
+              </p>
+            </div>:
             <p className="mt-2 text-sm leading-relaxed">{message.text}</p>}
         </div>
       </div>)}
       {loading&&<p className="flex items-center gap-2 text-xs text-cyan">
-        <BrainCircuit className="size-4 animate-pulse"/> Routing to local synthetic tool adapters…
+        <BrainCircuit className="size-4 animate-pulse"/> Routing to fictional evidence or local Qwen…
       </p>}
     </div>
     {error&&<p className="mt-3 text-xs text-coral" role="alert">{error}</p>}
@@ -328,7 +363,7 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
       </label>
       <input id={compact?'cail-atm-chat-compact':'cail-atm-chat'}
         value={input} maxLength={500} onChange={e=>setInput(e.target.value)}
-        placeholder="Ask CAIL: which ATM failed, why, and what should I check?"
+        placeholder="Ask CAIL about an ATM—or ask any general question"
         className="neu-inset min-w-0 flex-1 rounded-xl px-4 py-3 text-sm"/>
       <button type="submit" disabled={loading||input.trim().length<3||DATA_MODE!=='http'}
         className="btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm disabled:opacity-50">
