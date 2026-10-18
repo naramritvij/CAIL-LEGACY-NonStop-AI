@@ -390,6 +390,20 @@ test('Tailscale gateway serves built React app and enforces allowed methods',()=
   assert.match(image,/COPY --from=build \/app\/dist/)
 })
 
+test('Home source panel renders human-readable evidence before optional raw JSON', () => {
+  const ui = fs.readFileSync(path.join(root, 'src', 'components', 'operations', 'OperatorCommandCenter.tsx'), 'utf8')
+  const cards = fs.readFileSync(path.join(root, 'src', 'components', 'operations', 'SourceEvidenceCards.tsx'), 'utf8')
+  assert.match(ui, /<SourceEvidenceCards toolId=\{source\.tool_id\} evidence=\{source\.evidence\} \/>/)
+  const details = ui.indexOf('<details className="rounded-xl border border-line-strong p-3">')
+  const raw = ui.indexOf('JSON.stringify(source.evidence, null, 2)')
+  assert.ok(details !== -1 && raw > details, 'Raw records must only appear inside collapsed technical details')
+  assert.match(cards, /if \(toolId === 'asap'\)/)
+  assert.match(cards, /if \(toolId === 'ems'\)/)
+  assert.match(cards, /No source readings available — status unknown/)
+  assert.match(cards, /Official HPE message number/)
+  assert.match(ui, /SIMULATED · NOT LIVE/)
+})
+
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)
