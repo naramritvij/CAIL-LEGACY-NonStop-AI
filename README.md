@@ -129,9 +129,9 @@ Netlify substitute:
 
 | Route | Demonstration |
 |---|---|
-| [Ask CAIL](http://localhost:5173/#/chat) (\`#/chat\`) | Ask about an ATM and get a clickable animated fictional map inside the conversation |
-| [ATM Mission](http://localhost:5173/#/atm) (\`#/atm\`) | Explore the six fictional locations, evidence, safe guidance and audience modes |
-| \`#/operations\` | Synthetic Operations Lab and registered read-only command previews |
+| [Ask CAIL](http://localhost:5173/#/chat) (`#/chat`) | Ask about an ATM and get a clickable animated fictional map inside the conversation |
+| [ATM Mission](http://localhost:5173/#/atm) (`#/atm`) | Explore the six fictional locations, evidence, safe guidance and audience modes |
+| `#/operations` | Synthetic Operations Lab and registered read-only command previews |
 | Knowledge Tree / Mentor / Apprentice | Submit draft training lessons, require **independent local reviewer approval**, and practice transferring approved knowledge |
 
 The **ATM chat uses a bounded deterministic intent router**, not open-ended
@@ -165,12 +165,12 @@ Netlify's static build cannot serve our local FastAPI and Ollama runtime.
 For a shareable **AI-backed** presentation link, the project includes a
 dedicated, isolated **Tailscale Funnel** stack and gateway:
 
-- \`compose.funnel.yaml\` starts an independent \`cail-funnel-demo\` Docker
+- `compose.funnel.yaml` starts an independent `cail-funnel-demo` Docker
   project, distinct from the regular local Compose services.
-- \`demo-gateway\` serves a production React build over loopback
-  \`127.0.0.1:8787\`. Tailscale Funnel publishes the public HTTPS hostname.
-- \`demo-backend\` runs synthetic FastAPI, calls **Windows-hosted Ollama**
-  through \`host.docker.internal:11434\`, and uses temporary demo-only data.
+- `demo-gateway` serves a production React build over loopback
+  `127.0.0.1:8787`. Tailscale Funnel publishes the public HTTPS hostname.
+- `demo-backend` runs synthetic FastAPI, calls **Windows-hosted Ollama**
+  through `host.docker.internal:11434`, and uses temporary demo-only data.
   The private SQLite Knowledge Tree volume and expert/reviewer credentials
   are **not** mounted or served.
 - Nginx restricts public API methods/routes and rate-limits model calls.
@@ -179,7 +179,7 @@ dedicated, isolated **Tailscale Funnel** stack and gateway:
 
 **Windows setup** (Docker Desktop, Ollama/Qwen and signed-in Tailscale required):
 
-\`\`\`powershell
+```powershell
 Set-Location "$HOME\Projects\CAIL-LEGACY-NonStop-AI"
 docker compose up -d --build                         # full private/local app
 .\scripts\verify_operator_center.ps1 -RunsPerIncident 1
@@ -189,15 +189,15 @@ docker compose up -d --build                         # full private/local app
 
 # Only when ready to expose a PUBLIC demo:
 .\scripts\start_tailscale_funnel.ps1 -Publish -CheckQwen
-\`\`\`
+```
 
-The last command displays your account's actual \`.ts.net\` HTTPS hostname.
-Append \`/#/chat\` to link directly into Ask CAIL. **A previously generated
+The last command displays your account's actual `.ts.net` HTTPS hostname.
+Append `/#/chat` to link directly into Ask CAIL. **A previously generated
 Funnel URL is not a guarantee that HTTPS is working.** The Windows browser
-has reported \`ERR_SSL_PROTOCOL_ERROR\` after successful Funnel activation.
-Before sharing the link, check \`tailscale funnel status\`, public DNS/TLS
+has reported `ERR_SSL_PROTOCOL_ERROR` after successful Funnel activation.
+Before sharing the link, check `tailscale funnel status`, public DNS/TLS
 certificate reachability and a fresh browser on **mobile data**. A local
-\`http://127.0.0.1:8787\` success proves only the gateway, **not** public TLS.
+`http://127.0.0.1:8787` success proves only the gateway, **not** public TLS.
 
 The Funnel URL is **unauthenticated and public**. Only fictional training
 data is appropriate; avoid loading private or customer data, uploading files
@@ -205,9 +205,9 @@ or sharing reviewer credentials. Keep the Windows laptop awake and Docker,
 Ollama and Tailscale running. The demo stops working if the host sleeps or
 loses network access. Shut it down afterward:
 
-\`\`\`powershell
+```powershell
 .\scripts\stop_tailscale_funnel.ps1
-\`\`\`
+```
 
 See [Tailscale deployment and troubleshooting](docs/TAILSCALE_FUNNEL_DEMO.md).
 **Do not claim live HPE, real ATM/GPS integration, verified historic repairs,
