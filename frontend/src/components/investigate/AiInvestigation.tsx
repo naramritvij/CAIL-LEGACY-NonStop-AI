@@ -29,6 +29,8 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
   }
 
   const accepted = response?.status === 'generated_unverified_citation_ids_checked'
+  const reference = response?.status === 'local_reference_explanation'
+  const noReference = response?.status === 'reference_required' || response?.status === 'insufficient_relevant_evidence'
   const mock = DATA_MODE === 'mock'
   const registry = new Map(response?.source_registry?.map((item) => [item.id, item]) ?? [])
 
@@ -42,7 +44,7 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
       <p className="mt-2 text-xs leading-relaxed text-ink-muted">
         {mock
           ? 'Mock mode: generates a deterministic template from fictional observations. No model is called.'
-          : 'Calls locally configured Ollama on demand through FastAPI. Citations are ID-checked, not semantically fact-checked. No operational action can run.'}
+          : 'General definitions use a labeled local training reference. Incident questions use Ollama and synthetic source IDs; citation IDs do not establish relevance or truth. No operational action can run.'}
       </p>
       <form onSubmit={(event) => { event.preventDefault(); if (!loading && question.trim().length >= 3 && question.length <= 500) void ask() }} className="mt-4 flex flex-col gap-3">
         <label className="text-xs font-medium text-ink-muted" htmlFor="cail-evidence-question">Investigation question</label>
@@ -64,11 +66,11 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
         <div aria-live="polite" className="glass-sub mt-4 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <ShieldAlert aria-hidden className="size-4 text-gold" />
-            <span className="text-sm font-semibold">{mock ? 'Mock template · not AI' : accepted ? 'Unverified model explanation' : 'Model claims unavailable'}</span>
+            <span className="text-sm font-semibold">{mock ? 'Mock template · not AI' : reference ? 'Local training reference · not AI-generated' : noReference ? 'No relevant reference available' : accepted ? 'Unverified model explanation' : 'Model claims unavailable'}</span>
             <Badge tone="slate">{response.status ?? 'mock'}</Badge>
           </div>
           {response.message && <p className="mt-2 text-xs text-ink-muted">{response.message}</p>}
-          {!accepted && !mock && <p className="mt-2 text-sm text-ink-muted">The independent deterministic evidence above is still available. No substitute AI claims were invented.</p>}
+          {!accepted && !reference && !noReference && !mock && <p className="mt-2 text-sm text-ink-muted">The independent deterministic evidence above is still available. No substitute AI claims were invented.</p>}
           {response.claims.length > 0 && (accepted || mock) && (
             <ul className="mt-3 flex flex-col gap-3">
               {response.claims.map((claim, i) => (
@@ -94,6 +96,10 @@ export function AiInvestigation({ incidentId, onSelectEvidence }: {
               ))}
             </ul>
           )}
+          {reference && <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+            Educational overview authored for this prototype. Not independently verified against HPE documentation;
+            no Ollama call was made and no incident evidence is cited.
+          </p>}
           {!!response.missing_evidence?.length && (
             <p className="mt-3 text-xs text-ink-muted">Still missing: {response.missing_evidence.join('; ')}</p>
           )}
