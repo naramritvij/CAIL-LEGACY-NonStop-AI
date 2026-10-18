@@ -295,3 +295,10 @@ The backend now supports **user-supplied, authorized** documentation excerpts wi
 ### Sprint 5 — Citation-bounded local AI investigations
 
 Use `POST /api/v1/investigate/grounded` to request a structured local Qwen3 explanation of the **synthetic** incident, optionally augmented by release-matched, locally approved document chunks. Every generated claim must identify a registered `SIM-EVT-*` or `DOC-*` citation; invented IDs or malformed model JSON cause the claim output to be suppressed. **Matching an ID is not verifying the claim's truth or the document's authenticity.** The AI cannot execute or approve commands, and the existing frontend is unchanged. See [API contract and verification steps](docs/BACKEND_SPRINT5_GROUNDED_AI.md).
+
+## Knowledge Transfer demo (draft PR #15)
+
+The integrated Maggie v0 interface now includes review-gated **Library**, **Mentor**, **Apprentice**, and **Capture Decision DNA** flows, plus simulated **safe check previews** and a structured operator briefing. Synthetic Showcase tree lessons are NonStop-themed, while the actual Knowledge Tree still shows only locally approved lessons.
+
+See [Knowledge Transfer demo guide](docs/KNOWLEDGE_TRANSFER_DEMO.md) for the one-time Windows demo-key setup, complete scenario flow, review constraints, and limitations. These features are opt-in **local synthetic training only** and have not yet been verified by the user's full local Docker/Qwen run. Never import live customer data or treat the pasted HPE URL as authenticated source content without verification. Do not merge this draft branch until its tests and manual demo pass.
+
