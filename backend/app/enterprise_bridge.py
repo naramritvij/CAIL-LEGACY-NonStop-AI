@@ -2,6 +2,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from .scenarios import list_incidents
+from .runtime_health import runtime_health
 
 TOOLS = {
     "asap": {
@@ -147,39 +148,89 @@ def source(incident_id, tool):
     }
 
 
+def _documented_references(incident_id):
+    """Public HPE references already curated by our guided incident playbook."""
+    from .command_playbook import GUIDES
+    return [
+        {
+            "id": "reference:" + step["id"],
+            "label": step["command"],
+            "type": "hpe_manual_reference_only",
+            "command": step["command"],
+            "title": step["title"],
+            "purpose": step["purpose"],
+            "look_for": step["look_for"],
+            "prerequisites": step["prerequisites"],
+            "if_missing": step["if_missing"],
+            "references": step["references"],
+            "execution_allowed": False,
+            "state_change_executed": False,
+            "release_verified": False,
+        }
+        for step in GUIDES.get(incident_id, [])
+        if step["kind"] == "manual_reference" and step["command"]
+    ]
+
+
 def command_catalog(incident_id):
     if not _incident(incident_id):
         return None
-    return {"incident_id": incident_id, "execution_allowed": False, "commands": [
+    commands = [
         {"id": key, "label": label, "type": "local_ui_intent_only",
          "execution_allowed": False,
          "source_href": (
              f"/api/v1/operations/incidents/{incident_id}/sources/{tool}"
              if tool else None)}
-        for key, (label, tool) in COMMANDS.items()]}
-
+        for key, (label, tool) in COMMANDS.items()
+        # An SCF reference is not meaningful on a Pathway-only incident.
+        if key != "show_scf_reference" or incident_id == "INC-DISK-001"
+    ]
+    return {
+        "incident_id": incident_id, "execution_allowed": False,
+        "commands": commands,
+        "documented_commands": _documented_references(incident_id),
+    }
 
 def command_preview(incident_id, command_id):
     incident = _incident(incident_id)
     if not incident:
         return None
+    base = {
+        "incident_id": incident_id, "command_id": command_id,
+        "execution_allowed": False, "state_change_executed": False,
+    }
+    if command_id.startswith("reference:"):
+        reference = next((item for item in _documented_references(incident_id)
+                          if item["id"] == command_id), None)
+        if not reference:
+            return {**base, "status": "blocked_unknown_command", "result": None}
+        return {
+            **base, "status": "hpe_reference_only_unknown_status",
+            "result": reference, "hpe_nonstop_health": "unknown",
+            "message": "Documentation only: no HPE terminal, collector or device was queried.",
+        }
     if command_id not in COMMANDS:
-        return {"incident_id": incident_id, "command_id": command_id,
-                "status": "blocked_unknown_command", "execution_allowed": False,
-                "state_change_executed": False, "result": None}
+        return {**base, "status": "blocked_unknown_command", "result": None}
+    if command_id == "show_scf_reference":
+        if incident_id != "INC-DISK-001":
+            return {**base, "status": "context_mismatch", "result": None}
+        return {
+            **base, "status": "hpe_reference_only_unknown_status",
+            "result": _documented_references(incident_id)[0],
+            "hpe_nonstop_health": "unknown",
+            "message": "The HPE STATUS DISK syntax is shown for operator review; it was not executed.",
+        }
     result = None
     if command_id == "check_health":
-        result = indicator(incident)
+        result = {
+            "runtime_health": runtime_health(),
+            "selected_synthetic_incident": indicator(incident),
+            "hpe_nonstop_health": "unknown",
+            "explanation": "Live local runtime observations are separate from simulated NonStop incident signals.",
+        }
     elif command_id == "show_alerts":
         result = source(incident_id, "ems")
-    elif command_id == "show_scf_reference":
-        result = {
-            "display_only_reference": "STATUS SUBSYS $ZZKRN",
-            "release_scope": "L-Series kernel only; applicability NOT validated",
-            "docs_url": TOOLS["scf"]["docs"],
-            "execute_this": False}
     else:
-        result = source(incident_id, COMMANDS[command_id][1])
-    return {"incident_id": incident_id, "command_id": command_id,
-            "status": "display_only", "execution_allowed": False,
-            "state_change_executed": False, "result": result}
+        tool = COMMANDS[command_id][1]
+        result = source(incident_id, tool) if tool in TOOLS else None
+    return {**base, "status": "read_only_result", "result": result}
