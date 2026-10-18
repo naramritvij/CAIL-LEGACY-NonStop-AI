@@ -158,3 +158,21 @@ def test_reviewed_excerpt_allows_other_explicit_concept_questions(monkeypatch):
     assert result['claims'][0]['citations']==['DOC-abcdef01-C01']
     assert len(calls)==1
     assert result['state_change_executed'] is False
+
+
+def test_operator_brief_accepts_partial_sprint5_fixture_without_title():
+    """Valid partial incident input must not bypass citation/safety checks."""
+    partial = {
+        'id': 'INC-DISK-001',
+        'summary': 'Synthetic disk grew to 81 percent',
+        'unknowns': ['File ownership'],
+        'events': [{'id': 'SIM-EVT-101', 'message': 'Synthetic disk reached 81%'}],
+    }
+    brief = build_operator_brief(partial)
+    assert brief['heading'] == partial['summary']
+    assert brief['what_is_happening'] == partial['summary']
+    assert brief['status'] == 'yellow'
+    assert brief['source_event_ids'] == ['SIM-EVT-101']
+    assert brief['root_cause_status'] == 'not_established'
+    assert all(item['policy'] == 'preview_allowed'
+               for item in brief['safe_preview_actions'])
