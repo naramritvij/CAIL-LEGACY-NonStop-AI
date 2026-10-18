@@ -93,7 +93,7 @@ export function GuidedCommandPlaybook({ incidentId, onSelectEvidence, onAskEvide
       {recommendation&&<div role="status" className="mt-2 text-xs text-ink-muted">
         <p>{recommendation.reason} {recommendation.matched_terms.length>0?'Matched: '+recommendation.matched_terms.join(', '):''} <span className="text-ink-faint">· Curated rule-based routing, not an AI diagnosis.</span></p>
         {recommendation.suggested_incident_id&&<a href={'#/investigate/'+encodeURIComponent(recommendation.suggested_incident_id)} className="mt-2 inline-flex items-center gap-2 text-cyan underline">Open the matching incident →</a>}
-      </div>
+      </div>}
       <p className="mt-4 text-xs text-ink-faint">Steps are ordered for this synthetic incident, not a universally valid production runbook. All HPE command applicability and operator privileges remain unverified.</p>
       <div className="mt-3 flex flex-col gap-3">
         {playbook.steps.map((step,index)=>{
