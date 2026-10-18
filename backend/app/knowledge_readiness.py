@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import hmac
 import os
+import sqlite3
 from datetime import datetime, timezone
 
-from .storage import connect, list_lessons
+from .storage import connect
 from .corpus import corpus_status
 
 SUPPORTED_TRAINING_INCIDENTS = frozenset(("INC-DISK-001", "INC-PATH-002"))
@@ -25,12 +26,13 @@ def readiness() -> dict:
     try:
         with connect() as db:
             db.execute("SELECT 1").fetchone()
+            approved_lessons = db.execute("SELECT COUNT(*) FROM lessons WHERE status='approved'").fetchone()[0]
+            supported_challenges = db.execute(
+                "SELECT COUNT(*) FROM lessons WHERE status='approved' AND incident_id IN ('INC-DISK-001','INC-PATH-002')"
+            ).fetchone()[0]
         approved_sources = corpus_status()["document_counts"].get("approved", 0)
-        lessons = list_lessons(status="approved")
-        approved_lessons = len(lessons)
-        supported_challenges = sum(item["incident_id"] in SUPPORTED_TRAINING_INCIDENTS for item in lessons)
         storage_ready = True
-    except (OSError, ValueError, RuntimeError):
+    except (sqlite3.Error, OSError, ValueError, RuntimeError):
         storage_ready = False
     return {
         "mode": "local_training_only",
