@@ -109,40 +109,6 @@ const workspace = {
 let checks = 0
 function test(name, fn) {
   try { fn(); checks++; 
-test('ATM mission map forbids fabricated live locations and unapproved history',()=>{
-  const map={
-    production_connectivity:false,mode:'synthetic_location_schematic',
-    map_type:'fictional_district_plan_not_real_world_geolocation',
-    attention_count:1,
-    sites:[
-      {id:'ATM-042',x:62,y:65,status:'attention',live_connected:false},
-      {id:'ATM-011',x:15,y:70,status:'nominal',live_connected:false},
-    ],
-    approved_knowledge_matches:[],
-    fictional_history_examples:[{status:'unreviewed_fiction_not_an_actual_resolution'}],
-  }
-  assert.doesNotThrow(()=>assertSyntheticAtmNetwork(map))
-  assert.throws(()=>assertSyntheticAtmNetwork({...map,production_connectivity:true}),/real geospatial/)
-  assert.throws(()=>assertSyntheticAtmNetwork({...map,approved_knowledge_matches:[{review_status:'draft'}]}),/Unapproved/)
-})
-test('ATM audience response never returns native command execution or fake PATHCOM output',()=>{
-  const sample={
-    synthetic:true,production_connectivity:false,
-    execution_allowed:false,state_change_executed:false,
-    status:'guided_synthetic_investigation',
-    steps:[{title:'Check',evidence_ids:['SIM-ATM-042-001']}],
-    source_previews:[{
-      adapter:'pathcom',connected:false,
-      evidence_origin:'local_fixture_adapter',native_tool_status:'unknown',
-      observations:[],
-    }],
-    approved_knowledge_matches:[],
-  }
-  assert.doesNotThrow(()=>assertSyntheticAtmAssist(sample))
-  assert.throws(()=>assertSyntheticAtmAssist({...sample,execution_allowed:true}),/native execution/)
-  assert.throws(()=>assertSyntheticAtmAssist({...sample,source_previews:[{...sample.source_previews[0],observations:[{status:'RUNNING'}]}]}),/must remain UNKNOWN/)
-  assert.throws(()=>assertSyntheticAtmAssist({...sample,approved_knowledge_matches:[{review_status:'submitted'}]}),/unapproved lessons/)
-})
 process.stdout.write('✓ ' + name + '\n') }
   catch (err) { process.stderr.write('FAILED: ' + name + ': ' + err.stack + '\n'); process.exitCode = 1 }
 }
@@ -303,6 +269,40 @@ test('Native command reference cannot pretend to return executed PATHCOM data', 
   assert.doesNotThrow(()=>assertSafeConsoleResult(sample))
   assert.throws(()=>assertSafeConsoleResult({...sample,evidence:{...sample.evidence,
     observations:[{status:'RUNNING'}]}}),/fake native/)
+})
+test('ATM mission map forbids fabricated live locations and unapproved history',()=>{
+  const map={
+    production_connectivity:false,mode:'synthetic_location_schematic',
+    map_type:'fictional_district_plan_not_real_world_geolocation',
+    attention_count:1,
+    sites:[
+      {id:'ATM-042',x:62,y:65,status:'attention',live_connected:false},
+      {id:'ATM-011',x:15,y:70,status:'nominal',live_connected:false},
+    ],
+    approved_knowledge_matches:[],
+    fictional_history_examples:[{status:'unreviewed_fiction_not_an_actual_resolution'}],
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmNetwork(map))
+  assert.throws(()=>assertSyntheticAtmNetwork({...map,production_connectivity:true}),/real geospatial/)
+  assert.throws(()=>assertSyntheticAtmNetwork({...map,approved_knowledge_matches:[{review_status:'draft'}]}),/Unapproved/)
+})
+test('ATM audience response never returns native command execution or fake PATHCOM output',()=>{
+  const sample={
+    synthetic:true,production_connectivity:false,
+    execution_allowed:false,state_change_executed:false,
+    status:'guided_synthetic_investigation',
+    steps:[{title:'Check',evidence_ids:['SIM-ATM-042-001']}],
+    source_previews:[{
+      adapter:'pathcom',connected:false,
+      evidence_origin:'local_fixture_adapter',native_tool_status:'unknown',
+      observations:[],
+    }],
+    approved_knowledge_matches:[],
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmAssist(sample))
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,execution_allowed:true}),/native execution/)
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,source_previews:[{...sample.source_previews[0],observations:[{status:'RUNNING'}]}]}),/must remain UNKNOWN/)
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,approved_knowledge_matches:[{review_status:'submitted'}]}),/unapproved lessons/)
 })
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
