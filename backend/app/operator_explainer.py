@@ -9,7 +9,10 @@ from .policy import evaluate
 def build_operator_brief(incident: dict) -> dict:
     metrics = incident.get('metrics', [])
     events = incident.get('events', [])
-    name = incident['title']
+    # Some callers (including validated Sprint 5 tests) provide a bounded
+    # partial incident containing only id/summary/events/unknowns. A briefing
+    # must never crash the evidence or model-safety workflow over display text.
+    name = incident.get('title') or incident.get('summary') or 'Unnamed synthetic incident'
     ids = [event['id'] for event in events]
     if incident['id'] == 'INC-DISK-001':
         utilization = next((m for m in metrics if m.get('name') == 'Disk utilization'), None)
