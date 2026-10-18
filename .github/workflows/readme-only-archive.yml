@@ -1,0 +1,25 @@
+name: README-only downloadable ZIP
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-readme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify README exists
+        run: test -s README.md
+      - name: Upload README-only artifact (GitHub downloads this as a ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CAIL_README_ONLY
+          path: README.md
+          if-no-files-found: error
+          retention-days: 30
