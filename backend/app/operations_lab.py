@@ -86,6 +86,21 @@ SEMANTIC = [
     ('health',('problem','issue','system health','system status','wrong','failing')),
 ]
 
+# Treat equivalent descriptions of failed processes as the same read-only
+# topic; don't reclassify unrelated application failures as process failures.
+_FAILED_PROCESS_QUERY = re.compile(
+    r'\b(?:failed|failing|exited|terminated)\s+(?:[a-z]+\s+){0,3}process(?:es)?\b'
+    r'|\bprocess(?:es)?\b(?:\s+[a-z]+){0,4}\s+(?:failed|failing|exited|terminated)\b',
+    re.IGNORECASE,
+)
+
+
+def _is_failed_process_question(question: str) -> bool:
+    match = _FAILED_PROCESS_QUERY.search(question)
+    # "Processes that have NOT failed" must not be reported as failed.
+    return bool(match and not re.search(r'\b(?:not|never|without)\b', match.group(), re.IGNORECASE))
+
+
 def incident(incident_id: str) -> dict | None:
     if incident_id == FINANCIAL_ID:
         from copy import deepcopy
@@ -209,12 +224,17 @@ def command(incident_id:str,text:str)->dict:
                     'suggested_incident_id':'INC-DISK-001',
                     'reason':'Disk command request does not match selected Pathway incident.'}
         if target is None:
-            for tool,keywords in SEMANTIC:
-                if tool=='ems_pathway':
-                    if all(k in lower for k in keywords):
+            # "Failed processes" and "processes that have failed" map to
+            # the same read-only simulated process-audit adapter.
+            if _is_failed_process_question(lower):
+                target='guardian'
+            else:
+                for tool,keywords in SEMANTIC:
+                    if tool=='ems_pathway':
+                        if all(k in lower for k in keywords):
+                            target=tool;break
+                    elif any(k in lower for k in keywords):
                         target=tool;break
-                elif any(k in lower for k in keywords):
-                    target=tool;break
         if not target:
             return {**base,'status':'needs_clarification','adapter':None,'evidence':None,
                     'reason':'No registered read-only tool matches the question. Ask about health, CPU, disks, process, EMS, Pathway or correlation.'}

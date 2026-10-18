@@ -40,6 +40,9 @@ def test_financial_hardware_failure_has_traced_multitool_chronology(client):
     ('SHOW CPU METRICS','asap',4),
     ('Why is CPU 3 very busy?','asap',4),
     ('Show me processes that have failed in the last hour.','guardian',1),
+    ('Which payment processes have failed?','guardian',1),
+    ('List failed processes from the shift','guardian',1),
+    ('Did any processes get terminated?','guardian',1),
     ('Show recent EMS errors related to Pathway','ems_pathway',1),
     ('What changed before this application failed?','correlation',0),
     ('Are there any problems on the system?','health',1),
@@ -224,3 +227,26 @@ def test_tool_registry_explicitly_marks_unconnected_domains(client):
     assert tools['pathcom']['availability']=='manual_reference_only'
     assert tools['tacl']['availability']=='not_connected'
     assert tools['expand']['availability']=='not_connected'
+
+
+@pytest.mark.parametrize('query', [
+    'Show processes that have not failed.',
+    'What changed before this application failed?',
+])
+def test_failure_language_does_not_invent_process_audit_matches(query):
+    from app.operations_lab import _is_failed_process_question
+    assert _is_failed_process_question(query) is False
+
+def test_failed_process_paraphrase_keeps_fixed_shift_provenance(client):
+    response=client.post(API+'/command',json={
+        'incident_id':FINANCIAL_ID,
+        'input':'Show me processes that have failed in the last hour.'
+    })
+    assert response.status_code == 200
+    data=response.json()
+    assert data['adapter']=='guardian'
+    assert data['status']=='synthetic_result'
+    assert data['evidence']['time_scope']=='fixed_fictional_shift_not_live_last_hour'
+    assert data['evidence']['connected_to_live_hpe'] is False
+    assert data['execution_allowed'] is False
+    assert data['state_change_executed'] is False
