@@ -230,3 +230,7 @@ backend/.venv/
 .env
 .env.*
 !.env.example
+
+# Retain source-code utilities for Maggie's TypeScript frontend.
+!frontend/src/lib/
+!frontend/src/lib/**

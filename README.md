@@ -1,3 +1,7 @@
+# CAIL/Nonstop AI Operations Assistant
+
+**CAIL Catalyst operator-facing product name.** The older repository identifiers are retained to avoid disrupting branches and API consumers. The canonical knowledge feature is **Knowledge Tree**. The new [Operator Command Center](docs/OPERATOR_COMMAND_CENTER.md) provides color-coded *synthetic* source evidence, ASAP/EMS/SCF-style drilldowns, safe display-only command previews, and review-gated transcript intake. No HPE tools or customer systems are connected.
+
 <div align="center">
 
 # △ LEGACY

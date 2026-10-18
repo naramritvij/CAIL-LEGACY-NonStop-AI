@@ -80,3 +80,8 @@ See [Sprint 4 Corpus API](BACKEND_SPRINT4_CORPUS.md). The five new `/knowledge/c
 ### Prototype HTTP response safeguards
 
 API responses include `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`. These reduce accidental browser caching/sniffing/embedding but **are not a replacement for enterprise authentication, rate limits, transport security, audited RBAC or production hardening**.
+
+
+## CAIL Operator Command Center and Knowledge Tree
+
+See [Operator Command Center](OPERATOR_COMMAND_CENTER.md) for exact routes, limits and evidence provenance. Canonical Knowledge Tree: GET /api/v1/knowledge/knowledge-tree and workspace.knowledge_tree. Legacy-path fields remain as deprecated compatibility aliases. New /api/v1/operations/* endpoints are local synthetic views and SAFE display-only intents, not connected HPE command execution. New POST /api/v1/knowledge/transcripts uses expert credentials, redaction authorization and existing reviewer-gated corpus lifecycle.
