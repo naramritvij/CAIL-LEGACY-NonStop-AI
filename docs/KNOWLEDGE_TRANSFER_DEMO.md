@@ -1,3 +1,31 @@
+## Reliable local workflow setup and readiness (18 October 2026)
+
+The local Mentor workflow is usable with **two distinct authorized demo keys**. It is **not** enterprise identity management or evidence that a real human expert is employed by CAIL. Do not claim actual mentor onboarding, certified operating skills or production readiness.
+
+From the private Windows repo root:
+
+```powershell
+.\scripts\setup_local_knowledge_demo.ps1
+docker compose up -d --force-recreate backend
+Invoke-RestMethod "http://localhost:8000/api/v1/knowledge/workflow-readiness" | Format-List
+```
+
+The setup script creates strong independent role keys in the Git-ignored local `.env` file, preserving any existing valid ones. **Never post either credential, commit `.env`, or expose reviewer access through public Funnel.** Enter the expert key only in the Investigate Decision DNA capture or Library intake form, and the reviewer key only in Mentor. Keep your credentials in your local setup.
+
+**End-to-end actual demo journey:**
+
+1. Investigate → choose the fictional disk incident → **Capture Decision DNA**; enter evidence-supported reasoning, select registered event IDs, use your local expert key, and submit the draft. Alternatively, submit an authorized, redacted text excerpt via Library.
+2. Mentor → use the **separate reviewer key**, load the submitted queue, inspect full reasoning or source chunks, write at least ten characters of reviewer notes, and decide approve/reject. This is a genuine local SQLite write; nothing is automatically approved.
+3. Library → refresh approved records, or search reviewer-approved excerpts with the exact release filter. A Decision DNA lesson appears as an approved lesson, not automatically as a searchable excerpt.
+4. Apprentice → refresh approved lessons, choose a reviewed lesson, select the supporting synthetic events, a safe first diagnostic action, prerequisites and reasoning. Submit to see the **actual deterministic rubric score and its missing mandatory gates**. Scores are not persisted.
+5. Knowledge Tree → only the approved lessons appear. If no lesson has been approved, the empty tree is an accurate status, not an application fault.
+
+**Performance/error behavior:** Workflow HTTP requests now have a 15-second timeout, never automatically retry non-idempotent writes, and provide clear failure text. Mentor optimistically clears a row only after the API confirms the reviewer decision. The readiness panel reports actual local SQLite and configured-key state and approved counts; no secrets or pending review records are exposed by the status endpoint.
+
+The backend integration suite tests evidence gating, both roles, approval transitions, retrieval, Apprentice scores, and restricted unsafe actions with isolated temporary SQLite databases. **Passing tests do not establish zero lag, production performance, or availability on a particular machine.** For a live hackathon, perform the browser journey and time your own responses.
+
+---
+
 # Knowledge Transfer & Operator Guidance — Integrated Demo
 
 This module is included in the unified CAIL/Nonstop AI Operations Assistant on `main` (merged through PRs #14 and #15).
