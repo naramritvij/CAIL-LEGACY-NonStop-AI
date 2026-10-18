@@ -8,6 +8,8 @@ interface LabScenario {id:string;title:string;summary:string;severity:string;typ
 interface ShiftSection {incident_id:string;title:string;severity:string;observations:string[];evidence_ids:string[];missing:string[];recommendation:string}
 interface ShiftBrief {synthetic:true;live_connected:false;event_count:number;incident_count:number;unresolved_count:number;
   approved_resolutions_reported:number;documented_process_restarts:null;sections:ShiftSection[];handover:string;limitation:string}
+interface ToolRecord {name:string;adapter_id:string;availability:string;purpose:string;live_connected:false}
+interface ToolDirectory {mode:string;real_cail_suite_integration:false;native_command_execution:false;tools:ToolRecord[]}
 interface Protocol {measurement_status:string;procedure:string[];metrics:string[];scenarios:string[]}
 interface AiAssessment {
   status: string; message: string; synthetic: boolean
@@ -21,6 +23,7 @@ export function OperationsLabPage(){
   const [selected,setSelected]=useState('INC-FIN-HW-003')
   const [brief,setBrief]=useState<ShiftBrief|null>(null)
   const [protocol,setProtocol]=useState<Protocol|null>(null)
+  const [tools,setTools]=useState<ToolDirectory|null>(null)
   const [error,setError]=useState('')
   const [started,setStarted]=useState<number|null>(null)
   const [mode,setMode]=useState<Trial['mode']>('CAIL')
@@ -38,7 +41,8 @@ export function OperationsLabPage(){
       workflowRequest<{scenarios:LabScenario[]}>('/operations/lab/scenarios'),
       workflowRequest<ShiftBrief>('/operations/lab/shift-summary'),
       workflowRequest<Protocol>('/operations/lab/evaluation-protocol'),
-    ]).then(([s,b,p])=>{if(valid){setScenarios(s.scenarios);setBrief(b);setProtocol(p)}})
+      workflowRequest<ToolDirectory>('/operations/lab/tools'),
+    ]).then(([s,b,p,d])=>{if(valid){setScenarios(s.scenarios);setBrief(b);setProtocol(p);setTools(d)}})
       .catch(e=>{if(valid)setError(String(e))})
     return()=>{valid=false}
   },[])
@@ -66,6 +70,17 @@ export function OperationsLabPage(){
         <p className="mt-2 text-sm text-ink-muted">{fin.summary}</p>
         <p className="mt-2 text-xs text-gold">{fin.system} · No customer transactions · Causal relationships unverified</p>
         {selected!=='INC-FIN-HW-003'&&<a href={'#/investigate/'+encodeURIComponent(selected)} className="mt-3 inline-flex items-center gap-1 text-xs text-cyan underline">Open full investigation and Decision DNA <ArrowRight className="size-3"/></a>}
+      </div>}
+    </section>
+    <section className="glass p-5" aria-label="Source tool connections">
+      <h2 className="text-lg font-semibold">Operational tool coverage · honesty dashboard</h2>
+      <p className="mt-2 text-sm text-ink-muted">This registry shows exactly what the prototype can inspect. “Fixture observations” means local invented data; a published command reference does not imply a real session.</p>
+      {tools&&<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {tools.tools.map(tool=><article key={tool.adapter_id} className="glass-sub rounded-lg p-3">
+          <p className="text-sm font-semibold">{tool.name}</p>
+          <p className="mt-1 text-xs text-ink-muted">{tool.purpose}</p>
+          <p className={'mt-2 text-xs font-semibold '+(tool.availability==='fixture_observations'?'text-teal':'text-gold')}>{tool.availability.replaceAll('_',' ')} · no live connection</p>
+        </article>)}
       </div>}
     </section>
     <UnifiedCommandConsole incidentId={selected}/>

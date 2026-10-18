@@ -73,3 +73,12 @@ A local model response with an unknown ID is rejected; one with registered
 IDs is still labeled unverified because source-ID presence does not establish
 semantic support or causal accuracy. No model response drives any command
 routing decision.
+
+## Scope transparency and adapter inventory
+
+The **Operations Lab** also exposes the real capability inventory:
+EMS, ASAP and a Guardian-style process-audit projection provide invented
+fixture records; SCF and PATHCOM only have documented references and UNKNOWN
+native output; TACL, OSS, Expand, spoolers, communications and application
+logs are explicitly NOT CONNECTED. This prevents demonstrating imaginary
+coverage of all NonStop subsystems.

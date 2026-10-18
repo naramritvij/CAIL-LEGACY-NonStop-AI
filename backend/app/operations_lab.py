@@ -283,3 +283,29 @@ def evaluation_protocol()->dict:
                    'unknowns_acknowledged','participant_feedback_1_to_5'],
         'real_world_mttr_claim_allowed':False,
     }
+
+
+def tool_capabilities()->dict:
+    """Tell the trainee which adapters have *synthetic* data or no data at all."""
+    tools=[
+        ('EMS','ems','fixture_observations','Event chronology and synthetic alerts'),
+        ('ASAP','asap','fixture_observations','Synthetic metrics and baselines'),
+        ('Guardian','guardian','fixture_observations','Invented process exit records for financial case'),
+        ('PATHCOM / Pathway','pathcom','manual_reference_only','Documented STATUS syntax; native output unavailable'),
+        ('SCF','scf','manual_reference_only','Documented disk STATUS syntax; native output unavailable'),
+        ('TACL','tacl','not_connected','No authenticated shell or TACL session'),
+        ('OSS','oss','not_connected','No authenticated OSS process or logs'),
+        ('Expand','expand','not_connected','No cross-node network-status feed'),
+        ('Spoolers','spooler','not_connected','No print/queue subsystem output'),
+        ('Communications','comms','not_connected','No communications subsystem feed'),
+        ('Application logs','app_logs','not_connected','No customer application log access'),
+    ]
+    return {
+        'mode':'synthetic_compatibility_layer','real_cail_suite_integration':False,
+        'native_command_execution':False,'data_origin':'curated_local_fixtures',
+        'tools':[{
+            'name':name,'adapter_id':key,'availability':status,
+            'purpose':purpose,'live_connected':False,
+        } for name,key,status,purpose in tools],
+        'next_integration_step':'Obtain authorized CAIL Suite/test NonStop interfaces, release details, and security review before any live adapter.',
+    }

@@ -209,3 +209,18 @@ def test_financial_ai_rejects_fabricated_citation_ids(client,monkeypatch):
     data=resp.json()
     assert data['claims']==[]
     assert data['status'] in ('model_output_rejected','insufficient_relevant_evidence')
+
+
+def test_tool_registry_explicitly_marks_unconnected_domains(client):
+    response=client.get(API+'/tools')
+    assert response.status_code==200
+    data=response.json()
+    assert data['real_cail_suite_integration'] is False
+    assert data['native_command_execution'] is False
+    tools={t['adapter_id']:t for t in data['tools']}
+    assert len(tools)>=11
+    assert all(t['live_connected'] is False for t in tools.values())
+    assert tools['ems']['availability']=='fixture_observations'
+    assert tools['pathcom']['availability']=='manual_reference_only'
+    assert tools['tacl']['availability']=='not_connected'
+    assert tools['expand']['availability']=='not_connected'

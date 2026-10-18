@@ -509,3 +509,9 @@ def lab_explain(body: GroundedInvestigationRequest):
     if selected is None:
         raise HTTPException(404, 'Unknown incident')
     return investigate_with_corpus(body.question, selected, body.release, body.max_chunks)
+
+
+@app.get('/api/v1/operations/lab/tools')
+def lab_tool_capabilities():
+    from .operations_lab import tool_capabilities
+    return tool_capabilities()

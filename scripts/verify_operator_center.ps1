@@ -182,6 +182,17 @@ if ($shift.incident_count -ne 3 -or $shift.event_count -ne 10 -or
     $shift.approved_resolutions_reported -ne 0 -or $shift.actual_cpu_normality_confirmed -ne $false) {
     throw "Shift summary must derive counts without inventing restarts, health, or resolutions."
 }
+$toolDirectory = Invoke-RestMethod -Uri "$base/operations/lab/tools" -TimeoutSec 15
+if ($toolDirectory.real_cail_suite_integration -ne $false -or
+    $toolDirectory.native_command_execution -ne $false -or
+    @($toolDirectory.tools).Count -lt 11) {
+    throw "Tool capability inventory must disclose offline adapters and unavailable subsystems."
+}
+foreach ($registered in $toolDirectory.tools) {
+    if ($registered.live_connected -ne $false) {
+        throw "Tool directory falsely claims a connected NonStop subsystem."
+    }
+}
 $evaluation = Invoke-RestMethod -Uri "$base/operations/lab/evaluation-protocol" -TimeoutSec 15
 if ($evaluation.real_world_mttr_claim_allowed -ne $false -or $evaluation.measurement_status -ne "not_yet_measured") {
     throw "Benchmark must not claim unmeasured productivity gains."
