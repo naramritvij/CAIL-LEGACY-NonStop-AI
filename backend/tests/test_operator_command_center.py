@@ -45,6 +45,10 @@ def test_registered_sources_never_invent_scf_status(client):
 def test_command_id_allowlist_and_no_execution(client):
     cat = client.get(API + "/operations/incidents/INC-DISK-001/commands").json()
     assert len(cat["commands"]) == 6
+    assert len(cat["documented_commands"]) == 1
+    assert cat["documented_commands"][0]["command"] == "STATUS DISK $DATA03"
+    assert cat["documented_commands"][0]["execution_allowed"] is False
+    assert cat["documented_commands"][0]["references"]
     assert all(not cmd["execution_allowed"] for cmd in cat["commands"])
     for cmd in ["check_health", "show_alerts", "open_asap", "open_ems", "open_scf",
                 "show_scf_reference", "restart_service; DROP"]:
@@ -58,6 +62,80 @@ def test_command_id_allowlist_and_no_execution(client):
     assert bad.json()["status"] == "blocked_unknown_command"
     assert client.post(API + "/operations/commands/preview",
                        json={"incident_id": "NOT-FOUND", "command_id": "check_health"}).status_code == 404
+
+
+def test_real_runtime_probe_separates_local_observations_from_hpe(client, monkeypatch):
+    from app import runtime_health
+
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def read(self, size):
+            return b'{"models":[{"name":"qwen3:4b-instruct"}]}'
+
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:4b-instruct")
+    monkeypatch.setenv("OLLAMA_URL", "http://host.docker.internal:11434")
+    monkeypatch.setattr(runtime_health, "urlopen", lambda req, timeout: FakeResponse())
+    response = client.get(API + "/operations/runtime-health")
+    assert response.status_code == 200
+    health = response.json()
+    assert health["overall_status"] == "available"
+    assert health["backend"]["status"] == "responding"
+    assert health["ollama"]["model_installed"] is True
+    assert health["hpe_nonstop_health"] == "unknown"
+    assert health["live_hpe_queried"] is False
+    assert health["execution_allowed"] is False
+
+    cmd = client.post(API + "/operations/commands/preview",
+                      json={"incident_id": "INC-DISK-001", "command_id": "check_health"}).json()
+    assert cmd["result"]["runtime_health"]["ollama"]["status"] == "reachable"
+    assert cmd["result"]["selected_synthetic_incident"]["color"] == "yellow"
+    assert cmd["result"]["hpe_nonstop_health"] == "unknown"
+
+
+def test_runtime_probe_handles_unreachable_ollama_without_pretending_green(client, monkeypatch):
+    from app import runtime_health
+    from urllib.error import URLError
+
+    def unreachable(*_args, **_kwargs):
+        raise URLError("unreachable")
+
+    monkeypatch.setattr(runtime_health, "urlopen", unreachable)
+    response = client.get(API + "/operations/runtime-health")
+    assert response.status_code == 200
+    health = response.json()
+    assert health["overall_status"] == "degraded"
+    assert health["ollama"]["status"] == "unavailable"
+    assert health["ollama"]["model_installed"] is None
+    assert health["hpe_nonstop_health"] == "unknown"
+
+
+def test_native_hpe_references_are_read_only_and_incident_specific(client):
+    disk = client.get(API + "/operations/incidents/INC-DISK-001/commands").json()
+    disk_ref = disk["documented_commands"][0]
+    assert disk_ref["command"] == "STATUS DISK $DATA03"
+    assert disk_ref["references"][0]["url"].startswith("https://support.hpe.com/")
+    r = client.post(API + "/operations/commands/preview",
+                    json={"incident_id": "INC-DISK-001", "command_id": disk_ref["id"]}).json()
+    assert r["status"] == "hpe_reference_only_unknown_status"
+    assert r["result"]["command"] == "STATUS DISK $DATA03"
+    assert r["execution_allowed"] is False
+    assert r["state_change_executed"] is False
+    assert r["hpe_nonstop_health"] == "unknown"
+    path = client.get(API + "/operations/incidents/INC-PATH-002/commands").json()
+    assert "show_scf_reference" not in {x["id"] for x in path["commands"]}
+    commands = {c["command"] for c in path["documented_commands"]}
+    assert commands == {"STATUS PATHWAY", "STATUS SERVER <serverclass>, DETAIL"}
+    forged = client.post(API + "/operations/commands/preview",
+                        json={"incident_id": "INC-PATH-002", "command_id": disk_ref["id"]}).json()
+    assert forged["status"] == "blocked_unknown_command"
+    assert client.post(API + "/operations/commands/preview",
+                       json={"incident_id": "INC-PATH-002",
+                             "command_id": "show_scf_reference"}).json()["status"] == "context_mismatch"
 
 def test_grounded_source_ids_match_operator_asap_drilldown(client):
     incident = get_incident("INC-DISK-001")

@@ -355,6 +355,12 @@ class OperatorCommandRequest(BaseModel):
     incident_id: str = Field(min_length=1, max_length=64)
     command_id: str = Field(min_length=1, max_length=100)
 
+from .runtime_health import runtime_health as _runtime_health
+
+@app.get('/api/v1/operations/runtime-health')
+def operator_runtime_health():
+    return _runtime_health()
+
 @app.get('/api/v1/operations/overview')
 def operator_overview():
     return _operator_overview()

@@ -19,6 +19,30 @@ type LiveCapabilities = {
   sources: { tool_id: string; configured: boolean; connected: null; execution_allowed: false }[]
 }
 type Command = { id: string; label: string; execution_allowed: boolean; source_href: string | null }
+type HpeReference = {
+  id: string; label: string; command: string; title: string; purpose: string;
+  look_for: string[]; prerequisites: string[]; if_missing: string;
+  references: { title: string; url: string; note: string }[];
+  execution_allowed: false; release_verified: false
+}
+type RuntimeHealth = {
+  scope: string; checked_at: string; overall_status: 'available' | 'degraded';
+  backend: { status: string; checked_at: string };
+  ollama: { status: string; model: string; model_installed: boolean | null; checked_at: string };
+  hpe_nonstop_health: 'unknown'; live_hpe_queried: false; limitations: string
+}
+type CommandPreview = {
+  status: string; command_id: string; execution_allowed: false;
+  state_change_executed: false; message?: string; hpe_nonstop_health?: 'unknown';
+  result?: {
+    runtime_health?: RuntimeHealth;
+    selected_synthetic_incident?: HealthStatus;
+    hpe_nonstop_health?: string; explanation?: string;
+    command?: string; title?: string; purpose?: string;
+    look_for?: string[]; prerequisites?: string[]; if_missing?: string;
+    references?: { title: string; url: string; note: string }[];
+  } | null
+}
 type Source = {
   tool_id: string; connected: boolean; mode: string
   health_signal: StatusColor; docs_url: string
@@ -48,8 +72,9 @@ export function OperatorCommandCenter({
   const [overview, setOverview] = useState<Overview | null>(null)
   const [liveCapabilities, setLiveCapabilities] = useState<LiveCapabilities | null>(null)
   const [commands, setCommands] = useState<Command[]>([])
+  const [documentedCommands, setDocumentedCommands] = useState<HpeReference[]>([])
   const [source, setSource] = useState<Source | null>(null)
-  const [preview, setPreview] = useState<unknown>(null)
+  const [preview, setPreview] = useState<CommandPreview | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
 
@@ -71,10 +96,11 @@ export function OperatorCommandCenter({
     setSource(null)
     setPreview(null)
     setCommands([])
-    getJson<{ commands: Command[] }>(
+    setDocumentedCommands([])
+    getJson<{ commands: Command[]; documented_commands: HpeReference[] }>(
       `${API_BASE}/operations/incidents/${encodeURIComponent(incidentId)}/commands`,
       { signal: controller.signal },
-    ).then((data) => setCommands(data.commands))
+    ).then((data) => { setCommands(data.commands); setDocumentedCommands(data.documented_commands ?? []) })
       .catch((e: unknown) => { if (!controller.signal.aborted) setError(String(e)) })
     return () => controller.abort()
   }, [incidentId])
@@ -92,8 +118,9 @@ export function OperatorCommandCenter({
     setBusy(command.id)
     setError('')
     setPreview(null)
+    setSource(null)
     try {
-      const result = await getJson<unknown>(`${API_BASE}/operations/commands/preview`, {
+      const result = await getJson<CommandPreview>(`${API_BASE}/operations/commands/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ incident_id: incidentId, command_id: command.id }),
@@ -199,6 +226,35 @@ export function OperatorCommandCenter({
               </div>
             </div>
           </div>
+          {documentedCommands.length > 0 && (
+            <div className="glass-sub p-4" aria-label="Documented HPE read-only command references">
+              <h3 className="flex items-center gap-2 text-sm font-semibold"><TerminalSquare aria-hidden className="size-4 text-cyan" /> Documented HPE NonStop status commands</h3>
+              <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+                These are genuine documented syntax references from the incident playbook, not executable buttons.
+                Target release, actual object names, privileges and HPE output have not been verified.
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {documentedCommands.map((cmd) => (
+                  <div key={cmd.id} className="rounded-xl border border-line-strong bg-white/[0.03] p-3">
+                    <p className="text-sm font-semibold text-ink">{cmd.title}</p>
+                    <code className="mt-2 block break-all rounded-lg bg-black/20 p-2 font-mono text-xs text-cyan">{cmd.command}</code>
+                    <p className="mt-2 text-xs leading-relaxed text-ink-muted">{cmd.purpose}</p>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <button type="button" disabled={busy !== null} onClick={() => void previewCommand({
+                        id: cmd.id, label: cmd.label, execution_allowed: false, source_href: null,
+                      })} className="tap rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan disabled:opacity-50">
+                        Show usage and availability
+                      </button>
+                      {cmd.references.map((ref) => <a key={ref.url} href={ref.url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 self-center text-xs text-cyan underline">
+                        HPE documentation <ArrowUpRight aria-hidden className="size-3" />
+                      </a>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {source && (
             <div className="glass-sub flex flex-col gap-3 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -222,10 +278,71 @@ export function OperatorCommandCenter({
             </div>
           )}
           {preview != null && (
-            <details className="glass-sub p-4">
-              <summary className="cursor-pointer text-sm font-semibold text-cyan">Display-only command preview</summary>
-              <pre className="mt-3 max-h-60 overflow-auto text-xs text-ink-muted">{JSON.stringify(preview, null, 2)}</pre>
-            </details>
+            <div className="glass-sub flex flex-col gap-3 p-4" role="status" aria-live="polite">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-ink">
+                  {preview.command_id === 'check_health' ? 'Fresh CAIL runtime health check'
+                    : preview.status === 'hpe_reference_only_unknown_status' ? 'HPE command usage — reference only'
+                    : 'Command result'}
+                </h3>
+                <span className="rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-ink-muted">READ ONLY · NO HPE EXECUTION</span>
+              </div>
+              {preview.result?.runtime_health && (() => {
+                const health = preview.result.runtime_health
+                return <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-emerald/35 bg-emerald/5 p-3">
+                    <p className="text-xs text-ink-muted">Local CAIL backend</p>
+                    <p className="mt-1 text-sm font-semibold text-emerald">{health.backend.status}</p>
+                  </div>
+                  <div className="rounded-xl border border-line-strong p-3">
+                    <p className="text-xs text-ink-muted">Local Ollama · {health.ollama.model}</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {health.ollama.status === 'reachable'
+                        ? health.ollama.model_installed ? 'Reachable · Model installed' : 'Reachable · Model not found'
+                        : 'Unavailable'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-gold/35 bg-gold/5 p-3">
+                    <p className="text-xs text-ink-muted">Actual HPE NonStop</p>
+                    <p className="mt-1 text-sm font-semibold text-gold">UNKNOWN · Not connected</p>
+                  </div>
+                  <p className="text-xs text-ink-faint sm:col-span-3">
+                    Checked: {health.checked_at} · {health.limitations}
+                  </p>
+                </div>
+              })()}
+              {preview.result?.selected_synthetic_incident && <div className="rounded-lg border border-line p-3">
+                <p className="text-xs text-ink-muted">Selected simulated incident · NOT live health</p>
+                <p className="mt-1 text-sm font-semibold">{preview.result.selected_synthetic_incident.title} — {preview.result.selected_synthetic_incident.color.toUpperCase()}</p>
+                <p className="mt-1 text-xs text-ink-muted">{preview.result.selected_synthetic_incident.meaning}</p>
+              </div>}
+              {preview.result?.command && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-semibold">{preview.result.title}</p>
+                  <code className="rounded-lg bg-black/20 p-3 font-mono text-sm text-cyan">{preview.result.command}</code>
+                  <p className="text-xs text-ink-muted">{preview.result.purpose}</p>
+                  <p className="text-xs font-semibold text-gold">Actual HPE response: UNKNOWN (not connected)</p>
+                  <p className="text-xs text-ink-muted">Inspect actual output for:</p>
+                  <ul className="list-inside list-disc space-y-1 text-xs text-ink-muted">
+                    {preview.result.look_for?.map(item => <li key={item}>{item}</li>)}
+                  </ul>
+                  <p className="text-xs text-ink-muted">{preview.result.if_missing}</p>
+                  {preview.result.references?.map(ref => <a key={ref.url} href={ref.url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-cyan underline">{ref.title}<ArrowUpRight aria-hidden className="size-3" /></a>)}
+                </div>
+              )}
+              {preview.message && <p className="text-xs text-ink-muted">{preview.message}</p>}
+              {!preview.result?.runtime_health && !preview.result?.command && (
+                <p className="text-xs text-ink-muted">
+                  {preview.status === 'blocked_unknown_command' ? 'Unrecognized command blocked safely.'
+                    : 'Local synthetic source projection opened above, if available. No HPE command was executed.'}
+                </p>
+              )}
+              <details className="rounded-lg border border-line p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-cyan">Technical response · JSON</summary>
+                <pre className="mt-3 max-h-60 overflow-auto text-xs text-ink-muted">{JSON.stringify(preview, null, 2)}</pre>
+              </details>
+            </div>
           )}
           <div className="flex items-start gap-2 text-xs leading-relaxed text-ink-muted">
             {overview?.tools_connected
