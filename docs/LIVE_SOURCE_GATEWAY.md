@@ -128,3 +128,19 @@ nonproduction environment; operator sign-off and runbook attribution.
 There is **no** native restart/purge execution route and no plan to grant
 a language model direct arbitrary command execution. Operator changes require
 a separate customer-approved change-management design.
+
+
+## Authenticated evidence-aware AI
+
+For a configured source, `POST /api/v1/integrations/ask` accepts
+`{"tool_id":"ems","question":"What do the current records indicate?"}`
+and the same independent `X-CAIL-Operator-Key` read credential.
+CAIL first captures a fresh gateway snapshot and its SHA-256 fingerprint,
+then passes up to 30 registered records to the local Ollama model.
+The response lists matched source record IDs, exact snapshot timestamp and
+advisory claims. Invented/unregistered citation IDs invalidate the model result.
+Citation membership **does not prove** that a sentence is semantically true;
+this remains a human-reviewed operator advisory with no execution permission.
+
+The live evidence and live AI endpoints are not published in the isolated
+Funnel demo and must not be used for synthetic ATM investor demonstrations.
