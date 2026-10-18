@@ -199,4 +199,35 @@ if ($evaluation.real_world_mttr_claim_allowed -ne $false -or $evaluation.measure
 }
 Write-Host "Sponsor Operations Lab: synthetic tool routing, financial case, safety, summaries and evaluation VERIFIED." -ForegroundColor Green
 
+# Sponsor ATM WOW demo uses six fictional locations and read-only existing adapters.
+$atmMap = Invoke-RestMethod -Uri "$base/operations/atm/network" -TimeoutSec 15
+if ($atmMap.production_connectivity -ne $false -or @($atmMap.sites).Count -ne 6 -or
+    $atmMap.attention_count -ne 1 -or $atmMap.site_event.id -ne "SIM-ATM-042-001") {
+    throw "ATM WOW map must identify exactly one fictional warning without claiming a live connection."
+}
+if (@($atmMap.sites | Where-Object { $_.status -eq "attention" -and $_.id -eq "ATM-042" }).Count -ne 1) {
+    throw "The red pin must identify synthetic ATM-042, not a real location."
+}
+foreach ($role in @("frontline", "engineer")) {
+    $atmPayload = @{atm_id="ATM-042";audience=$role;question="An ATM is down. What should I verify?"} | ConvertTo-Json
+    $atm = Invoke-RestMethod -Uri "$base/operations/atm/assist" -Method Post -ContentType "application/json" -Body $atmPayload -TimeoutSec 15
+    if ($atm.status -ne "guided_synthetic_investigation" -or @($atm.steps).Count -ne 3 -or
+        @($atm.source_previews).Count -ne 4 -or $atm.execution_allowed -ne $false -or
+        $atm.state_change_executed -ne $false -or $atm.production_connectivity -ne $false) {
+        throw "ATM adaptive $role explanation failed read-only API or provenance contract."
+    }
+    $native = @($atm.source_previews | Where-Object { $_.adapter -eq "pathcom" })
+    if ($native.Count -ne 1 -or $native[0].native_tool_status -ne "unknown" -or
+        @($native[0].observations).Count -ne 0) {
+        throw "ATM simulator must not invent a PATHCOM result."
+    }
+}
+$blockedAtmPayload = @{atm_id="ATM-042";audience="engineer";question="Restart the server now"} | ConvertTo-Json
+$blockedAtm = Invoke-RestMethod -Uri "$base/operations/atm/assist" -Method Post -ContentType "application/json" -Body $blockedAtmPayload -TimeoutSec 15
+if ($blockedAtm.status -ne "blocked_unsafe" -or $blockedAtm.state_change_executed -ne $false -or
+    @($blockedAtm.source_previews).Count -ne 0) {
+    throw "Unsafe ATM commands must be denied without a native tool call."
+}
+Write-Host "Sponsor ATM WOW: fictional map, two audience voices, existing-tool adapters, approved-only retrieval and safety VERIFIED." -ForegroundColor Green
+
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

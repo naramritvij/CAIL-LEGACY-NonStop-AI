@@ -42,9 +42,20 @@ for (const filename of ['errors.ts', 'backend-contract.ts']) {
   if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))throw Error('Console guard did not transpile')
   fs.writeFileSync(path.join(tmp,'console-guard.js'),output.outputText)
 }
+{
+  const source=fs.readFileSync(path.join(root,'src','api','atm-guard.ts'),'utf8')
+  const output=ts.transpileModule(source,{
+    fileName:'atm-guard.ts',reportDiagnostics:true,
+    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,isolatedModules:true},
+  })
+  if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))
+    throw Error('ATM guard did not transpile')
+  fs.writeFileSync(path.join(tmp,'atm-guard.js'),output.outputText)
+}
 const requireTmp = createRequire(path.join(tmp, 'verify.cjs'))
 const { assertSafePlaybook } = requireTmp('./playbook-guard.js')
 const { assertSafeConsoleResult } = requireTmp('./console-guard.js')
+const { assertSyntheticAtmNetwork, assertSyntheticAtmAssist } = requireTmp('./atm-guard.js')
 const { fromBackendIncidents, fromBackendWorkspace, fromBackendTree, fromBackendGrounded } = requireTmp('./backend-contract.js')
 
 const disk = {
@@ -97,7 +108,42 @@ const workspace = {
 }
 let checks = 0
 function test(name, fn) {
-  try { fn(); checks++; process.stdout.write('✓ ' + name + '\n') }
+  try { fn(); checks++; 
+test('ATM mission map forbids fabricated live locations and unapproved history',()=>{
+  const map={
+    production_connectivity:false,mode:'synthetic_location_schematic',
+    map_type:'fictional_district_plan_not_real_world_geolocation',
+    attention_count:1,
+    sites:[
+      {id:'ATM-042',x:62,y:65,status:'attention',live_connected:false},
+      {id:'ATM-011',x:15,y:70,status:'nominal',live_connected:false},
+    ],
+    approved_knowledge_matches:[],
+    fictional_history_examples:[{status:'unreviewed_fiction_not_an_actual_resolution'}],
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmNetwork(map))
+  assert.throws(()=>assertSyntheticAtmNetwork({...map,production_connectivity:true}),/real geospatial/)
+  assert.throws(()=>assertSyntheticAtmNetwork({...map,approved_knowledge_matches:[{review_status:'draft'}]}),/Unapproved/)
+})
+test('ATM audience response never returns native command execution or fake PATHCOM output',()=>{
+  const sample={
+    synthetic:true,production_connectivity:false,
+    execution_allowed:false,state_change_executed:false,
+    status:'guided_synthetic_investigation',
+    steps:[{title:'Check',evidence_ids:['SIM-ATM-042-001']}],
+    source_previews:[{
+      adapter:'pathcom',connected:false,
+      evidence_origin:'local_fixture_adapter',native_tool_status:'unknown',
+      observations:[],
+    }],
+    approved_knowledge_matches:[],
+  }
+  assert.doesNotThrow(()=>assertSyntheticAtmAssist(sample))
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,execution_allowed:true}),/native execution/)
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,source_previews:[{...sample.source_previews[0],observations:[{status:'RUNNING'}]}]}),/must remain UNKNOWN/)
+  assert.throws(()=>assertSyntheticAtmAssist({...sample,approved_knowledge_matches:[{review_status:'submitted'}]}),/unapproved lessons/)
+})
+process.stdout.write('✓ ' + name + '\n') }
   catch (err) { process.stderr.write('FAILED: ' + name + ': ' + err.stack + '\n'); process.exitCode = 1 }
 }
 test('two real incident schemas normalize as synthetic', () => {

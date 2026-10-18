@@ -3,6 +3,7 @@ import {
   FileSearch,
   GraduationCap,
   House,
+  MapPinned,
   LibraryBig,
   type LucideIcon,
   ScanSearch,
@@ -11,7 +12,7 @@ import {
   UserRoundCheck,
 } from 'lucide-react'
 
-export type SectionId = 'home' | 'operations' | 'investigate' | 'evidence' | 'tree' | 'apprentice' | 'mentor' | 'library'
+export type SectionId = 'home' | 'atm' | 'operations' | 'investigate' | 'evidence' | 'tree' | 'apprentice' | 'mentor' | 'library'
 
 export interface NavItem {
   id: SectionId
@@ -27,6 +28,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', icon: House, status: 'ready', description: 'Overview of open simulated incidents.' },
+  { id: 'atm', label: 'ATM Mission Demo', icon: MapPinned, status: 'ready', description: 'Locate a fictional affected ATM, retrieve tool evidence and approved expert lessons, and explain actions to any operator.' },
   { id: 'operations', label: 'Operations Lab', icon: TerminalSquare, status: 'ready', description: 'Unified native-reference and natural-language command router with financial failure simulation, tool evidence, shift summary and evaluation.' },
   { id: 'investigate', label: 'Investigate', icon: ScanSearch, status: 'ready', incidentScoped: true, description: 'Guided, evidence-grounded investigation.' },
   { id: 'evidence', label: 'Evidence', icon: FileSearch, status: 'ready', incidentScoped: true, description: 'Every evidence item for the selected incident.' },
