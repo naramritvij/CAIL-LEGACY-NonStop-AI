@@ -1,6 +1,7 @@
 import { Activity, ArrowUpRight, Database, FileSearch, LockKeyhole, TerminalSquare, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DATA_MODE, API_BASE } from '@/api/client'
+import { SourceEvidenceCards } from './SourceEvidenceCards'
 
 type StatusColor = 'green' | 'yellow' | 'red' | 'unknown'
 type HealthStatus = {
@@ -209,7 +210,15 @@ export function OperatorCommandCenter({
                 )}
               </div>
               <p className="text-xs text-ink-muted">{source.note} · Mode: {source.mode} · Live connected: {String(source.connected)}</p>
-              <pre className="max-h-80 overflow-auto rounded-lg border border-line-strong bg-black/20 p-3 text-xs text-ink-muted">{JSON.stringify(source.evidence, null, 2)}</pre>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-ink">Evidence summary · {source.evidence.length} fixture record{source.evidence.length === 1 ? '' : 's'}</p>
+                <span className="rounded-lg border border-gold/30 bg-gold/5 px-2 py-1 text-[11px] font-semibold text-gold">SIMULATED · NOT LIVE</span>
+              </div>
+              <SourceEvidenceCards toolId={source.tool_id} evidence={source.evidence} />
+              <details className="rounded-xl border border-line-strong p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-cyan">Technical details · view original JSON records</summary>
+                <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-line-strong bg-black/20 p-3 text-xs text-ink-muted">{JSON.stringify(source.evidence, null, 2)}</pre>
+              </details>
             </div>
           )}
           {preview != null && (
