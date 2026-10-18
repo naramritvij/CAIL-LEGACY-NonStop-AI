@@ -149,14 +149,25 @@ def investigate_with_corpus(question: str, incident: dict, release: str, max_chu
         note = GLOSSARY[key] if key is not None else None
         # Approved, release-matched excerpts take precedence over the static
         # orientation note. The source URL and excerpt have NOT been authenticated.
-        if key is not None:
-            matches = search_approved(key.replace('_', ' '), release, max_chunks)
+        if True:
+            # Allow other explicit concept questions when authorized, reviewed
+            # excerpts match the topic. No semantic match is invented.
+            search_query = key.replace('_', ' ') if key is not None else question
+            matches = search_approved(search_query, release, max_chunks)
             source_registry = [
                 row for row in _source_registry(
                     {'id': incident['id'], 'events': [], 'metrics': []},
                     matches['matches'])
                 if row['kind'] == 'locally_approved_user_supplied_excerpt'
             ]
+            if key is None:
+                # Reject generic lexical hits that do not share a meaningful
+                # user-question subject token (still not semantic entailment).
+                requested_terms = focus_terms(question)
+                source_registry = [
+                    row for row in source_registry
+                    if requested_terms.intersection(source_terms([row]))
+                ]
             if source_registry:
                 allowlist = {row['id'] for row in source_registry}
                 prompt = (
