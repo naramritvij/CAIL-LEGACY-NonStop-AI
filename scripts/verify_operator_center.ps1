@@ -141,4 +141,51 @@ if ($invalidStatus -ne 422) {
 Write-Host "Guided command playbooks, HPE reference-only statuses and both no-execution gates VERIFIED." -ForegroundColor Green
 
 Write-Host "CAIL Operator Command Center: status, provenance, safety, Knowledge Tree VERIFIED (local synthetic checks)." -ForegroundColor Green
+
+# Integrated sponsor workflow: manual references, command routing, five
+# synthetic tool views, financial failure chronology and honest handover.
+$labScenarios = Invoke-RestMethod -Uri "$base/operations/lab/scenarios" -TimeoutSec 15
+if ($labScenarios.live_connected -ne $false -or @($labScenarios.scenarios).Count -ne 3) {
+    throw "Expected exactly three local simulation scenarios and no HPE connectivity."
+}
+$financial = "INC-FIN-HW-003"
+$financialEventsPayload = @{incident_id=$financial;input="SHOW ALERTS"} | ConvertTo-Json
+$financialEvents = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $financialEventsPayload -TimeoutSec 15
+if ($financialEvents.adapter -ne "ems" -or @($financialEvents.evidence.observations).Count -ne 5 -or
+    $financialEvents.execution_allowed -ne $false -or $financialEvents.state_change_executed -ne $false) {
+    throw "Synthetic hardware failure missing five registered EMS-style events."
+}
+$nativePayload = @{incident_id=$financial;input="STATUS PATHWAY"} | ConvertTo-Json
+$native = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $nativePayload -TimeoutSec 15
+if ($native.status -ne "reference_only_unknown_status" -or $native.evidence.actual_tool_status -ne "unknown" -or
+    @($native.evidence.observations).Count -ne 0 -or $native.live_connected -ne $false) {
+    throw "PATHCOM reference must not fabricate actual server output."
+}
+$correlationPayload = @{incident_id=$financial;input="SHOW CORRELATION"} | ConvertTo-Json
+$correlation = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $correlationPayload -TimeoutSec 15
+if (@($correlation.correlation.ordered_evidence).Count -ne 5 -or $correlation.correlation.root_cause_confirmed -ne $false) {
+    throw "Hardware-to-transaction timeline missing or pretending verified causation."
+}
+$unsafePayload = @{incident_id=$financial;input="STOP PATHWAY"} | ConvertTo-Json
+$unsafe = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $unsafePayload -TimeoutSec 15
+if ($unsafe.status -ne "blocked_unsafe" -or $null -ne $unsafe.evidence -or
+    $unsafe.state_change_executed -ne $false) {
+    throw "Console must block unsafe commands before a tool adapter is called."
+}
+$mismatchPayload = @{incident_id="INC-DISK-001";input="Check server status in PATHCOM"} | ConvertTo-Json
+$mismatch = Invoke-RestMethod -Uri "$base/operations/lab/command" -Method Post -ContentType "application/json" -Body $mismatchPayload -TimeoutSec 15
+if ($mismatch.status -ne "context_mismatch" -or $mismatch.suggested_incident_id -ne "INC-PATH-002") {
+    throw "Wrong-incident PATHCOM query was not redirected safely."
+}
+$shift = Invoke-RestMethod -Uri "$base/operations/lab/shift-summary" -TimeoutSec 15
+if ($shift.incident_count -ne 3 -or $shift.event_count -ne 10 -or
+    $shift.approved_resolutions_reported -ne 0 -or $shift.actual_cpu_normality_confirmed -ne $false) {
+    throw "Shift summary must derive counts without inventing restarts, health, or resolutions."
+}
+$evaluation = Invoke-RestMethod -Uri "$base/operations/lab/evaluation-protocol" -TimeoutSec 15
+if ($evaluation.real_world_mttr_claim_allowed -ne $false -or $evaluation.measurement_status -ne "not_yet_measured") {
+    throw "Benchmark must not claim unmeasured productivity gains."
+}
+Write-Host "Sponsor Operations Lab: synthetic tool routing, financial case, safety, summaries and evaluation VERIFIED." -ForegroundColor Green
+
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

@@ -10,10 +10,12 @@ import { LegacyTreePage } from '@/pages/LegacyTreePage'
 import { MentorPage } from '@/pages/MentorPage'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { ApprenticePage } from '@/pages/ApprenticePage'
+import { OperationsLabPage } from '@/pages/OperationsLabPage'
 import { WorkspaceView } from '@/pages/WorkspaceView'
 
 function Content() {
   const { section, incidentsError, retryIncidents, selectedId, selectIncident } = useIncidentContext()
+  if (section === 'operations') return <OperationsLabPage />
   if (section === 'mentor') return <MentorPage />
   if (section === 'library') return <LibraryPage />
   if (section === 'apprentice') return <ApprenticePage />

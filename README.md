@@ -308,3 +308,21 @@ See [Knowledge Transfer demo guide](docs/KNOWLEDGE_TRANSFER_DEMO.md) for the one
 The Investigate screen now starts with an issue-specific **Guided Command Playbook** for the synthetic disk and Pathway incidents: read-only CAIL fixture previews, documentation-only SCF/PATHCOM status syntax, evidence buttons, interpretation/unknowns, and contextual next steps. A deterministic symptom selector routes questions to registered checks, not free-form executable commands. Published HPE document links are included for each real command reference; the project-supplied `a00099017en_us` link was not directly verifiable as a command manual. There is no live HPE integration or execution endpoint.
 
 See [document/source audit, exact commands, and safety boundaries](docs/GUIDED_COMMAND_PLAYBOOK.md). The additional tests and UI have **not yet been locally verified** and must pass the full Windows check before this draft PR is merged.
+
+## Integrated CAIL Sponsor Operations Lab — synthetic completeness milestone
+
+The local prototype now has an **Operations Lab** route with an allowlisted
+operator command console, CAIL Suite-style offline adapters (EMS, ASAP,
+Guardian/process, SCF and PATHCOM references), an interdependent financial
+hardware-capacity failure, a generated management/overnight briefing and a
+browser-based timed evaluation protocol. Existing Investigate pages share
+the same console. Commands that might change system state are blocked;
+recognized native STATUS commands are documentation references, not executed
+subsystem queries.
+
+See [sponsor mission and realistic acceptance/limitations](docs/SPONSOR_MISSION_ACCEPTANCE.md).
+
+The CAIL brochure permits a read-only advisory prototype, but a real CAIL
+Suite deployment requires authorized connectivity, verified NonStop release,
+RBAC, site-specific policy and genuine data; none is claimed. Do not present
+temporary fictional incident chronology as an authenticated hardware failure.

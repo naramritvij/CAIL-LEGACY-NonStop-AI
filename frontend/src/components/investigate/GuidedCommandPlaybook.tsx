@@ -20,7 +20,7 @@ type Playbook = {
   release_verified: false; operator_authorized: false; limitations: string
 }
 type Recommendation = {
-  status: 'matched' | 'needs_clarification'; recommended_step_id: string | null
+  status: 'matched' | 'needs_clarification' | 'context_mismatch'; recommended_step_id: string | null; suggested_incident_id?:string
   reason: string; matched_terms: string[]; recommendation_basis: string
 }
 type Preview = {
@@ -90,7 +90,10 @@ export function GuidedCommandPlaybook({ incidentId, onSelectEvidence, onAskEvide
         <input id="cail-command-question" value={question} onChange={e=>setQuestion(e.target.value)} maxLength={500} placeholder="E.g. check disk status, Pathway server state, EMS alerts…" className="neu-inset min-w-0 flex-1 rounded-xl p-3 text-sm"/>
         <button type="submit" disabled={busy||question.trim().length<3} className="btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm disabled:opacity-50"><Search className="size-4"/> Find relevant check</button>
       </form>
-      {recommendation&&<p role="status" className="mt-2 text-xs text-ink-muted">{recommendation.reason} {recommendation.matched_terms.length>0?'Matched: '+recommendation.matched_terms.join(', '):''} <span className="text-ink-faint">· Curated rule-based routing, not an AI diagnosis.</span></p>}
+      {recommendation&&<div role="status" className="mt-2 text-xs text-ink-muted">
+        <p>{recommendation.reason} {recommendation.matched_terms.length>0?'Matched: '+recommendation.matched_terms.join(', '):''} <span className="text-ink-faint">· Curated rule-based routing, not an AI diagnosis.</span></p>
+        {recommendation.suggested_incident_id&&<a href={'#/investigate/'+encodeURIComponent(recommendation.suggested_incident_id)} className="mt-2 inline-flex items-center gap-2 text-cyan underline">Open the matching incident →</a>}
+      </div>
       <p className="mt-4 text-xs text-ink-faint">Steps are ordered for this synthetic incident, not a universally valid production runbook. All HPE command applicability and operator privileges remain unverified.</p>
       <div className="mt-3 flex flex-col gap-3">
         {playbook.steps.map((step,index)=>{

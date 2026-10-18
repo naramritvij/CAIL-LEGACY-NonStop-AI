@@ -24,6 +24,11 @@ export function HomePage() {
         </p>
       </header>
 
+      <section className="glass glow-cyan p-5" aria-label="Financial failure demo">
+        <h2 className="text-lg font-semibold">Mission-critical financial outage simulation</h2>
+        <p className="mt-2 max-w-3xl text-sm text-ink-muted">A simulated hardware-capacity issue, CPU stress, Pathway latency, and reduced payment success—investigate with a unified command console, inspect source evidence, and view the shift handover.</p>
+        <button type="button" onClick={() => navigate('operations')} className="btn-primary mt-3 rounded-xl px-4 py-3 text-sm">Launch Operations Lab →</button>
+      </section>
       <section aria-labelledby="incidents-title" className="glass p-5 sm:p-6">
         <h2 id="incidents-title" className="text-lg font-semibold">
           Simulated incidents

@@ -33,8 +33,18 @@ for (const filename of ['errors.ts', 'backend-contract.ts']) {
   if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))throw Error('Playbook guard did not transpile')
   fs.writeFileSync(path.join(tmp,'playbook-guard.js'),output.outputText)
 }
+{
+  const source=fs.readFileSync(path.join(root,'src','api','console-guard.ts'),'utf8')
+  const output=ts.transpileModule(source,{
+    fileName:'console-guard.ts',reportDiagnostics:true,
+    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,isolatedModules:true},
+  })
+  if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))throw Error('Console guard did not transpile')
+  fs.writeFileSync(path.join(tmp,'console-guard.js'),output.outputText)
+}
 const requireTmp = createRequire(path.join(tmp, 'verify.cjs'))
 const { assertSafePlaybook } = requireTmp('./playbook-guard.js')
+const { assertSafeConsoleResult } = requireTmp('./console-guard.js')
 const { fromBackendIncidents, fromBackendWorkspace, fromBackendTree, fromBackendGrounded } = requireTmp('./backend-contract.js')
 
 const disk = {
@@ -222,6 +232,31 @@ test('guided playbook rejects untrusted HPE source origins and arbitrary local i
   }
   assert.doesNotThrow(()=>assertSafePlaybook(basic))
   assert.throws(()=>assertSafePlaybook({...basic,steps:[{...basic.steps[0],local_intent:'restart_service'}]}),/unknown local preview/)
+})
+test('Unified Command Console rejects false claims of native execution and source authenticity', () => {
+  const sample={incident_id:'INC-FIN-HW-003',input:'SHOW ALERTS',
+    status:'synthetic_result',synthetic:true,live_connected:false,
+    execution_allowed:false,state_change_executed:false,source_authenticity_verified:false,
+    adapter:'ems',evidence:{adapter:'ems',transport:'local_fixture_adapter',
+      connected_to_live_hpe:false,source_authenticity_verified:false,
+      actual_tool_status:'unknown',observations:[{id:'SIM-EVT-301'}]},
+  }
+  assert.doesNotThrow(()=>assertSafeConsoleResult(sample))
+  assert.throws(()=>assertSafeConsoleResult({...sample,live_connected:true}),/live\/execution/)
+  assert.throws(()=>assertSafeConsoleResult({...sample,evidence:{...sample.evidence,actual_tool_status:'healthy'}}),/source claims/)
+})
+test('Native command reference cannot pretend to return executed PATHCOM data', () => {
+  const sample={incident_id:'INC-PATH-002',input:'STATUS PATHWAY',
+    status:'reference_only_unknown_status',synthetic:true,live_connected:false,
+    execution_allowed:false,state_change_executed:false,source_authenticity_verified:false,
+    adapter:'pathcom',evidence:{adapter:'pathcom',transport:'local_fixture_adapter',
+      connected_to_live_hpe:false,source_authenticity_verified:false,
+      actual_tool_status:'unknown',observations:[],
+      reference_url:'https://support.hpe.com/hpesc/public/docDisplay?docId=a00090085en_us'},
+  }
+  assert.doesNotThrow(()=>assertSafeConsoleResult(sample))
+  assert.throws(()=>assertSafeConsoleResult({...sample,evidence:{...sample.evidence,
+    observations:[{status:'RUNNING'}]}}),/fake native/)
 })
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})

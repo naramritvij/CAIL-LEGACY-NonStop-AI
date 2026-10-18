@@ -464,3 +464,48 @@ class PlaybookQuestion(BaseModel):
 @app.post('/api/v1/operations/playbook/recommend')
 def operator_playbook_recommend(body: PlaybookQuestion):
     return _recommend_playbook_step(incident_or_404(body.incident_id), body.question)
+
+
+# CAIL Suite-compatible offline operator command router.
+# A future authenticated adapter would require a separate reviewed security milestone.
+from .operations_lab import (
+    scenarios as _lab_scenarios, command as _lab_command,
+    shift_summary as _lab_summary, evaluation_protocol as _lab_evaluation,
+    incident as _lab_incident,
+)
+
+class UnifiedCommandRequest(BaseModel):
+    incident_id: str = Field(min_length=3, max_length=64)
+    input: str = Field(min_length=3, max_length=500)
+
+@app.get('/api/v1/operations/lab/scenarios')
+def lab_scenarios():
+    return {'mode':'simulation_only','scenarios':_lab_scenarios(),'live_connected':False}
+
+@app.post('/api/v1/operations/lab/command')
+def lab_command(body: UnifiedCommandRequest):
+    if _lab_incident(body.incident_id) is None:
+        raise HTTPException(404, 'Unknown incident')
+    try:
+        return _lab_command(body.incident_id, body.input)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+@app.get('/api/v1/operations/lab/shift-summary')
+def lab_shift_summary():
+    return _lab_summary()
+
+@app.get('/api/v1/operations/lab/evaluation-protocol')
+def lab_evaluation_protocol():
+    return _lab_evaluation()
+
+
+# Optional locally grounded Qwen assessment of the fictional financial outage.
+# Same validated citation-ID rules as the two existing incident investigations;
+# still not verified semantic entailment or an executable command recommendation.
+@app.post('/api/v1/operations/lab/ask')
+def lab_explain(body: GroundedInvestigationRequest):
+    selected=_lab_incident(body.incident_id)
+    if selected is None:
+        raise HTTPException(404, 'Unknown incident')
+    return investigate_with_corpus(body.question, selected, body.release, body.max_chunks)

@@ -11,6 +11,7 @@ import { LegacyTreeTeaser } from '@/components/investigate/LegacyTreeTeaser'
 import { MetricsPanel } from '@/components/investigate/MetricsPanel'
 import { SafeChecks } from '@/components/investigate/SafeChecks'
 import { GuidedCommandPlaybook } from '@/components/investigate/GuidedCommandPlaybook'
+import { UnifiedCommandConsole } from '@/components/operations/UnifiedCommandConsole'
 import { Timeline } from '@/components/investigate/Timeline'
 
 const STEP_TAB: Record<Exclude<StepId, 'capture'>, AnalysisTab> = {
@@ -36,6 +37,7 @@ export function InvestigatePage({ workspace, onSelectEvidence }: Props) {
   return (
     <div className="flex flex-col gap-4 lg:gap-5">
       <IncidentHeader incident={workspace.incident} generatedAt={workspace.generated_at} />
+      <UnifiedCommandConsole incidentId={workspace.incident.incident_id} condensed />
       <GuidedCommandPlaybook incidentId={workspace.incident.incident_id} onSelectEvidence={onSelectEvidence}
         onAskEvidence={q=>{setGuidedQuestion(q);document.getElementById('ai-investigation-title')?.scrollIntoView({behavior:'smooth',block:'center'})}} />
       <InvestigationProgress current={step} onChange={setStep} />

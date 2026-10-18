@@ -270,6 +270,32 @@ TOPICS = {
 def recommend_step(incident: dict, question: str) -> dict:
     import re
     tokens = set(re.findall(r'[a-z0-9]+', question.lower()))
+    # A native subsystem hint must never be silently reinterpreted as a
+    # generic keyword from the currently selected, unrelated incident.
+    if incident['id']=='INC-DISK-001' and tokens.intersection(
+        {'pathway','pathcom','pathmon','serverclass'}
+    ):
+        return {
+            'incident_id':incident['id'], 'status':'context_mismatch',
+            'recommended_step_id':None, 'matched_terms':sorted(tokens.intersection(
+                {'pathway','pathcom','pathmon','serverclass'})),
+            'suggested_incident_id':'INC-PATH-002',
+            'reason':'PATHCOM/Pathway terms do not match the selected disk incident. Switch to the Pathway investigation.',
+            'recommendation_basis':'deterministic_curated_terms_not_ai',
+            'execution_allowed':False,'state_change_executed':False,
+        }
+    if incident['id']=='INC-PATH-002' and tokens.intersection(
+        {'disk','scf','volume','retention'}
+    ):
+        return {
+            'incident_id':incident['id'], 'status':'context_mismatch',
+            'recommended_step_id':None, 'matched_terms':sorted(tokens.intersection(
+                {'disk','scf','volume','retention'})),
+            'suggested_incident_id':'INC-DISK-001',
+            'reason':'Storage/SCF terms do not match the selected Pathway incident. Switch to the disk investigation.',
+            'recommendation_basis':'deterministic_curated_terms_not_ai',
+            'execution_allowed':False,'state_change_executed':False,
+        }
     candidates = []
     for step_id, terms in TOPICS.get(incident['id'], []):
         hits = sorted(tokens & terms)

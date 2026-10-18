@@ -6,11 +6,12 @@ import {
   LibraryBig,
   type LucideIcon,
   ScanSearch,
+  TerminalSquare,
   Sprout,
   UserRoundCheck,
 } from 'lucide-react'
 
-export type SectionId = 'home' | 'investigate' | 'evidence' | 'tree' | 'apprentice' | 'mentor' | 'library'
+export type SectionId = 'home' | 'operations' | 'investigate' | 'evidence' | 'tree' | 'apprentice' | 'mentor' | 'library'
 
 export interface NavItem {
   id: SectionId
@@ -26,6 +27,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', icon: House, status: 'ready', description: 'Overview of open simulated incidents.' },
+  { id: 'operations', label: 'Operations Lab', icon: TerminalSquare, status: 'ready', description: 'Unified native-reference and natural-language command router with financial failure simulation, tool evidence, shift summary and evaluation.' },
   { id: 'investigate', label: 'Investigate', icon: ScanSearch, status: 'ready', incidentScoped: true, description: 'Guided, evidence-grounded investigation.' },
   { id: 'evidence', label: 'Evidence', icon: FileSearch, status: 'ready', incidentScoped: true, description: 'Every evidence item for the selected incident.' },
   {
