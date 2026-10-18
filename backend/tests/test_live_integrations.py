@@ -157,3 +157,55 @@ def test_model_unavailable_is_not_a_fake_answer(client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["status"] == "model_unavailable"
     assert response.json()["citations"] == []
+
+
+def test_live_ai_grounded_only_in_registered_gateway_ids(client, monkeypatch):
+    from app import live_investigation
+    snapshot = {
+        "snapshot_sha256": "a" * 64, "observed_at": datetime.now(timezone.utc).isoformat(),
+        "health_signal": "yellow",
+        "evidence": [{"id": "EMS-123", "severity": "warning",
+                      "message": "Read-only registered gateway alert"}],
+    }
+    monkeypatch.setattr(live_investigation, "read_source", lambda tool: snapshot)
+    def model(request, timeout):
+        assert "EMS-123" in json.loads(request.data)["prompt"]
+        return FakeResponse(json.dumps({"response": json.dumps({"claims": [{
+            "text": "The gateway snapshot contains a warning event.",
+            "citations": ["EMS-123"],
+        }]})}).encode())
+    monkeypatch.setattr(live_investigation, "urlopen", model)
+    resp = client.post(URL + "/integrations/ask", headers=HEADERS,
+                       json={"tool_id": "ems", "question": "What evidence was observed?"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "generated_unverified"
+    assert data["claims"][0]["citations"] == ["EMS-123"]
+    assert data["execution_allowed"] is False
+    assert data["source_snapshot_sha256"] == "a" * 64
+
+
+def test_live_ai_rejects_hallucinated_citations(client, monkeypatch):
+    from app import live_investigation
+    snapshot = {
+        "snapshot_sha256": "b" * 64, "observed_at": datetime.now(timezone.utc).isoformat(),
+        "health_signal": "unknown", "evidence": [{"id": "EMS-123"}],
+    }
+    monkeypatch.setattr(live_investigation, "read_source", lambda tool: snapshot)
+    monkeypatch.setattr(live_investigation, "urlopen",
+        lambda request, timeout: FakeResponse(
+            json.dumps({"response": json.dumps({"claims": [{
+                "text": "Invented evidence proves the root cause.",
+                "citations": ["EMS-FORGED"],
+            }]})}).encode()))
+    result = client.post(URL + "/integrations/ask", headers=HEADERS,
+                         json={"tool_id": "ems", "question": "What is the root cause?"})
+    assert result.status_code == 200
+    assert result.json()["status"] == "model_unavailable_or_rejected"
+    assert result.json()["claims"] == []
+
+
+def test_live_ai_requires_independent_operator_key(client):
+    result = client.post(URL + "/integrations/ask",
+                         json={"tool_id": "ems", "question": "What happened?"})
+    assert result.status_code == 403
