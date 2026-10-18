@@ -1,5 +1,32 @@
 # CAIL/Nonstop AI Operations Assistant — Operator Command Center
 
+## Update — actual local health checks and HPE reference commands (18 October 2026)
+
+The Home page **CHECK HEALTH** control now performs fresh local read-only checks:
+- CAIL backend responds to the active API request.
+- The backend queries the configured local Ollama `GET /api/tags` endpoint with a 3-second timeout and verifies that the requested model appears in the returned inventory.
+- A response from Ollama is **not** proof that inference, model quality, application availability, or any HPE NonStop service is healthy.
+- The selected incident's colored signal remains separate and is explicitly labelled **synthetic**. Native HPE health is **UNKNOWN** until the authorized operator configures and verifies a live evidence gateway.
+
+`GET /api/v1/operations/runtime-health` returns fresh local backend/Ollama observations. Existing `POST /api/v1/operations/commands/preview` for `check_health` includes both the runtime observations and the synthetic incident signal as separate fields.
+
+The command center now lists the incident-matched **HPE read-only syntax references** from `backend/app/command_playbook.py`:
+- Synthetic disk incident: `STATUS DISK $DATA03` (object name is fictional and must be verified before real use).
+- Synthetic Pathway incident: `STATUS PATHWAY` and `STATUS SERVER <serverclass>, DETAIL` (serverclass unknown).
+
+Each shows its purpose, fields to inspect, prerequisites, UNKNOWN actual status, and an HPE documentation link. Clicking **Show usage and availability** does **not** execute a command or simulate a successful native response. There is no TACL, SCF or PATHCOM terminal API. `SHOW SCF REFERENCE` is only displayed for the disk incident, never indiscriminately for Pathway.
+
+The other five legacy interface actions show local synthetic source projections; they remain interface intents, not source-native HPE commands. For real HPE health, the sanctioned HTTPS source gateway remains separately authenticated, opt-in, and requires customer access. Never put HPE credentials in the browser.
+
+Manual quick check:
+
+```powershell
+Invoke-RestMethod "http://localhost:8000/api/v1/operations/runtime-health" | Format-List
+Invoke-RestMethod "http://localhost:8000/api/v1/operations/incidents/INC-DISK-001/commands" | ConvertTo-Json -Depth 7
+Invoke-RestMethod "http://localhost:8000/api/v1/operations/incidents/INC-PATH-002/commands" | ConvertTo-Json -Depth 7
+```
+
+
 This milestone adds a source-aware operator experience WITHOUT claiming a live HPE NonStop connection.
 
 ## Delivered components
