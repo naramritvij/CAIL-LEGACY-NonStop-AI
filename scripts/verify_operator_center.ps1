@@ -115,12 +115,30 @@ if ($syntheticPreview.status -ne "synthetic_preview" -or $syntheticPreview.state
     @($syntheticPreview.source.evidence).Count -ne 2) {
     throw "Pathway playbook event preview failed or used unregistered records."
 }
-$rejectPayload = @{incident_id="INC-DISK-001";step_id="purge_files"} | ConvertTo-Json
+# A syntactically valid but *unregistered* step must fail closed in the
+# playbook implementation: HTTP 200 with blocked_unknown_step and NO output.
+$rejectPayload = @{incident_id="INC-DISK-001";step_id="purge-files"} | ConvertTo-Json
 $rejectedStep = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $rejectPayload -TimeoutSec 15
-if ($rejectedStep.status -ne "blocked_unknown_step" -or $rejectedStep.state_change_executed -ne $false) {
-    throw "Command playbook accepted an unsafe step."
+if ($rejectedStep.status -ne "blocked_unknown_step" -or $rejectedStep.execution_allowed -ne $false -or
+    $rejectedStep.state_change_executed -ne $false -or $null -ne $rejectedStep.preview) {
+    throw "Command playbook accepted an unregistered or unsafe step."
 }
-Write-Host "Guided command playbooks, HPE reference-only statuses and no-execution gates VERIFIED." -ForegroundColor Green
+
+# An invalid identifier containing underscore is rejected earlier by FastAPI
+# request validation (HTTP 422). This is *also* a correct safety rejection:
+# do not treat it as a failure of the command executor.
+$invalidPayload = @{incident_id="INC-DISK-001";step_id="purge_files"} | ConvertTo-Json
+$invalidStatus = $null
+try {
+    $null = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $invalidPayload -TimeoutSec 15
+} catch {
+    if ($null -eq $_.Exception.Response) { throw }
+    $invalidStatus = [int]$_.Exception.Response.StatusCode
+}
+if ($invalidStatus -ne 422) {
+    throw "Invalid command identifier must be rejected by validation (HTTP 422); observed status: $invalidStatus"
+}
+Write-Host "Guided command playbooks, HPE reference-only statuses and both no-execution gates VERIFIED." -ForegroundColor Green
 
 Write-Host "CAIL Operator Command Center: status, provenance, safety, Knowledge Tree VERIFIED (local synthetic checks)." -ForegroundColor Green
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow
