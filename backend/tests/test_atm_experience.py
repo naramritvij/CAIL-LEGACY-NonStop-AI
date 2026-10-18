@@ -248,3 +248,10 @@ def test_chat_other_demo_terminal_is_not_labeled_broken(client):
     assert data['investigation']['status']=='no_synthetic_incident'
     assert data['investigation']['source_previews']==[]
     assert data['network']['attention_count']==1
+
+
+def test_atmospheric_question_does_not_false_trigger_atm_locator(client):
+    result=chat_post(client,'How does atmospheric pressure work?').json()
+    assert result['status']=='out_of_scope'
+    assert result['network'] is None
+    assert result['map_triggered'] is False

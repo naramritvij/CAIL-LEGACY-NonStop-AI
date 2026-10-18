@@ -189,7 +189,9 @@ def chat(question: str, audience_mode: str = 'auto',
         raise ValueError('Selected ATM is not in the fictional registry')
     lower = question.lower()
     explicit = re.search(r'\bATM-[0-9]{3}\b', question.upper())
-    atm_topic = explicit is not None or any(term in lower for term in _ATM_TERMS)
+    atm_topic = (explicit is not None or
+                 bool(re.search(r'\bATM\b', question, re.IGNORECASE)) or
+                 any(term in lower for term in _ATM_TERMS if term != 'atm'))
     if not atm_topic and selected_atm_id is None:
         return {
             'status':'out_of_scope','synthetic':True,
