@@ -23,7 +23,18 @@ for (const filename of ['errors.ts', 'backend-contract.ts']) {
   }
   fs.writeFileSync(path.join(tmp, filename.replace(/\.ts$/, '.js')), res.outputText)
 }
+
+{
+  const source=fs.readFileSync(path.join(root,'src','api','playbook-guard.ts'),'utf8')
+  const output=ts.transpileModule(source,{
+    fileName:'playbook-guard.ts', reportDiagnostics:true,
+    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,isolatedModules:true},
+  })
+  if(output.diagnostics?.some(d=>d.category===ts.DiagnosticCategory.Error))throw Error('Playbook guard did not transpile')
+  fs.writeFileSync(path.join(tmp,'playbook-guard.js'),output.outputText)
+}
 const requireTmp = createRequire(path.join(tmp, 'verify.cjs'))
+const { assertSafePlaybook } = requireTmp('./playbook-guard.js')
 const { fromBackendIncidents, fromBackendWorkspace, fromBackendTree, fromBackendGrounded } = requireTmp('./backend-contract.js')
 
 const disk = {
@@ -186,6 +197,31 @@ test('deterministic operator briefing does not become an AI citation', () => {
   assert.equal(response.claims.length,0)
   assert.equal(response.operator_brief.status,'yellow')
   assert.equal(response.operator_brief.root_cause_status,'not_established')
+})
+test('guided playbook preserves read-only command references', () => {
+  const sample={
+    mode:'synthetic_guidance_no_command_execution',release_verified:false,
+    operator_authorized:false,manual_references_verified_for_specific_release:false,
+    steps:[{id:'disk-scf-status',kind:'manual_reference',synthetic:true,
+      execution_allowed:false,state_change_executed:false,command_applicability_verified:false,
+      command:'STATUS DISK $DATA03',local_intent:null,
+      event_ids:['SIM-EVT-103'],
+      references:[{url:'https://support.hpe.com/hpesc/public/docDisplay?docId=a00022757en_us'}]}],
+  }
+  assert.doesNotThrow(()=>assertSafePlaybook(sample))
+  assert.throws(()=>assertSafePlaybook({...sample,steps:[{...sample.steps[0],command:'DELETE DISK $DATA03'}]}),/unknown manual command/)
+  assert.throws(()=>assertSafePlaybook({...sample,steps:[{...sample.steps[0],execution_allowed:true}]}),/suspicious/)
+})
+test('guided playbook rejects untrusted HPE source origins and arbitrary local intents', () => {
+  const basic={
+    mode:'synthetic_guidance_no_command_execution',release_verified:false,
+    operator_authorized:false,manual_references_verified_for_specific_release:false,
+    steps:[{id:'path-events',kind:'local_preview',synthetic:true,
+      execution_allowed:false,state_change_executed:false,command_applicability_verified:false,
+      command:null,local_intent:'show_alerts',event_ids:['SIM-EVT-201'],references:[]}],
+  }
+  assert.doesNotThrow(()=>assertSafePlaybook(basic))
+  assert.throws(()=>assertSafePlaybook({...basic,steps:[{...basic.steps[0],local_intent:'restart_service'}]}),/unknown local preview/)
 })
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})

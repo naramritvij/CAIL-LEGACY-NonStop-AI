@@ -1,18 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrainCircuit, FileSearch, LoaderCircle, ShieldAlert } from 'lucide-react'
 import { api, DATA_MODE } from '@/api/client'
 import type { GroundedInvestigationResponse } from '@/api/types'
 import { Badge } from '@/components/ui/Badge'
 
 /** User-triggered optional local Ollama request. Never grants or executes any action. */
-export function AiInvestigation({ incidentId, onSelectEvidence }: {
+export function AiInvestigation({ incidentId, onSelectEvidence, suggestedQuestion }: {
   incidentId: string
   onSelectEvidence: (id: string) => void
+  suggestedQuestion?: string
 }) {
   const [question, setQuestion] = useState('What do the recorded synthetic events establish, and what remains unknown?')
   const [response, setResponse] = useState<GroundedInvestigationResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  useEffect(()=>{if(suggestedQuestion)setQuestion(suggestedQuestion)},[suggestedQuestion])
 
   async function ask() {
     setLoading(true)

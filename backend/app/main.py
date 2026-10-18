@@ -435,3 +435,32 @@ def corpus_document_detail(
     if document['status'] != 'approved':
         require_either(x_legacy_expert_key or x_legacy_reviewer_key)
     return document
+
+
+# Incident-specific evidence-to-command learning guide. No shell, HPE transport,
+# arbitrary command string, or state-changing action is accepted.
+from .command_playbook import build_playbook as _build_playbook, preview_playbook as _preview_playbook
+
+class PlaybookPreviewRequest(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=64)
+    step_id: str = Field(min_length=1, max_length=80, pattern=r'^[a-z0-9-]+$')
+
+@app.get('/api/v1/operations/incidents/{incident_id}/playbook')
+def operator_playbook(incident_id: str):
+    return _build_playbook(incident_or_404(incident_id))
+
+@app.post('/api/v1/operations/playbook/preview')
+def operator_playbook_preview(body: PlaybookPreviewRequest):
+    return _preview_playbook(incident_or_404(body.incident_id), body.step_id)
+
+
+# Deterministic symptom-to-step mapping; never accepts an executable command.
+from .command_playbook import recommend_step as _recommend_playbook_step
+
+class PlaybookQuestion(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=64)
+    question: str = Field(min_length=3, max_length=500)
+
+@app.post('/api/v1/operations/playbook/recommend')
+def operator_playbook_recommend(body: PlaybookQuestion):
+    return _recommend_playbook_step(incident_or_404(body.incident_id), body.question)

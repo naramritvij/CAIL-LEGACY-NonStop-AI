@@ -87,5 +87,40 @@ if ($unrelated.status -ne "insufficient_relevant_evidence" -or
 }
 Write-Host "Concept routing and unrelated-evidence rejection verified." -ForegroundColor Green
 
+
+# Guided command playbook: links HPE-documented STATUS syntax to simulated
+# evidence without executing real SCF or PATHCOM commands.
+$diskGuide = Invoke-RestMethod -Uri "$base/operations/incidents/INC-DISK-001/playbook" -TimeoutSec 15
+$pathGuide = Invoke-RestMethod -Uri "$base/operations/incidents/INC-PATH-002/playbook" -TimeoutSec 15
+if (@($diskGuide.steps).Count -ne 4 -or @($pathGuide.steps).Count -ne 5 -or
+    $diskGuide.release_verified -ne $false -or $pathGuide.operator_authorized -ne $false) {
+    throw "Command playbook requires 4 disk / 5 Pathway synthetic guidance steps with unverified target."
+}
+$scfReference = @($diskGuide.steps | Where-Object { $_.id -eq "disk-scf-status" })
+$serverReference = @($pathGuide.steps | Where-Object { $_.id -eq "path-server" })
+if ($scfReference.Count -ne 1 -or $scfReference[0].command -ne 'STATUS DISK $DATA03' -or
+    $serverReference.Count -ne 1 -or $serverReference[0].command -ne 'STATUS SERVER <serverclass>, DETAIL') {
+    throw "HPE-documented storage or Pathway status reference missing."
+}
+$manualPayload = @{incident_id="INC-DISK-001";step_id="disk-scf-status"} | ConvertTo-Json
+$manual = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $manualPayload -TimeoutSec 15
+if ($manual.status -ne "manual_reference_only" -or $manual.execution_allowed -ne $false -or
+    $manual.state_change_executed -ne $false -or $manual.source.health_signal -ne "unknown" -or
+    @($manual.source.evidence).Count -ne 0) {
+    throw "SCF reference fabricated live status or permission to execute."
+}
+$previewPayload = @{incident_id="INC-PATH-002";step_id="path-events"} | ConvertTo-Json
+$syntheticPreview = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $previewPayload -TimeoutSec 15
+if ($syntheticPreview.status -ne "synthetic_preview" -or $syntheticPreview.state_change_executed -ne $false -or
+    @($syntheticPreview.source.evidence).Count -ne 2) {
+    throw "Pathway playbook event preview failed or used unregistered records."
+}
+$rejectPayload = @{incident_id="INC-DISK-001";step_id="purge_files"} | ConvertTo-Json
+$rejectedStep = Invoke-RestMethod -Uri "$base/operations/playbook/preview" -Method Post -ContentType "application/json" -Body $rejectPayload -TimeoutSec 15
+if ($rejectedStep.status -ne "blocked_unknown_step" -or $rejectedStep.state_change_executed -ne $false) {
+    throw "Command playbook accepted an unsafe step."
+}
+Write-Host "Guided command playbooks, HPE reference-only statuses and no-execution gates VERIFIED." -ForegroundColor Green
+
 Write-Host "CAIL Operator Command Center: status, provenance, safety, Knowledge Tree VERIFIED (local synthetic checks)." -ForegroundColor Green
 Write-Host "NOTE: Passed checks do NOT establish true HPE connectivity, source authenticity or semantic accuracy." -ForegroundColor Yellow

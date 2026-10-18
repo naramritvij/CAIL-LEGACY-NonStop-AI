@@ -10,6 +10,7 @@ import { InvestigationProgress, type StepId } from '@/components/investigate/Inv
 import { LegacyTreeTeaser } from '@/components/investigate/LegacyTreeTeaser'
 import { MetricsPanel } from '@/components/investigate/MetricsPanel'
 import { SafeChecks } from '@/components/investigate/SafeChecks'
+import { GuidedCommandPlaybook } from '@/components/investigate/GuidedCommandPlaybook'
 import { Timeline } from '@/components/investigate/Timeline'
 
 const STEP_TAB: Record<Exclude<StepId, 'capture'>, AnalysisTab> = {
@@ -29,11 +30,14 @@ interface Props {
 export function InvestigatePage({ workspace, onSelectEvidence }: Props) {
   const { navigate } = useIncidentContext()
   const [step, setStep] = useState<StepId>('understand')
+  const [guidedQuestion,setGuidedQuestion] = useState('')
   const tab = step === 'capture' ? 'missing' : STEP_TAB[step]
 
   return (
     <div className="flex flex-col gap-4 lg:gap-5">
       <IncidentHeader incident={workspace.incident} generatedAt={workspace.generated_at} />
+      <GuidedCommandPlaybook incidentId={workspace.incident.incident_id} onSelectEvidence={onSelectEvidence}
+        onAskEvidence={q=>{setGuidedQuestion(q);document.getElementById('ai-investigation-title')?.scrollIntoView({behavior:'smooth',block:'center'})}} />
       <InvestigationProgress current={step} onChange={setStep} />
 
       <div className="grid gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
@@ -49,7 +53,7 @@ export function InvestigatePage({ workspace, onSelectEvidence }: Props) {
               onNext={() => setStep(NEXT_STEP[step])}
             />
           )}
-          <AiInvestigation incidentId={workspace.incident.incident_id} onSelectEvidence={onSelectEvidence} />
+          <AiInvestigation incidentId={workspace.incident.incident_id} onSelectEvidence={onSelectEvidence} suggestedQuestion={guidedQuestion} />
           <Timeline events={workspace.timeline} onSelectEvidence={onSelectEvidence} />
         </div>
 

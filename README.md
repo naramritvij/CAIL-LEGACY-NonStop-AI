@@ -302,3 +302,9 @@ The integrated Maggie v0 interface now includes review-gated **Library**, **Ment
 
 See [Knowledge Transfer demo guide](docs/KNOWLEDGE_TRANSFER_DEMO.md) for the one-time Windows demo-key setup, complete scenario flow, review constraints, and limitations. These features are opt-in **local synthetic training only** and have not yet been verified by the user's full local Docker/Qwen run. Never import live customer data or treat the pasted HPE URL as authenticated source content without verification. Do not merge this draft branch until its tests and manual demo pass.
 
+
+## Guided Command Playbook (draft PR #15 update)
+
+The Investigate screen now starts with an issue-specific **Guided Command Playbook** for the synthetic disk and Pathway incidents: read-only CAIL fixture previews, documentation-only SCF/PATHCOM status syntax, evidence buttons, interpretation/unknowns, and contextual next steps. A deterministic symptom selector routes questions to registered checks, not free-form executable commands. Published HPE document links are included for each real command reference; the project-supplied `a00099017en_us` link was not directly verifiable as a command manual. There is no live HPE integration or execution endpoint.
+
+See [document/source audit, exact commands, and safety boundaries](docs/GUIDED_COMMAND_PLAYBOOK.md). The additional tests and UI have **not yet been locally verified** and must pass the full Windows check before this draft PR is merged.

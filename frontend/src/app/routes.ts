@@ -47,9 +47,8 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'library',
     label: 'Library',
     icon: LibraryBig,
-    status: 'planned',
-    milestone: 'P1',
-    description: 'Searchable Decision DNA records: symptoms, evidence, reasoning, rejected alternatives and open questions.',
+    status: 'ready',
+    description: 'Search approved source excerpts and Decision DNA, or submit authorized text for review.',
   },
   {
     id: 'apprentice',
@@ -57,7 +56,7 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'Learn',
     icon: GraduationCap,
     status: 'ready',
-    description: 'Scenario challenges built from approved lessons, with safe-ops XP, levels and mentor recognition.',
+    description: 'Synthetic challenges using approved lessons and a deterministic safety-and-evidence rubric.'
   },
 ]
 
