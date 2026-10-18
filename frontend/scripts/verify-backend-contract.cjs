@@ -386,6 +386,18 @@ test('Tailscale public gateway uses only isolated synthetic API, no reviewer acc
   assert.match(config,/limit_req_zone \S+ zone=cail_ai:/)
 })
 
+test('Tailscale startup waits for live FastAPI health and shows logs on 502',()=>{
+  const rootDir=path.resolve(root,'..')
+  const compose=fs.readFileSync(path.join(rootDir,'compose.funnel.yaml'),'utf8')
+  const script=fs.readFileSync(path.join(rootDir,'scripts','start_tailscale_funnel.ps1'),'utf8')
+  assert.match(compose,/condition: service_healthy/)
+  assert.match(compose,/healthcheck:/)
+  assert.match(compose,/127\.0\.0\.1:8000\/api\/v1\/health/)
+  assert.match(script,/\$uri\/api\/v1\/health/)
+  assert.match(script,/Get-Content|logs --tail=70/)
+  assert.match(script,/No Tailscale Funnel was published/)
+})
+
 process.stdout.write(`\n${checks} contract checks passed${process.exitCode ? ' (with failures)' : ''}.\n`)
 fs.rmSync(tmp,{recursive:true,force:true})
 if (process.exitCode) process.exit(process.exitCode)

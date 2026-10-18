@@ -76,6 +76,33 @@ Approve only in your own tailnet. Then the script prints
 Append \`/#/chat\` for a QR-ready chat link. Do **not** invent a URL
 before that output appears.
 
+## If Nginx reports 502 before Funnel
+
+A successful Docker image build and Nginx \`/healthz\` response do **not**
+prove FastAPI is accepting requests yet. A 502 on
+\`http://127.0.0.1:8787/api/v1/operations/atm/network\` means the reverse
+proxy did not obtain a valid backend response. This may be an ordinary
+container-startup race, but it may also mean FastAPI exited or became
+unhealthy.
+
+The startup script now waits for a *real* FastAPI health result through
+Nginx at \`/api/v1/health\`, and Docker Compose waits for the isolated
+backend's Python HTTP healthcheck before starting the gateway. If a 502
+persists, the script prints recent container logs and refuses to publish.
+
+Run these diagnostics locally (they do not expose a public URL):
+
+\`\`\`powershell
+docker compose -f compose.funnel.yaml ps
+docker compose -f compose.funnel.yaml logs --tail=100 demo-backend demo-gateway
+Invoke-RestMethod 'http://127.0.0.1:8787/api/v1/health'
+Invoke-RestMethod 'http://127.0.0.1:8787/api/v1/operations/atm/network'
+\`\`\`
+
+Avoid opening Funnel, changing bind addresses to \`0.0.0.0\`, or removing
+the read-only backend restrictions just to bypass a 502. The log details
+are needed to distinguish startup delays from actual application failures.
+
 ## Verify on a different network / phone
 
 - Open the HTTPS link in an incognito browser and over mobile data (not

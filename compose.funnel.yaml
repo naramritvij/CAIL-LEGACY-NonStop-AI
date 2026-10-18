@@ -20,6 +20,14 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
+    # Docker starts containers in order, not when the API is ready. Check real
+    # FastAPI readiness before bringing Nginx online.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3).close()"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 12s
 
   demo-gateway:
     build:
@@ -29,7 +37,8 @@ services:
       # Tailscale Funnel proxies this loopback-only port, not port 5173/8000.
       - "127.0.0.1:8787:8080"
     depends_on:
-      - demo-backend
+      demo-backend:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped

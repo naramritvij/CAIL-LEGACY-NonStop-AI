@@ -26,16 +26,44 @@ docker compose -f compose.funnel.yaml exec -T demo-gateway nginx -t
 if ($LASTEXITCODE -ne 0) { throw 'Public Nginx gateway validation failed.' }
 
 $uri = 'http://127.0.0.1:8787'
+# /healthz only checks Nginx itself. Real readiness must traverse the
+# Nginx -> synthetic FastAPI hop; it prevents transient 502 on Windows startup.
 $ready = $false
-for ($i = 0; $i -lt 20; $i++) {
+$lastProbeError = ''
+for ($i = 0; $i -lt 30; $i++) {
     try {
-        $probe = Invoke-WebRequest -Uri "$uri/healthz" -UseBasicParsing -TimeoutSec 4
-        if ($probe.StatusCode -eq 200) { $ready = $true; break }
-    } catch { Start-Sleep -Seconds 2 }
+        $probe = Invoke-RestMethod -Uri "$uri/api/v1/health" -TimeoutSec 6
+        if ($probe.status -eq 'ok' -and $probe.mode -eq 'synthetic_read_only') {
+            $ready = $true
+            break
+        }
+        $lastProbeError = 'Unexpected FastAPI health result.'
+    } catch {
+        $lastProbeError = $_.Exception.Message
+    }
+    if ($i -eq 0) {
+        Write-Host '[CAIL] Waiting for the gateway to reach FastAPI (502 during cold startup can be transient)...' -ForegroundColor Yellow
+    }
+    Start-Sleep -Seconds 2
 }
-if (-not $ready) { throw 'Gateway did not start on localhost:8787. Inspect docker compose -f compose.funnel.yaml logs.' }
+if (-not $ready) {
+    Write-Warning "[CAIL] Gateway-to-backend readiness failed: $lastProbeError"
+    Write-Host '[CAIL] Container status:' -ForegroundColor Yellow
+    docker compose -f compose.funnel.yaml ps
+    Write-Host '[CAIL] Recent backend and gateway logs:' -ForegroundColor Yellow
+    docker compose -f compose.funnel.yaml logs --tail=70 demo-backend demo-gateway
+    throw 'The synthetic FastAPI backend was not reachable through Nginx. No Tailscale Funnel was published.'
+}
+Write-Host '[CAIL] Gateway and FastAPI health verified.' -ForegroundColor Green
 
-$network = Invoke-RestMethod -Uri "$uri/api/v1/operations/atm/network" -TimeoutSec 15
+try {
+    $network = Invoke-RestMethod -Uri "$uri/api/v1/operations/atm/network" -TimeoutSec 15
+} catch {
+    Write-Warning "[CAIL] ATM network endpoint failed: $($_.Exception.Message)"
+    docker compose -f compose.funnel.yaml ps
+    docker compose -f compose.funnel.yaml logs --tail=70 demo-backend demo-gateway
+    throw 'The ATM network API failed. Funnel was not published.'
+}
 if ($network.production_connectivity -ne $false -or
     @($network.sites).Count -ne 6 -or
     @($network.sites | Where-Object { $_.id -eq 'ATM-042' -and $_.status -eq 'attention' }).Count -ne 1) {
