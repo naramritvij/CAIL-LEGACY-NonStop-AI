@@ -1,17 +1,17 @@
-# CAIL/Nonstop AI Operations Assistant
+# CAIL / Nonstop AI Operations Assistant
 
 **CAIL Catalyst operator-facing product name.** The older repository identifiers are retained to avoid disrupting branches and API consumers. The canonical knowledge feature is **Knowledge Tree**. The new [Operator Command Center](docs/OPERATOR_COMMAND_CENTER.md) provides color-coded *synthetic* source evidence, ASAP/EMS/SCF-style drilldowns, safe display-only command previews, and review-gated transcript intake. No HPE tools or customer systems are connected.
 
 <div align="center">
 
-# △ LEGACY
-### An Evidence-First AI Operations Copilot for Mission-Critical Systems
+# CAIL / Nonstop AI Operations Assistant
+### Evidence-First Assistance for Mission-Critical Operations
 
 **CAIL • Catalyst 2026 • HPE NonStop-inspired training environment**
 
 ![Python](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square) ![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20TypeScript-177DAD?style=flat-square) ![AI](https://img.shields.io/badge/AI-Local%20Ollama-6B64C6?style=flat-square) ![Tests](https://img.shields.io/badge/Tests-Pytest%20%2B%20live%20smoke-23976A?style=flat-square) ![Safety](https://img.shields.io/badge/Environment-Synthetic%20%7C%20Read--only-BE5974?style=flat-square)
 
-**[Quick start](#-quick-start-clone--run) · [Maggie's frontend setup](#-maggies-frontend-development-guide) · [Architecture](#-system-architecture) · [API reference](#-api-map) · [Confluence](https://northeastern-team-mx3hi3ad.atlassian.net/wiki/spaces/CAILLEG26)**
+**[Quick start](#-quick-start-clone--run) · [Ask CAIL + ATM demo](#-ask-cail-interactive-chat--atm-mission) · [Public Tailscale demo](#-public-demo-tailscale-funnel) · [Architecture](#-system-architecture) · [API map](#-api-map) · [Confluence](https://northeastern-team-mx3hi3ad.atlassian.net/wiki/spaces/CAILLEG26)**
 
 </div>
 
@@ -22,7 +22,7 @@
 
 > How might we use AI to help the next generation of IT operators **understand, monitor, and troubleshoot** mission-critical enterprise systems through **natural language**, while **preserving the expertise** of experienced professionals?
 
-**LEGACY's answer:** A local-first investigation workspace that shows the *evidence* behind a finding, separates an AI explanation from the independent safety policy, and turns reviewed investigation rationale into reusable Decision DNA and a **changed-incident knowledge-transfer challenge**.
+**CAIL's answer:** A local-first investigation workspace that shows the *evidence* behind a finding, separates an AI explanation from the independent safety policy, and turns reviewed investigation rationale into reusable Decision DNA and a **changed-incident knowledge-transfer challenge**.
 
 | Requirement | Working prototype capability | Important boundary |
 |:---|:---|:---|
@@ -56,7 +56,7 @@ flowchart LR
 
 **What's running where?** Docker Compose runs the **frontend (port 5173)** and **FastAPI (port 8000)**. Native **Ollama remains on Windows**; FastAPI calls it over `host.docker.internal:11434`. SQLite lives in Docker's named `legacy_knowledge` volume. Do not remove that volume if you need existing demo lessons.
 
-## 🧠 The feature that makes LEGACY different
+## 🧠 The feature that makes CAIL different
 
 ![Decision DNA: capture, independent approval and changed incident knowledge-transfer assessment](docs/assets/legacy-knowledge-flow.svg)
 
@@ -87,7 +87,7 @@ cd CAIL-LEGACY-NonStop-AI
 code .
 ```
 
-**2 — Start the local model** (optional for the read-only UI; recommended for Ask LEGACY):
+**2 — Start the local model** (optional for the read-only UI; recommended for Ask CAIL):
 
 ```powershell
 ollama pull qwen3:4b-instruct
@@ -120,7 +120,98 @@ py -3.12 -m venv .venv
 cd ..
 ```
 
-Latest developer-run verification (18 Oct 2026, feature head `6d92fd4`, now merged into `main`): **184 backend tests passed**, **17 frontend contract checks passed**, **2/2 synthetic local Qwen investigation runs accepted and reported safe**, and TypeScript/Vite production build completed (2,005 modules transformed). Local Docker/safety/Operations Lab smoke tests passed. A Starlette/httpx deprecation warning is non-blocking. These are developer-run local checks, not independent CI, production connectivity, or manual browser acceptance.
+**Verification status (18 Oct 2026):** The last supplied Windows run passed **221/221 Python backend tests** and the TypeScript/Vite production build (**2,009 modules**). That run passed **21** frontend contracts while **three verification assertions failed** (one outdated map markup assertion, two tests incorrectly reading host-only Compose files inside the frontend Docker image). Those three checks were corrected in the subsequent branch commit; **a complete successful 24/24 frontend run and full final verification have not yet been supplied**. An isolated Funnel gateway health check and separate local Qwen request passed. A real Chrome browser nevertheless reported **`ERR_SSL_PROTOCOL_ERROR`** at the public Tailscale address, so external availability remains **unverified**. Previous completed end-to-end automated results apply to earlier revisions; do not represent this head as independently production-tested.
+
+## 🏧 Ask CAIL: interactive chat & ATM mission
+
+**Use the actual backend-powered browser demo**, not a screenshot or a static
+Netlify substitute:
+
+| Route | Demonstration |
+|---|---|
+| [Ask CAIL](http://localhost:5173/#/chat) (\`#/chat\`) | Ask about an ATM and get a clickable animated fictional map inside the conversation |
+| [ATM Mission](http://localhost:5173/#/atm) (\`#/atm\`) | Explore the six fictional locations, evidence, safe guidance and audience modes |
+| \`#/operations\` | Synthetic Operations Lab and registered read-only command previews |
+| Knowledge Tree / Mentor / Apprentice | Submit draft training lessons, require **independent local reviewer approval**, and practice transferring approved knowledge |
+
+The **ATM chat uses a bounded deterministic intent router**, not open-ended
+LLM generation or live bank data. Its answers deliberately vary with the
+question:
+
+| Ask | CAIL does |
+|---|---|
+| "Which ATM is broken, and where is it?" | **Locate:** highlights fictional ATM-042 at North Exchange; animates the schematic map without irrelevant system reports |
+| "Show EMS and CPU evidence for ATM-042" | **Investigate:** opens synthetic EMS/ASAP/Guardian observations and shows PATHCOM native status as **UNKNOWN** |
+| "Have we learned anything from similar ATM incidents?" | **Retrieve:** checks only independently approved local Knowledge Tree lessons; unreviewed fictional history is *not* a proven repair |
+| "Our cash machine is down. What should I do?" | **Assist:** provides role-specific, safe escalation and read-only checks |
+
+Technical wording can select the engineering explanation; operators can also
+choose plain-language or engineer mode explicitly. The chat retains the
+selected fictional ATM across follow-up questions. Unknown ATM IDs,
+unrelated prompts and unsafe commands are refused or constrained. The AI
+cannot execute native HPE/NonStop commands, reset an ATM or authorize recovery.
+Optional **Qwen3 via local Ollama** is used in **separate, citation-bounded
+investigations**. Citation-ID matching does **not** establish causal accuracy
+or source authenticity.
+
+**Showcase narrative:** **Locate → Investigate → Retrieve → Assist → Learn**.
+Capturing and learning from expert reasoning requires a separate, approved
+Mentor review in the private/local setup; no approved lessons are invented.
+Detailed walkthrough: [ATM Mission Demo](docs/ATM_WOW_DEMO.md).
+
+## 🌐 Public demo: Tailscale Funnel
+
+Netlify's static build cannot serve our local FastAPI and Ollama runtime.
+For a shareable **AI-backed** presentation link, the project includes a
+dedicated, isolated **Tailscale Funnel** stack and gateway:
+
+- \`compose.funnel.yaml\` starts an independent \`cail-funnel-demo\` Docker
+  project, distinct from the regular local Compose services.
+- \`demo-gateway\` serves a production React build over loopback
+  \`127.0.0.1:8787\`. Tailscale Funnel publishes the public HTTPS hostname.
+- \`demo-backend\` runs synthetic FastAPI, calls **Windows-hosted Ollama**
+  through \`host.docker.internal:11434\`, and uses temporary demo-only data.
+  The private SQLite Knowledge Tree volume and expert/reviewer credentials
+  are **not** mounted or served.
+- Nginx restricts public API methods/routes and rate-limits model calls.
+  Reviewer approvals and other privileged mutations are **not available**
+  through the public demo. The public Knowledge Tree can therefore be empty.
+
+**Windows setup** (Docker Desktop, Ollama/Qwen and signed-in Tailscale required):
+
+\`\`\`powershell
+Set-Location "$HOME\Projects\CAIL-LEGACY-NonStop-AI"
+docker compose up -d --build                         # full private/local app
+.\scripts\verify_operator_center.ps1 -RunsPerIncident 1
+
+# Check isolated gateway and local model before publishing:
+.\scripts\start_tailscale_funnel.ps1 -CheckQwen
+
+# Only when ready to expose a PUBLIC demo:
+.\scripts\start_tailscale_funnel.ps1 -Publish -CheckQwen
+\`\`\`
+
+The last command displays your account's actual \`.ts.net\` HTTPS hostname.
+Append \`/#/chat\` to link directly into Ask CAIL. **A previously generated
+Funnel URL is not a guarantee that HTTPS is working.** The Windows browser
+has reported \`ERR_SSL_PROTOCOL_ERROR\` after successful Funnel activation.
+Before sharing the link, check \`tailscale funnel status\`, public DNS/TLS
+certificate reachability and a fresh browser on **mobile data**. A local
+\`http://127.0.0.1:8787\` success proves only the gateway, **not** public TLS.
+
+The Funnel URL is **unauthenticated and public**. Only fictional training
+data is appropriate; avoid loading private or customer data, uploading files
+or sharing reviewer credentials. Keep the Windows laptop awake and Docker,
+Ollama and Tailscale running. The demo stops working if the host sleeps or
+loses network access. Shut it down afterward:
+
+\`\`\`powershell
+.\scripts\stop_tailscale_funnel.ps1
+\`\`\`
+
+See [Tailscale deployment and troubleshooting](docs/TAILSCALE_FUNNEL_DEMO.md).
+**Do not claim live HPE, real ATM/GPS integration, verified historic repairs,
+real-world MTTR reduction or a production hardened service.**
 
 ## 👩‍💻 Maggie's frontend development guide
 
@@ -194,7 +285,7 @@ Open a **pull request into `main`**, request Ritvij's review, and coordinate API
 | Sentinel | `POST /api/v1/diagnostics/preview` | Safe preview vs blocked purge |
 | Counterfactual | `POST /api/v1/replay` | **Simulated**, not predicted, outcomes |
 | Decision DNA | `GET /api/v1/knowledge/lessons` | Approved records only |
-| Legacy Tree | `GET /api/v1/knowledge/legacy-tree?incident_id=INC-DISK-001` | Only approved synthetic lesson nodes + revision edges; never fictional reuse counts |
+| Knowledge Tree (legacy API alias) | `GET /api/v1/knowledge/knowledge-tree` or compatibility endpoint `/api/v1/knowledge/legacy-tree?incident_id=INC-DISK-001` | Only locally reviewer-approved synthetic lesson nodes; never fictional reuse counts |
 | Knowledge transfer | `GET /api/v1/training/challenges/{lesson_id}` + `POST .../assess` | New-event scenario + rubric; needs approved lesson |
 | Shift handover | `GET /api/v1/shift-briefing` | Open incidents and missing evidence |
 
@@ -267,6 +358,8 @@ Interactive schema is always available at **[FastAPI `/docs`](http://localhost:8
 | `docker compose` cannot connect | Open Docker Desktop and wait for *Engine running* |
 | Frontend cannot load incidents | Check `docker compose ps` and `http://localhost:8000/api/v1/health`; inspect backend logs |
 | `model_unavailable` | Ollama running on host? `ollama list`; check `qwen3:4b-instruct` name, backend logs, `host.docker.internal:11434` |
+| Public Funnel shows `ERR_SSL_PROTOCOL_ERROR` | Public HTTPS/DNS/certificate or Funnel ingress needs diagnosis; confirm gateway locally, inspect `tailscale funnel status` and test on mobile data. Do **not** expose backend/Ollama ports as a workaround. |
+| Chat responds similarly to different prompts | Use `#/chat` and the four intent-specific ATM questions above; rebuild containers after changing code, then verify `interpreted_intent` and varied response panels. |
 | PowerShell blocks `npm.ps1` | Run `npm.cmd` / `npx.cmd` instead; no global policy change needed |
 | Port 5173 in use | Stop Docker frontend before local Vite dev; don't run both on same port |
 | No approved lesson / transfer challenge 404 | Review workflow hasn't created an approved lesson; do not fake a verified operator |
@@ -280,7 +373,7 @@ Interactive schema is always available at **[FastAPI `/docs`](http://localhost:8
 
 <div align="center">
 
-**LEGACY = People + Knowledge + Safe Operations.**
+**CAIL = Evidence + Safe Assistance + Durable, Reviewed Knowledge.**
 
 *Understand what happened. Show the evidence. Preserve the reasoning.*
 
@@ -330,7 +423,7 @@ temporary fictional incident chronology as an authenticated hardware failure.
 
 ## Chat-to-map investor demo (ATM, synthetic only)
 
-The **Ask CAIL Chat** navigation entry (#/chat) now accepts ordinary ATM
+The **Ask CAIL Chat** navigation entry (`#/chat`) accepts ordinary ATM
 questions and renders a **clickable six-location fictional ATM map inside
 the chat reply**. The assistant reuses existing local synthetic EMS/ASAP/
 Guardian adapters, displays HPE PATHCOM status as UNKNOWN, retrieves only
@@ -341,6 +434,4 @@ performs only deterministic local routing, no shell/NonStop execution or
 real-ATM lookup. Existing incident Ask CAIL panels also offer this rich
 ATM-specific route. See docs/ATM_WOW_DEMO.md for the live stage walkthrough.
 
-The map and past-history examples remain explicitly fictional. A demo
-requires local Docker services; it cannot claim real CAIL Suite/ATM
-integrations or measured investor/MTTR outcomes.
+The map and past-history examples remain explicitly fictional. The public Funnel environment is a separate, isolated synthetic backend and does not expose the private Mentor reviewer workflow. See the [public deployment instructions](docs/TAILSCALE_FUNNEL_DEMO.md) for activation and TLS troubleshooting. No real CAIL Suite/ATM integration or measured MTTR outcome is claimed.
