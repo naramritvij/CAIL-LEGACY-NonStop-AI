@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, FileText, Search, Send, ShieldCheck } from 'lucide-react'
 import { DATA_MODE } from '@/api/client'
+import { KnowledgeWorkflowStatus } from '@/components/knowledge/KnowledgeWorkflowStatus'
 import { workflowRequest, type CorpusRecord, type DecisionLesson } from '@/api/workflows'
 
 type Match = { citation_id:string;title:string;excerpt:string;source_url:string;section:string;release:string;source_kind:string;content_verified_against_url:boolean }
@@ -17,6 +18,8 @@ export function LibraryPage() {
   const [query,setQuery]=useState('disk')
   const [release,setRelease]=useState('L23.08')
   const [results,setResults]=useState<Match[]>([])
+  const [searched,setSearched]=useState(false)
+  const [lastSearch,setLastSearch]=useState('')
   const [kind,setKind]=useState<Kind>('document')
   const [title,setTitle]=useState('')
   const [section,setSection]=useState('')
@@ -41,10 +44,12 @@ export function LibraryPage() {
   }
   useEffect(()=>{void refresh()},[])
   async function search() {
-    setErr('');setBusy(true)
+    setErr('');setBusy(true);setSearched(false)
     try {
       const result=await workflowRequest<CorpusSearch>('/knowledge/corpus/search','POST',{query,release,limit:8})
       setResults(result.matches)
+      setSearched(true)
+      setLastSearch(query.trim()+' · '+release.trim())
     }catch(e){setErr(String(e))}
     finally{setBusy(false)}
   }
@@ -77,6 +82,7 @@ export function LibraryPage() {
       <h1 className="mt-1 text-2xl font-semibold">Library · Approved Sources & Decision DNA</h1>
       <p className="mt-2 text-sm text-ink-muted">Search approved local excerpts and lessons. Submit authorized source text for independent review. No URL downloads, recording capture, or automatic approval.</p>
     </header>
+    <KnowledgeWorkflowStatus />
     {DATA_MODE!=='http'&&<p className="glass p-4 text-sm text-gold">Switch to Local API · Synthetic mode to use review and retrieval workflows.</p>}
     {err&&<p role="alert" className="glass border border-coral/40 p-3 text-sm text-coral">{err}</p>}
     <section className="glass p-5">
@@ -105,7 +111,9 @@ export function LibraryPage() {
         <input aria-label="HPE release" className="neu-inset min-w-0 rounded-lg p-3 text-sm" value={release} onChange={e=>setRelease(e.target.value)}/>
         <button type="button" disabled={busy||query.trim().length<3} onClick={()=>void search()} className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50">Search</button>
       </div>
-      {results.length===0?<p className="mt-3 text-sm text-ink-muted">No matching search results displayed. Search is release-filtered and uses approved local excerpts only.</p>:
+      {results.length===0?<p className="mt-3 text-sm text-ink-muted">{searched
+        ? 'No approved excerpts match '+lastSearch+'. Try another term or release; unapproved text is never returned.'
+        : 'Enter a query and click Search. Only reviewer-approved local excerpts are searchable.'}</p>:
       <div className="mt-3 flex flex-col gap-3">{results.map(m=><article key={m.citation_id} className="glass-sub p-3 text-sm">
         <p className="font-semibold">{m.title} <span className="font-mono text-xs text-cyan">{m.citation_id}</span></p>
         <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-muted">{m.excerpt}</p>
@@ -129,7 +137,10 @@ export function LibraryPage() {
       <label className="mt-3 flex gap-2 text-xs"><input type="checkbox" checked={authorized} onChange={e=>setAuthorized(e.target.checked)}/>I confirm permission to store this text in the local review corpus.</label>
       {kind==='transcript'&&<label className="mt-2 flex gap-2 text-xs"><input type="checkbox" checked={redacted} onChange={e=>setRedacted(e.target.checked)}/>I confirm the transcript has been reviewed and sensitive information removed.</label>}
       <label className="mt-3 block text-sm">Local expert demo key<input type="password" autoComplete="off" className="neu-inset mt-1 w-full rounded-lg p-3" value={expertKey} onChange={e=>setExpertKey(e.target.value)}/></label>
-      {notice&&<p role="status" className="mt-3 text-sm text-teal">{notice}</p>}
+      {notice&&<div role="status" className="mt-3 rounded-lg border border-teal/30 p-3">
+        <p className="text-sm text-teal">{notice}</p>
+        <a href="#/mentor" className="mt-2 inline-block text-xs text-cyan underline">Open Mentor to review this submission →</a>
+      </div>}
       <button type="button" disabled={busy||content.trim().length<80||title.trim().length<5||section.trim().length<3||!authorized} onClick={()=>void ingest()} className="btn-primary mt-4 inline-flex items-center gap-2 rounded-xl p-3 text-sm disabled:opacity-50"><Send className="size-4"/> {busy?'Submitting…':'Create draft and send to Mentor'}</button>
       <p className="mt-2 flex items-center gap-2 text-xs text-ink-faint"><ShieldCheck className="size-4"/> Expert key stays only in temporary component state and is cleared on successful submission. Approval requires a different reviewer key.</p>
     </section>
