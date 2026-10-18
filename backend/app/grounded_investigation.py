@@ -149,7 +149,7 @@ def investigate_with_corpus(question: str, incident: dict, release: str, max_chu
         note = GLOSSARY[key] if key is not None else None
         # Approved, release-matched excerpts take precedence over the static
         # orientation note. The source URL and excerpt have NOT been authenticated.
-        if True:
+        if scope in ('concept', 'reference_required'):
             # Allow other explicit concept questions when authorized, reviewed
             # excerpts match the topic. No semantic match is invented.
             search_query = key.replace('_', ' ') if key is not None else question
