@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { ShieldCheck, UserRoundCheck, ClipboardCheck } from 'lucide-react'
 import { DATA_MODE } from '@/api/client'
+import { KnowledgeWorkflowStatus } from '@/components/knowledge/KnowledgeWorkflowStatus'
 import { workflowRequest, type CorpusRecord, type DecisionLesson } from '@/api/workflows'
 
 type Decision = 'approved' | 'rejected'
@@ -42,12 +43,13 @@ export function MentorPage() {
       if(notes.trim().length<10)throw new Error('Write review notes explaining the decision (at least 10 characters).')
       const url=kind==='sources'?'/knowledge/corpus/documents/':'/knowledge/lessons/'
       await workflowRequest<unknown>(url+encodeURIComponent(id)+'/review','POST',{decision,notes},'reviewer',key)
-      setNotice((decision==='approved'?'Approved':'Rejected')+' locally for '+kind+'. Review does not authenticate real-world sources or expert identity.')
+      // Update the current queue immediately after the confirmed server response.
+      // Do not block the operator on an unnecessary full reload of both queues.
+      if (kind === 'sources') setDocs(prev => prev.filter(doc => doc.id !== id))
+      else setLessons(prev => prev.filter(lesson => lesson.id !== id))
       setNotes('');setSelectedDoc(null);setSelectedLesson(null)
-      // Approved lessons become visible on the SWR-backed Knowledge Tree.
-      await mutate(['legacy-tree','live'])
-      await load()
       setNotice((decision==='approved'?'Approved':'Rejected')+' locally for '+kind+'. Review does not authenticate identity or sources.')
+      void mutate(['legacy-tree','live']).catch(() => { /* Revalidation is best effort. */ })
     }catch(e){setError(String(e))}
     finally{setBusy(false)}
   }
@@ -57,12 +59,13 @@ export function MentorPage() {
       <h1 className="mt-1 text-2xl font-semibold">Mentor · Review Knowledge</h1>
       <p className="mt-2 text-sm text-ink-muted">A distinct local reviewer can examine submitted Decision DNA and source excerpts, then approve or reject them. Approval gates retrieval and Knowledge Tree visibility.</p>
     </header>
+    <KnowledgeWorkflowStatus />
     {DATA_MODE!=='http'&&<p className="glass p-3 text-sm text-gold">Reviewer workflows require Local API mode, not the fictional mock showcase.</p>}
     <section className="glass p-5">
       <h2 className="flex items-center gap-2 text-lg font-semibold"><UserRoundCheck className="size-5 text-violet"/> Reviewer access</h2>
       <p className="mt-1 text-xs text-ink-muted">Use only a locally generated reviewer demo key, never the expert key or production credentials. The key is held in memory only; it is not persisted or put in the URL.</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <input type="password" autoComplete="off" aria-label="Reviewer demo key" className="neu-inset min-w-0 flex-1 rounded-lg p-3 text-sm" value={key} onChange={e=>setKey(e.target.value)} placeholder="Reviewer key in private .env"/>
+        <input type="password" autoComplete="off" aria-label="Reviewer demo key" className="neu-inset min-w-0 flex-1 rounded-lg p-3 text-sm" value={key} onChange={e=>{setKey(e.target.value);setDocs([]);setLessons([]);setSelectedDoc(null);setSelectedLesson(null);setNotice('')}} placeholder="Reviewer key in private .env"/>
         <button type="button" onClick={()=>void load()} disabled={!key.trim()||busy} className="btn-primary rounded-lg px-4 py-3 text-sm disabled:opacity-50">{busy?'Working…':'Load review queue'}</button>
         <button type="button" onClick={()=>{setKey('');setDocs([]);setLessons([]);setSelectedDoc(null);setSelectedLesson(null)}} className="tap rounded-lg border border-line px-3 py-3 text-xs">Clear access</button>
       </div>
@@ -74,7 +77,9 @@ export function MentorPage() {
         <button type="button" onClick={()=>setTab('lessons')} className={`tap rounded-lg border px-3 py-2 text-sm ${tab==='lessons'?'border-cyan text-cyan':'border-line text-ink-muted'}`}>Decision DNA · {lessons.length}</button>
         <button type="button" onClick={()=>setTab('sources')} className={`tap rounded-lg border px-3 py-2 text-sm ${tab==='sources'?'border-cyan text-cyan':'border-line text-ink-muted'}`}>Source excerpts · {docs.length}</button>
       </div>
-      {!lessons.length&&!docs.length?<p className="mt-4 text-sm text-ink-muted">Enter a valid reviewer key and load the queue. Submitted records appear here; approved sources remain searchable in Library.</p>:null}
+      {!lessons.length&&!docs.length?<p className="mt-4 text-sm text-ink-muted">{key.trim()
+        ? 'Queue empty or not loaded. Click Load review queue to check current submitted lessons and documents. Approved records are already in Library and Knowledge Tree.'
+        : 'Enter a valid reviewer key and load the queue. Submitted records appear here; approved records remain searchable in Library.'}</p>:null}
       {tab==='lessons'&&<div className="mt-3 grid gap-3">
         {lessons.map(l=><button key={l.id} type="button" onClick={()=>{setSelectedLesson(l);setSelectedDoc(null);setNotes('')}} className="tap glass-sub p-4 text-left">
           <p className="text-sm font-semibold">{l.symptoms}</p>
