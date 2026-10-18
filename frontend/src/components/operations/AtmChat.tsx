@@ -194,6 +194,7 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
   const busy=useRef(false)
   const counter=useRef(0)
   const previousToken=useRef<number|undefined>(undefined)
+  const latestReplyRef=useRef<HTMLDivElement|null>(null)
 
   async function send(text:string,selectedMode:Mode=mode,overrideId?:string){
     const clean=text.trim()
@@ -226,6 +227,14 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
     // incoming prompts are event tokens, never re-run because local chat state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[promptToken,incomingPrompt])
+
+  useEffect(()=>{
+    // Stage-demo usability: when the assistant creates a map, surface it
+    // immediately instead of leaving the screen at the Send button.
+    if(messages.length>0 && messages[messages.length-1].role==='assistant'){
+      latestReplyRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
+    }
+  },[messages])
 
   return <section aria-label="Ask CAIL conversational ATM assistant"
     className={'glass glow-cyan '+(compact?'p-4 sm:p-5':'p-5 sm:p-7')}>
@@ -270,7 +279,8 @@ export function AtmChat({incomingPrompt, promptToken, compact=false}:{
       </div>}
       {messages.map(message=><div key={message.id}
         className={'flex '+(message.role==='operator'?'justify-end':'justify-start')}>
-        <div className={'min-w-0 rounded-2xl p-3 sm:p-4 '+
+        <div ref={message.role==='assistant' && message.id===messages[messages.length-1]?.id?latestReplyRef:undefined}
+          className={'min-w-0 rounded-2xl p-3 sm:p-4 '+
           (message.role==='operator'
             ? 'max-w-[90%] border border-cyan/30 bg-cyan/10'
             : 'w-full border border-line bg-white/[0.03]')}>
