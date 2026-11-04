@@ -181,7 +181,10 @@ def test_live_source_validates_transport_and_retains_real_provenance(clients, mo
     assert result.status_code == 200 and result.json()['sources'][0]['node_count'] == 3000
     graph = reviewer.get(BASE + '/graph').json()
     assert graph['datasets'][0]['source_kind'] == 'live_topology' and not graph['datasets'][0]['stale']
+    assert graph['datasets'][0]['system_id'] == 'authorized-test-system'
     assert len([node for node in graph['nodes'] if node['kind'] == 'entity']) == 3000
+    entity = next(node for node in graph['nodes'] if node['kind'] == 'entity')
+    assert reviewer.get(BASE + '/graph/node', params={'node_id': entity['id']}).json()['system_id'] == 'authorized-test-system'
     assert len(graph['datasets'][0]['sha256']) == 64 and 'server-only-topology-read-token' not in json.dumps(graph)
     ids = {node['id'] for node in graph['nodes']}
     reviewer.post(BASE + '/graph/sync')

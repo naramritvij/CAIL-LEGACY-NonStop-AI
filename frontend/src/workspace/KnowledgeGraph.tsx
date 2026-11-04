@@ -672,6 +672,9 @@ export function KnowledgeGraph({
                         : "Read-only source snapshot"}
                   </strong>
                   <span>{selectedDataset.title}</span>
+                  {selectedDataset.system_id && (
+                    <span>System: {selectedDataset.system_id}</span>
+                  )}
                   {selectedDataset.observed_at && (
                     <span>
                       Observed{" "}

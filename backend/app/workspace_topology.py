@@ -364,7 +364,7 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
             count = db.execute('SELECT COUNT(*) AS n FROM ws_topology_nodes WHERE dataset_id=?', (dataset['id'],)).fetchone()['n']
             relation_count = db.execute('SELECT COUNT(*) AS n FROM ws_topology_edges WHERE dataset_id=?', (dataset['id'],)).fetchone()['n']
             metadata.append({'id': dataset['id'], 'title': dataset['title'], 'document_id': dataset['document_id'], 'source_kind': dataset['source_kind'],
-                             'source_id': dataset['source_id'], 'node_count': count, 'edge_count': relation_count, 'observed_at': dataset['observed_at'],
+                             'source_id': dataset['source_id'], 'system_id': dataset['system_id'], 'node_count': count, 'edge_count': relation_count, 'observed_at': dataset['observed_at'],
                              'stale': stale, 'status': dataset['review_status'] or ('stale' if stale else 'connected'), 'sha256': dataset['sha256']})
             remaining = max(0, node_limit - len(nodes))
             if not remaining:
@@ -400,6 +400,7 @@ def detail(user, node_id):
             node['properties'] = json.loads(node['properties'])
             dataset = db.execute('SELECT * FROM ws_topology_datasets WHERE id=?', (node['dataset_id'],)).fetchone()
             node['source_kind'], node['observed_at'], node['sha256'] = dataset['source_kind'], dataset['observed_at'], dataset['sha256']
+            node['system_id'] = dataset['system_id']
             state = next(item for item in visible_datasets(db, user) if item['id'] == dataset['id'])
             node['stale'] = state.get('stale', False)
             if node['stale']:

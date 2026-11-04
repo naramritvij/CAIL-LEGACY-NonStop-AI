@@ -79,6 +79,7 @@ export interface TopologyDataset {
   document_id: string | null;
   source_kind: string;
   source_id: string | null;
+  system_id: string | null;
   node_count: number;
   edge_count: number;
   observed_at: string | null;
@@ -100,6 +101,7 @@ export interface GraphEntityDetail {
   properties: Record<string, string | number | boolean | null>;
   source_kind: string;
   observed_at: string | null;
+  system_id: string | null;
   sha256: string;
   relationship_count: number;
   stale?: boolean;
