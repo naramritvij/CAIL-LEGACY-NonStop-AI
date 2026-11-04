@@ -1,6 +1,7 @@
-"""CAIL/Nonstop AI Operations Assistant API: synthetic incidents, human-reviewed knowledge and read-only training.
+"""CAIL API: persistent agent workspace, reviewed knowledge and read-only gateways.
 
-The backend is intentionally NOT an HPE NonStop connector. All data is synthetic.
+Legacy incident fixtures remain synthetic. Live customer access requires an
+independently provisioned, authorized source gateway; no native command execution.
 """
 from __future__ import annotations
 from typing import Literal
@@ -16,9 +17,11 @@ from .storage import (create_lesson, get_lesson, list_lessons, transition_lesson
 from .security import require_role, require_either
 from .contract import LessonCreate, ReviewRequest, ReplayRequest
 from .ai import explain
+from .workspace_api import router as workspace_router
 
-app = FastAPI(title='CAIL/Nonstop AI Operations Assistant', version='0.2.0',
-              description='Synthetic read-only training. Not certified for real systems.')
+app = FastAPI(title='CAIL/Nonstop AI Operations Assistant', version='0.3.0',
+              description='Persistent agent workspace, reviewed knowledge and authorized read-only gateways. Legacy incidents are synthetic.')
+app.include_router(workspace_router)
 app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
                    allow_credentials=False, allow_methods=['GET', 'POST'],
                    allow_headers=['Content-Type', 'X-Legacy-Expert-Key', 'X-Legacy-Reviewer-Key'])
@@ -26,6 +29,12 @@ app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173', 'http
 @app.middleware('http')
 async def prototype_response_safeguards(request, call_next):
     """No credentialed/write workflow content should be cached by a browser."""
+    if request.url.path.startswith('/api/v1/workspace') and request.method != 'GET':
+        from urllib.parse import urlsplit
+        origin = request.headers.get('origin')
+        if origin and urlsplit(origin).netloc != request.headers.get('host'):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({'detail': 'Cross-origin workspace changes are not allowed.'}, status_code=403)
     response = await call_next(request)
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -51,7 +60,7 @@ def incident_or_404(incident_id: str):
 
 @app.get('/api/v1/health')
 def health():
-    return {'status': 'ok', 'mode': 'synthetic_read_only', 'version': '0.2.0'}
+    return {'status': 'ok', 'mode': 'synthetic_read_only', 'version': '0.3.0'}
 
 
 @app.get('/api/v1/incidents')

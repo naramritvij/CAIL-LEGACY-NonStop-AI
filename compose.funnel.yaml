@@ -10,6 +10,8 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: qwen3:4b-instruct
       LEGACY_DATABASE_PATH: /tmp/cail_public_funnel.sqlite3
+      # Persistent private conversations and uploads are not enabled on the public demo.
+      CAIL_WORKSPACE_LOCAL_DEMO: "false"
       # No LEGACY_EXPERT_KEY or LEGACY_REVIEWER_KEY.
     extra_hosts:
       - "host.docker.internal:host-gateway"
