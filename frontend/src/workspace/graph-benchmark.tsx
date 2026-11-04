@@ -11,25 +11,66 @@ function Benchmark() {
   const [documents, setDocuments] = useState(0);
   const [focus, setFocus] = useState(false);
   const [dimension, setDimension] = useState<"2d" | "3d">("3d");
+  const [shape, setShape] = useState("branching");
   const data = useMemo(() => {
-    const nodes: GraphNode[] = Array.from({ length: count }, (_, index) => ({
-      id: "fixture-" + index,
-      entity_id: String(index),
-      kind: index === 0 ? "person" : "entity",
-      label: index === 0 ? "Synthetic contributor" : "Synthetic node " + index,
-      entity_type: index % 20 === 0 ? "system" : "service",
-      status: "synthetic_fixture",
-    }));
+    const manual = shape === "manual";
+    const nodes: GraphNode[] = Array.from({ length: count }, (_, index) => {
+      const kind: GraphNode["kind"] = manual
+        ? index === 0
+          ? "document"
+          : index === 1
+            ? "person"
+            : index === 2
+              ? "topic"
+              : "entity"
+        : index === 0
+          ? "person"
+          : "entity";
+      return {
+        id: "fixture-" + index,
+        entity_id: String(index),
+        kind,
+        label:
+          kind === "document"
+            ? "Synthetic large reference manual"
+            : kind === "person"
+              ? "Synthetic contributor"
+              : kind === "topic"
+                ? "Synthetic reference topic"
+                : manual
+                  ? "Synthetic passage excerpt with a long sentence to check label density · " +
+                    index
+                  : "Synthetic node " + index,
+        entity_type:
+          kind !== "entity"
+            ? undefined
+            : manual
+              ? "passage"
+              : index % 20 === 0
+                ? "system"
+                : "service",
+        status: "synthetic_fixture",
+      };
+    });
     const edges: GraphEdge[] = [];
     for (let index = 1; index < count; index++) {
+      const kind = manual
+        ? index === 1
+          ? "contributed"
+          : index === 2
+            ? "about"
+            : "contains"
+        : "source_relationship";
       edges.push({
         id: "tree-" + index,
-        source: "fixture-" + Math.floor((index - 1) / 4),
-        target: "fixture-" + index,
-        kind: "source_relationship",
-        label: "test link",
+        source:
+          "fixture-" +
+          (manual ? (index === 1 ? 1 : 0) : Math.floor((index - 1) / 4)),
+        target: "fixture-" + (manual && index === 1 ? 0 : index),
+        kind,
+        label: manual ? kind : "test link",
       });
-      if (index % 3 === 0)
+      if (!manual && index % 3 === 0)
         edges.push({
           id: "cross-" + index,
           source: "fixture-" + index,
@@ -56,7 +97,7 @@ function Benchmark() {
       });
     }
     return { nodes, edges };
-  }, [count, documents]);
+  }, [count, documents, shape]);
   const visible = useMemo(
     () => new Set(data.nodes.map((node) => node.id)),
     [data],
@@ -69,6 +110,18 @@ function Benchmark() {
           <p>Explicit synthetic fixture · no CAIL data · no database writes</p>
         </div>
         <div className="qa-actions">
+          <select
+            aria-label="Fixture topology"
+            value={shape}
+            onChange={(event) => {
+              setShape(event.target.value);
+              setSelected(null);
+              setDocuments(0);
+            }}
+          >
+            <option value="branching">Branching network</option>
+            <option value="manual">Large manual hub</option>
+          </select>
           <select
             aria-label="Renderer dimensions"
             value={dimension}

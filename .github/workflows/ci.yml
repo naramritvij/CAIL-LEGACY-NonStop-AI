@@ -47,6 +47,9 @@ jobs:
       - name: Verify API and safety contracts
         working-directory: frontend
         run: npm run test:contract
+      - name: Verify dense graph readability
+        working-directory: frontend
+        run: npm run test:graph
       - name: Typecheck and production Vite build
         working-directory: frontend
         run: npm run build

@@ -1,4 +1,9 @@
 import type { MultiDirectedGraph } from "graphology";
+import {
+  drawGraphLabels,
+  graphSelection,
+  type GraphSelection,
+} from "./graphReadability";
 
 type Point = { x: number; y: number; z: number };
 type ScreenPoint = {
@@ -27,10 +32,12 @@ export class PerspectiveNetwork {
   private ratio = 1;
   private autoFit = true;
   private selected: string | null = null;
+  private selection: GraphSelection | null = null;
   private visible = new Set<string>();
   private focusOnly = false;
   private screen = new Map<string, ScreenPoint>();
   private arrivals = new Map<string, { at: number; side: number }>();
+  private arrivalEdges = new Set<string>();
   private arrivalSequence = 0;
   private pointer: {
     x: number;
@@ -97,6 +104,8 @@ export class PerspectiveNetwork {
     this.selected = selected;
     this.visible = visible;
     this.focusOnly = focusOnly;
+    this.selection = graphSelection(this.graph, selected, visible);
+    this.updateArrivalEdges();
     this.refresh();
   }
   arrive(ids: string[]) {
@@ -107,7 +116,15 @@ export class PerspectiveNetwork {
         at: at + index * 45,
         side: this.arrivalSequence++ % 2 ? 1 : -1,
       });
+    this.updateArrivalEdges();
     this.refresh();
+  }
+  private updateArrivalEdges() {
+    this.arrivalEdges.clear();
+    for (const id of this.arrivals.keys()) {
+      const selection = graphSelection(this.graph, id, this.visible);
+      for (const edge of selection?.edges ?? []) this.arrivalEdges.add(edge);
+    }
   }
   freezeFit() {
     this.autoFit = false;
@@ -119,7 +136,12 @@ export class PerspectiveNetwork {
       maxX = -Infinity,
       maxY = -Infinity,
       maxZ = -Infinity;
-    this.graph.forEachNode((_id, a) => {
+    this.graph.forEachNode((id, a) => {
+      if (
+        !this.visible.has(id) ||
+        (this.focusOnly && this.selection && !this.selection.nodes.has(id))
+      )
+        return;
       const x = Number(a.x),
         y = Number(a.y),
         z = Number(a.z || 0);
@@ -155,11 +177,39 @@ export class PerspectiveNetwork {
     );
   }
   focus(id: string, reduced: boolean) {
-    if (!this.graph.hasNode(id)) return;
-    const a = this.graph.getNodeAttributes(id);
+    const selection = graphSelection(this.graph, id, this.visible);
+    if (!selection) return;
+    const points = [...selection.nodes].map((key) => {
+      const a = this.graph.getNodeAttributes(key);
+      return { x: Number(a.x), y: Number(a.y), z: Number(a.z || 0) };
+    });
+    const center = {
+      x:
+        (Math.min(...points.map((p) => p.x)) +
+          Math.max(...points.map((p) => p.x))) /
+        2,
+      y:
+        (Math.min(...points.map((p) => p.y)) +
+          Math.max(...points.map((p) => p.y))) /
+        2,
+      z:
+        (Math.min(...points.map((p) => p.z)) +
+          Math.max(...points.map((p) => p.z))) /
+        2,
+    };
+    const radius = Math.max(
+      50,
+      ...points.map((p) =>
+        Math.hypot(p.x - center.x, p.y - center.y, p.z - center.z),
+      ),
+    );
+    const focal = Math.min(this.width, this.height) * 1.4;
+    const distance =
+      radius *
+      (1 + focal / Math.max(50, Math.min(this.width, this.height) / 2 - 90));
     this.animate(
-      { x: Number(a.x), y: Number(a.y), z: Number(a.z || 0) },
-      Math.min(this.ratio, 0.28),
+      center,
+      Math.max(0.025, distance / this.fitDistance),
       reduced ? 0 : 550,
     );
   }
@@ -202,10 +252,8 @@ export class PerspectiveNetwork {
     const ctx = this.ctx,
       data = this.graph,
       selected = this.selected;
-    const neighbors =
-      selected && data.hasNode(selected)
-        ? new Set([selected, ...data.neighbors(selected)])
-        : null;
+    const selection = this.selection,
+      neighbors = selection?.nodes;
     const focal = Math.min(this.width, this.height) * 1.4,
       distance = this.fitDistance * this.ratio;
     this.screen.clear();
@@ -253,16 +301,15 @@ export class PerspectiveNetwork {
       ctx.strokeStyle = selected ? "#e4ebe6" : "#bdd0c4";
       ctx.lineWidth = 0.5;
       ctx.globalAlpha = selected ? 0.3 : 0.32;
-      data.forEachEdge((_id, _a, source, target) => {
+      data.forEachEdge((id, _a, source, target) => {
         const a = this.screen.get(source),
           b = this.screen.get(target);
         if (
           !a ||
           !b ||
-          source === selected ||
-          target === selected ||
-          this.arrivals.has(source) ||
-          this.arrivals.has(target)
+          selection?.edges.has(id) ||
+          (this.arrivalEdges.has(id) &&
+            (this.arrivals.has(source) || this.arrivals.has(target)))
         )
           return;
         ctx.moveTo(a.x, a.y);
@@ -270,12 +317,13 @@ export class PerspectiveNetwork {
       });
       ctx.stroke();
     }
-    let edgeLabels = 0;
-    data.forEachEdge((_id, attributes, source, target) => {
+    data.forEachEdge((id, _attributes, source, target) => {
       const a = this.screen.get(source),
         b = this.screen.get(target),
-        incident = selected === source || selected === target;
-      const arrival = this.arrivals.get(source) || this.arrivals.get(target);
+        incident = selection?.edges.has(id);
+      const arrival = this.arrivalEdges.has(id)
+        ? this.arrivals.get(source) || this.arrivals.get(target)
+        : undefined;
       if (!a || !b || (!incident && !arrival)) return;
       const progress = arrival
         ? Math.min(1, Math.max(0, (now - arrival.at - 350) / 500))
@@ -310,25 +358,10 @@ export class PerspectiveNetwork {
         ctx.closePath();
         ctx.fill();
       }
-      if (
-        incident &&
-        this.focusOnly &&
-        edgeLabels++ < 40 &&
-        Math.hypot(a.x - b.x, a.y - b.y) > 100
-      ) {
-        ctx.font = "11px Inter, sans-serif";
-        ctx.fillStyle = "#527562";
-        ctx.fillText(
-          String(attributes.label),
-          (a.x + b.x) / 2,
-          (a.y + b.y) / 2 - 5,
-        );
-      }
     });
     const sorted = [...this.screen.entries()].sort(
-        (a, b) => b[1].depth - a[1].depth,
-      ),
-      labels: { x: number; y: number; width: number }[] = [];
+      (a, b) => b[1].depth - a[1].depth,
+    );
     for (const [id, point] of sorted) {
       if (
         point.x < -80 ||
@@ -368,37 +401,11 @@ export class PerspectiveNetwork {
         ctx.arc(point.x, point.y, point.size + 4, 0, Math.PI * 2);
         ctx.stroke();
       }
-      if (
-        !dim &&
-        (active ||
-          attributes.kind === "person" ||
-          attributes.kind === "document" ||
-          attributes.kind === "source") &&
-        labels.length < 80
-      ) {
-        const text = String(attributes.label).slice(0, 48),
-          x = point.x + point.size + 6;
-        let y = point.y + 4;
-        ctx.font = `${id === selected ? 600 : 400} 12px Inter, sans-serif`;
-        const width = ctx.measureText(text).width;
-        for (
-          let n = 0;
-          n < 5 &&
-          labels.some(
-            (b) =>
-              x < b.x + b.width + 4 &&
-              x + width > b.x &&
-              Math.abs(y - b.y) < 16,
-          );
-          n++
-        )
-          y += 17;
-        ctx.globalAlpha = point.alpha;
-        ctx.fillStyle = "#395c49";
-        ctx.fillText(text, x, y);
-        labels.push({ x, y, width });
-      }
     }
+    drawGraphLabels(ctx, data, this.screen, selected, selection, this.ratio, {
+      width: this.width,
+      height: this.height,
+    });
     ctx.globalAlpha = 1;
     if (this.arrivals.size) this.refresh();
   };

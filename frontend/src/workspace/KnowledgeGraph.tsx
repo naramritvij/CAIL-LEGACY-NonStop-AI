@@ -623,7 +623,7 @@ export function KnowledgeGraph({
           <footer className="graph-footer">
             <span>
               {focusOnly && selected
-                ? "Showing the selected node and its connections"
+                ? "Connection focus · highlights are bounded; browse all loaded connections in the inspector"
                 : "Positions and zoom stay in place when records update"}
             </span>
             <span>
