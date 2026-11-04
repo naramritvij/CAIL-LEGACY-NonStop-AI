@@ -5,7 +5,7 @@ Implemented November 4, 2026. This guide describes the graph renderer, stored to
 ## Use the graph
 
 1. Open **Knowledge graph**. Existing contributions and actual access events remain visible.
-2. Choose **Import dataset** to upload an authorized JSON or CSV topology export. A PDF is a knowledge document, not a topology export: its text alone does not supply thousands of operational nodes or validated dependencies.
+2. Choose **Import dataset** for JSON/CSV topology, Prognosis dataset JSON or a MOMI alarm export. Choose **Add knowledge → HPE references** to import a real publisher PDF, or upload a manual. Documents create actual passage/reference nodes; they do not establish physical infrastructure dependencies.
 3. Zoom with the wheel or controls; drag the background to pan. Drag a node to reposition it. The layout runs in a worker; pause or arrange it with the layout control.
 4. Select a node to inspect its source, properties and connected nodes. **Connections only** isolates its immediate relationships. Use the inspector's connected-node list to follow a relationship.
 5. Select **Attach knowledge** to add a note or document linked to that node. It appears under its actual contributor, with a separate directed document-to-node relationship. Existing contributor and topic relationships remain.
@@ -15,13 +15,14 @@ New nodes enter near an existing neighbor and animate into view. Keyed updates p
 
 Search covers loaded knowledge and the permitted stored topology. A server search can find an entity outside the initial overview, and selecting it loads its neighborhood. Dataset and review filters narrow the display. The expandable node list and inspector provide keyboard navigation alongside the canvas.
 
-The preferred renderer is Sigma 3 with WebGL, Graphology and a ForceAtlas2 worker. A 2D canvas renderer supports zoom, pan, node dragging, selection and highlighting when WebGL is unavailable. Neither renderer creates thousands of SVG or DOM node elements. Reduced-motion preferences disable automatic layout and node-entry animation.
+The default is a perspective 3D camera with orbit, depth, pan, focus and node dragging. A `d3-force-3d` worker computes three-dimensional positions with uniform node charge, avoiding a large manual's high degree being treated as enormous mass. New documents arrive from alternating sides and their links grow into view. Software projection keeps this view available without WebGL. The 2D option uses Sigma 3/WebGL and a ForceAtlas2 worker, with a 2D canvas fallback. No mode creates thousands of SVG/DOM node elements. Reduced-motion preferences disable automatic layout and node-entry animation. Layout coordinates visualize relationships, not physical locations.
 
 ## What the data means
 
 | Record | Origin and visibility |
 | --- | --- |
 | Person, knowledge document, topic | Actual workspace records; contribution, topic and access edges come from stored events |
+| Passage and literal reference | Stored text, existing citation IDs and literal occurrences; document permissions apply and no causal/physical link is inferred |
 | Imported source entity and relationship | Exactly the nodes and relationships supplied in an export; private while its root document is a draft |
 | Live source entity and relationship | A successful authorized HTTPS topology read with source/system identity, observation time and SHA-256 provenance |
 | Attached knowledge | A stored contribution linked to a permitted graph node, retaining its owner and review state |
@@ -29,6 +30,8 @@ The preferred renderer is Sigma 3 with WebGL, Graphology and a ForceAtlas2 worke
 An import does not become a live connection. The graph does not guess dependencies from a PDF, create decorative employees, or connect every entity to a root with invented operational relationships. Source membership is metadata and a filter. Cross-vendor identities are namespaced; equal display names do not prove two entities are the same system.
 
 Importing creates a root contribution and its topology in one SQLite transaction. The owner sees the draft. An independent reviewer sees submitted data; configured operators see approved data. Entity search, details, neighborhoods and attachments enforce the same permissions server-side. Imported entity types such as `person` do not impersonate authenticated employee identities. Only approved **document text** enters assistant retrieval; importing topology does not automatically teach the model every entity/property.
+
+Document uploads create a separate `document_evidence` projection automatically. The document contains passage nodes whose exact text/citation can be opened. Literal product/command references connect through `mentions` relationships. Existing owned documents can be indexed in batches of 20. The publisher catalog downloads only fixed HPE PDFs, retains actual cover editions and original file hashes, and deduplicates identical reimports within the same owner. It does not grant automatic knowledge approval.
 
 ## Export formats
 
@@ -62,6 +65,8 @@ A node-only CSV may instead use `id,label,type` plus scalar property columns. No
 Properties are bounded scalar values. Obvious credential field names are stripped, but this is not a comprehensive content sanitizer: supply only information authorized for this workspace.
 
 ## Connect actual Prognosis, ASAP and MOMI topology
+
+Direct Prognosis REST datasets and read-only MOMI export directories are now also supported, along with raw export uploads. Those source rows create observation networks, rather than inferred physical topology. See [NATIVE_SOURCE_SETUP.md](NATIVE_SOURCE_SETUP.md) for exact configuration, field mapping, scope and freshness checks. The normalized topology gateway contract below remains supported, including ASAP.
 
 These are distinct installed products. A configured numeric metric endpoint does not automatically expose a topology or the customer's transaction database. Obtain the installed release's read interface, entitlement and schema from CAIL/the environment owner. Normalize the approved entities and relationships through the existing read-only gateway boundary. No universal native vendor REST path is assumed.
 
@@ -109,6 +114,8 @@ Failed reads mark retained source data stale; old data is never presented as a s
 | Operation | Bound / behavior |
 | --- | --- |
 | Import or one live response | 16 MiB, 25,000 nodes, 100,000 relationships |
+| Reference manual / publisher PDF | 32 MiB, 1,000 PDF pages, 2,000,000 extracted characters; publisher reads time out at 20 seconds |
+| Native alarm dataset/export | At most 5,000 source rows; native assistant snapshots disclose a 100-row bound |
 | Initial graph overview | 12,000 nodes, up to 50,000 relationships with visible endpoints |
 | Knowledge contribution projection | Up to 3,000 permitted documents; clipping is disclosed |
 | Entity neighborhood expansion | Up to 500 relationships, including permitted attachments; truncation is disclosed |
@@ -132,6 +139,10 @@ Paths are under `/api/v1/workspace` and require the workspace identity:
 | GET | `/graph/neighborhood?node_id=...` | Bounded source relationships and permitted attachments |
 | POST | `/graph/links` | Link an owned existing `document_id` to a permitted `target_node_id` |
 | POST | `/documents` or `/documents/upload` | Optional `target_node_id` atomically attaches the new draft |
+| POST | `/documents/manual` | Large PDF/TXT/Markdown manual with edition/source provenance |
+| GET / POST | `/references` / `/references/import` | Fixed HPE catalog / actual publisher PDF import |
+| POST | `/graph/index-documents` | Index existing owned text into citation-backed passage networks |
+| POST | `/graph/monitoring-import` | Import literal Prognosis JSON or MOMI alarm rows as a draft snapshot |
 
 ## Verification
 
@@ -142,5 +153,7 @@ Browser checks used the shared renderer with explicit synthetic networks of 1,00
 For repeatable renderer QA, run frontend development and open `/graph-benchmark.html`. That page is labelled synthetic, writes no database records and is not an entry in the production Vite build or app navigation. No test network is seeded into the application.
 
 The owner's earlier Windows/Qwen/contribution checks are recorded separately in [local verification](LOCAL_VERIFICATION_2026-11-04.md). Actual CAIL connectivity requires an authorized export or provisioned topology endpoints; neither was supplied during this change.
+
+The later 3D/document update performed real HPE publisher imports through the API: two PDFs, 767 pages, 1,524 nodes and 2,607 relationships. That actual backend projection was visually checked in the shared 3D renderer. Native monitoring tests use controlled responses/files; no private customer connection is claimed. See [the source review and verification record](TEAM31_TECHNICAL_REVIEW.md).
 
 References: [Sigma 3](https://v3.sigmajs.org/docs/) and [Graphology ForceAtlas2](https://graphology.github.io/standard-library/layout-forceatlas2.html).

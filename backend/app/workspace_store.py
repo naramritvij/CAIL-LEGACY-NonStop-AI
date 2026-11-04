@@ -66,6 +66,9 @@ SCHEMA = (
         UNIQUE(document_id,target_node))""",
     """CREATE TABLE IF NOT EXISTS ws_topology_sync (
         source_id TEXT PRIMARY KEY, status TEXT NOT NULL, attempted_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_document_sources (
+        document_id TEXT PRIMARY KEY REFERENCES ws_documents(id), source_url TEXT,
+        edition TEXT, source_kind TEXT NOT NULL, file_sha256 TEXT NOT NULL)""",
     'CREATE INDEX IF NOT EXISTS ws_conversations_owner ON ws_conversations(owner_id,updated_at)',
     'CREATE INDEX IF NOT EXISTS ws_messages_thread ON ws_messages(conversation_id,sequence)',
     'CREATE INDEX IF NOT EXISTS ws_documents_status ON ws_documents(status,owner_id)',
@@ -185,12 +188,12 @@ def can_see(doc, principal):
     return doc['status'] == 'approved' or doc['owner_id'] == principal['id'] or (principal['can_review'] and doc['status'] == 'submitted')
 
 
-def insert_document(db, principal, title, filename, content, topic, target_node_id=None):
+def insert_document(db, principal, title, filename, content, topic, target_node_id=None, *, build_network=True, max_chars=200_000):
     """Insert in the caller's transaction, including an optional real graph link."""
     identifier, timestamp = str(uuid4()), now()
     content = content.strip()
-    if len(content) < 20 or len(content) > 200_000:
-        raise HTTPException(422, 'Document text must contain 20–200,000 characters.')
+    if len(content) < 20 or len(content) > min(max_chars, 2_000_000):
+        raise HTTPException(422, f'Document text must contain 20–{max_chars:,} characters.')
     if target_node_id:
         from .workspace_topology import require_node
         require_node(db, principal, target_node_id)
@@ -203,6 +206,9 @@ def insert_document(db, principal, title, filename, content, topic, target_node_
                    (str(uuid4()), identifier, target_node_id, principal['id'], timestamp))
         event(db, principal, 'linked', identifier, {'target_node_id': target_node_id})
     event(db, principal, 'uploaded', identifier)
+    if build_network:
+        from .document_network import index
+        index(db, identifier)
     return identifier
 
 
@@ -220,6 +226,8 @@ def document(principal, identifier, record_access=True):
         if not row or not can_see(row, principal):
             raise HTTPException(404, 'Document not found')
         result = dict(row)
+        source = db.execute('SELECT source_url,edition,source_kind,file_sha256 FROM ws_document_sources WHERE document_id=?', (identifier,)).fetchone()
+        result['reference'] = dict(source) if source else None
         if record_access:
             event(db, principal, 'viewed', identifier)
         result['can_review'] = bool(principal['can_review'] and result['owner_id'] != principal['id'] and result['status'] == 'submitted')
@@ -258,7 +266,7 @@ def retrieve_documents(principal, query, limit=6):
     if not words:
         return []
     with database() as db:
-        rows = db.execute("SELECT c.*,d.title,d.owner_id,d.status,d.topic,p.name AS owner_name FROM ws_chunks c JOIN ws_documents d ON d.id=c.document_id JOIN ws_people p ON p.id=d.owner_id WHERE d.status='approved'").fetchall()
+        rows = db.execute("SELECT c.*,d.title,d.owner_id,d.status,d.topic,p.name AS owner_name,s.source_url,s.edition FROM ws_chunks c JOIN ws_documents d ON d.id=c.document_id JOIN ws_people p ON p.id=d.owner_id LEFT JOIN ws_document_sources s ON s.document_id=d.id WHERE d.status='approved'").fetchall()
         ranked = []
         for row in rows:
             text_words = tokens(row['content'])
@@ -270,7 +278,8 @@ def retrieve_documents(principal, query, limit=6):
         for score, row in matches:
             result.append({'id': row['id'], 'document_id': row['document_id'], 'title': row['title'],
                            'owner_id': row['owner_id'], 'owner_name': row['owner_name'], 'text': row['content'],
-                           'type': 'approved_document', 'score': score, 'synthetic': False})
+                           'type': 'approved_document', 'score': score, 'synthetic': False,
+                           'source_url': row['source_url'], 'edition': row['edition'], 'release_applicability': 'not_inferred'})
         return result
 
 

@@ -35,6 +35,16 @@ interface Neighborhood {
   truncated?: boolean;
 }
 
+function originLabel(kind: string) {
+  return kind === "document_evidence"
+    ? "Document evidence"
+    : kind === "monitoring_export"
+      ? "Monitoring export"
+      : kind === "imported_export"
+        ? "Imported snapshot"
+        : "Read-only source snapshot";
+}
+
 export function KnowledgeGraph({
   operator,
   onError,
@@ -67,6 +77,8 @@ export function KnowledgeGraph({
   const [reviewBusy, setReviewBusy] = useState(false);
   const [listLimit, setListLimit] = useState(80);
   const [connectionLimit, setConnectionLimit] = useState(40);
+  const [dimension, setDimension] = useState<"2d" | "3d">("3d");
+  const [indexBusy, setIndexBusy] = useState(false);
   const inFlight = useRef(false);
   const refreshSequence = useRef(0);
   const syncFlight = useRef(false);
@@ -280,9 +292,10 @@ export function KnowledgeGraph({
           const matchesSource =
             scope === "all" ||
             (scope === "knowledge"
-              ? !node.dataset_id &&
-                node.kind !== "entity" &&
-                node.kind !== "source"
+              ? node.source_kind === "document_evidence" ||
+                (!node.dataset_id &&
+                  node.kind !== "entity" &&
+                  node.kind !== "source")
               : node.dataset_id === scope ||
                 dataset?.document_id === node.entity_id);
           const status = dataset?.status || node.status;
@@ -365,6 +378,24 @@ export function KnowledgeGraph({
     URL.revokeObjectURL(url);
   }
 
+  async function indexDocuments() {
+    setIndexBusy(true);
+    try {
+      const result = await request<{ indexed_documents: number }>(
+        "/graph/index-documents",
+        { method: "POST", body: "{}" },
+      );
+      setSyncMessage(
+        `${result.indexed_documents} existing document${result.indexed_documents === 1 ? "" : "s"} indexed. New uploads are indexed automatically.`,
+      );
+      await refresh(true);
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setIndexBusy(false);
+    }
+  }
+
   return (
     <div className="graph-page network-page">
       <div className="page-intro">
@@ -377,6 +408,14 @@ export function KnowledgeGraph({
           </p>
         </div>
         <div className="network-actions">
+          <button
+            className="secondary"
+            disabled={indexBusy}
+            onClick={() => void indexDocuments()}
+          >
+            <GitBranch size={16} />
+            {indexBusy ? "Indexing…" : "Index existing documents"}
+          </button>
           <button className="secondary" onClick={() => setImporting(true)}>
             <Upload size={16} />
             Import dataset
@@ -398,8 +437,12 @@ export function KnowledgeGraph({
         <div>
           <strong>
             {freshSources
-              ? `${freshSources} verified topology source${freshSources === 1 ? "" : "s"}`
-              : "Live CAIL sources are not connected"}
+              ? `${freshSources} connected read-only source${freshSources === 1 ? "" : "s"}`
+              : graph?.datasets.some(
+                    (dataset) => dataset.source_kind === "document_evidence",
+                  )
+                ? "Document evidence network"
+                : "Knowledge and operational sources"}
           </strong>
           <span>
             {syncMessage ||
@@ -407,7 +450,7 @@ export function KnowledgeGraph({
                 (dataset) => dataset.source_kind === "imported_export",
               )
                 ? "Imported snapshots are labelled separately from live observations."
-                : "Import an authorized export, or configure a read-only topology endpoint in Connections.")}
+                : "Documents build evidence networks automatically. Monitoring reads use configured source access.")}
           </span>
         </div>
         <button
@@ -449,6 +492,25 @@ export function KnowledgeGraph({
       <div className="network-workspace">
         <section className="network-panel">
           <div className="network-toolbar">
+            <div
+              className="segmented network-dimensions"
+              aria-label="Graph dimensions"
+            >
+              <button
+                aria-pressed={dimension === "3d"}
+                className={dimension === "3d" ? "active" : ""}
+                onClick={() => setDimension("3d")}
+              >
+                3D
+              </button>
+              <button
+                aria-pressed={dimension === "2d"}
+                className={dimension === "2d" ? "active" : ""}
+                onClick={() => setDimension("2d")}
+              >
+                2D
+              </button>
+            </div>
             <div className="network-search">
               <label className="search-field">
                 <Search size={17} />
@@ -505,9 +567,7 @@ export function KnowledgeGraph({
               {graph?.datasets.map((dataset) => (
                 <option key={dataset.id} value={dataset.id}>
                   {dataset.title}
-                  {dataset.source_kind === "imported_export"
-                    ? " · imported"
-                    : " · source"}
+                  {" · " + originLabel(dataset.source_kind)}
                 </option>
               ))}
             </select>
@@ -533,6 +593,7 @@ export function KnowledgeGraph({
           ) : (
             <>
               <GraphCanvas
+                dimension={dimension}
                 nodes={view.nodes}
                 edges={view.edges}
                 selected={selected}
@@ -643,11 +704,9 @@ export function KnowledgeGraph({
                       {dataset.title}
                       <small>
                         {dataset.node_count.toLocaleString()} nodes ·{" "}
-                        {dataset.source_kind === "imported_export"
-                          ? "Imported snapshot"
-                          : dataset.stale
-                            ? "Stale source"
-                            : "Source snapshot"}
+                        {dataset.stale
+                          ? "Stale source"
+                          : originLabel(dataset.source_kind)}
                       </small>
                     </span>
                   </button>
@@ -665,11 +724,9 @@ export function KnowledgeGraph({
               {selectedDataset && (
                 <div className="network-provenance">
                   <strong>
-                    {selectedDataset.source_kind === "imported_export"
-                      ? "Imported snapshot"
-                      : selectedDataset.stale
-                        ? "Source unavailable or stale"
-                        : "Read-only source snapshot"}
+                    {selectedDataset.stale
+                      ? "Source unavailable or stale"
+                      : originLabel(selectedDataset.source_kind)}
                   </strong>
                   <span>{selectedDataset.title}</span>
                   {selectedDataset.system_id && (
@@ -707,18 +764,36 @@ export function KnowledgeGraph({
                       </dl>
                       {Object.keys(entity.properties).length > 0 && (
                         <>
+                          {typeof entity.properties.excerpt === "string" && (
+                            <blockquote className="network-evidence-quote">
+                              {entity.properties.excerpt}
+                            </blockquote>
+                          )}
+                          {selectedDataset?.document_id && (
+                            <button
+                              className="secondary full"
+                              onClick={() =>
+                                choose(
+                                  "document:" + selectedDataset.document_id,
+                                )
+                              }
+                            >
+                              <FileText size={15} />
+                              Open source document
+                            </button>
+                          )}
                           <h4>Source properties</h4>
                           <dl className="entity-properties">
-                            {Object.entries(entity.properties).map(
-                              ([key, value]) => (
+                            {Object.entries(entity.properties)
+                              .filter(([key]) => key !== "excerpt")
+                              .map(([key, value]) => (
                                 <div key={key}>
                                   <dt>{key}</dt>
                                   <dd>
                                     {value === null ? "—" : String(value)}
                                   </dd>
                                 </div>
-                              ),
-                            )}
+                              ))}
                           </dl>
                         </>
                       )}
@@ -749,6 +824,22 @@ export function KnowledgeGraph({
                         <dd>{doc.topic}</dd>
                       </div>
                     </dl>
+                    {doc.reference && (
+                      <div className="network-provenance">
+                        <strong>Reference manual</strong>
+                        <span>{doc.reference.edition}</span>
+                        {doc.reference.source_url && (
+                          <a
+                            href={doc.reference.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open publisher reference
+                          </a>
+                        )}
+                        <span>Release applicability requires review.</span>
+                      </div>
+                    )}
                     <details className="source-text-details">
                       <summary>Source text</summary>
                       <pre className="document-preview">{doc.content}</pre>

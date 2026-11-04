@@ -63,6 +63,8 @@ def capabilities() -> dict:
     hosts = {h.strip().lower() for h in os.getenv("CAIL_LIVE_ALLOWED_HOSTS", "").split(",") if h.strip()}
     configured = []
     for tool in SOURCE_IDS:
+        from . import vendor_datasets
+        native_mode = vendor_datasets.mode(tool)
         endpoint = os.getenv(f"CAIL_LIVE_{tool.upper()}_URL", "").strip()
         parsed = urlsplit(endpoint)
         valid = bool(
@@ -71,8 +73,14 @@ def capabilities() -> dict:
             not parsed.password and not parsed.fragment and
             len(os.getenv(f"CAIL_LIVE_{tool.upper()}_TOKEN", "")) >= 24
         )
+        if native_mode:
+            try:
+                vendor_datasets.configured(tool)
+                valid = True
+            except HTTPException:
+                valid = False
         configured.append({"tool_id": tool, "configured": valid,
-                           "connected": None, "mode": "on_demand_read_only_https_gateway",
+                           "connected": None, "mode": native_mode or "on_demand_read_only_https_gateway",
                            "execution_allowed": False})
     return {"mode": "opt_in_live_read_gateway" if _enabled() else "disabled",
             "operator_auth_configured": len(os.getenv("CAIL_OPERATOR_READ_KEY", "")) >= 32,
@@ -112,6 +120,9 @@ def _record(raw: object) -> dict:
 
 def read_source(tool: str) -> dict:
     """A single GET to a fixed, explicitly allowlisted HTTPS endpoint."""
+    from . import vendor_datasets
+    if vendor_datasets.mode(tool):
+        return vendor_datasets.evidence(tool)
     url, token = _config(tool)
     request = Request(url, headers={"Authorization": "Bearer " + token,
                                     "Accept": "application/json",

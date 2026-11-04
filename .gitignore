@@ -234,3 +234,7 @@ backend/.venv/
 # Retain source-code utilities for Maggie's TypeScript frontend.
 !frontend/src/lib/
 !frontend/src/lib/**
+
+# Customer exports remain local; only the read-only Docker mount sees them.
+data/momi-inbox/
+frontend/local-verification/
