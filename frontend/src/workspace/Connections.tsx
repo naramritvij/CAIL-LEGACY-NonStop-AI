@@ -50,9 +50,11 @@ function MetricChart({ source }: { source: Connection }) {
       <div className="chart-empty">
         <Activity size={22} />
         <span>
-          {source.connected
-            ? "No numeric observations in the latest snapshot."
-            : "A verified source snapshot will appear here."}
+          {source.topology_connected && !source.snapshot
+            ? "Topology is connected. Numeric measurements use the metrics endpoint."
+            : source.connected
+              ? "No numeric observations in the latest snapshot."
+              : "A verified source snapshot will appear here."}
         </span>
       </div>
     );
@@ -165,7 +167,17 @@ export function Connections({
       setBusy((values) => [...values, id]);
       setFailures((values) => ({ ...values, [id]: "" }));
       try {
-        await request(`/connections/${id}/check`, { method: "POST" });
+        const source = sources.find((item) => item.id === id);
+        if (source?.topology_configured && !source.metrics_configured) {
+          const result = await request<{
+            sources: { id: string; status: string; reason?: string }[];
+          }>(`/graph/sync?source_id=${id}`, { method: "POST" });
+          const status = result.sources.find((item) => item.id === id);
+          if (status?.status !== "connected")
+            throw new Error(
+              status?.reason || "Topology source is unavailable.",
+            );
+        } else await request(`/connections/${id}/check`, { method: "POST" });
         await refresh();
       } catch (error) {
         setFailures((values) => ({ ...values, [id]: errorMessage(error) }));
@@ -174,7 +186,7 @@ export function Connections({
         setBusy((values) => values.filter((value) => value !== id));
       }
     },
-    [refresh],
+    [refresh, sources],
   );
   useEffect(() => {
     if (!automatic) return;
@@ -256,7 +268,9 @@ export function Connections({
                 >
                   <i />
                   {source.connected
-                    ? "Connected"
+                    ? source.topology_connected && !source.metrics_connected
+                      ? "Topology connected"
+                      : "Connected"
                     : source.configured
                       ? "Ready to verify"
                       : "Not connected"}
@@ -266,6 +280,14 @@ export function Connections({
               <div className="connection-interface">{source.interface}</div>
               <p className="muted">{source.description}</p>
               <MetricChart source={source} />
+              {source.topology_configured && (
+                <p className="fine-print">
+                  Topology:{" "}
+                  {source.topology_connected
+                    ? `${source.topology_node_count?.toLocaleString()} source entities available in Knowledge Graph`
+                    : "awaiting a fresh verified read"}
+                </p>
+              )}
               <div className="source-check-detail">
                 <span>
                   {source.last_observed_at

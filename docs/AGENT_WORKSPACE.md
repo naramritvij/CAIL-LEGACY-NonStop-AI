@@ -27,13 +27,17 @@ A live investigation without fresh authorized observations deterministically wit
 
 ## Knowledge provenance
 
-Nodes represent stored people, documents and topics. Directed edges distinguish contribution, topic membership and access. Actual document-view and assistant-retrieval events create access edges. Documents retain their contributor's identity.
+Nodes represent stored people, documents, topics and permitted imported/live source entities. Directed edges distinguish contribution, topic membership, access, supplied source relationships and explicit document attachments. Actual document-view and assistant-retrieval events create access edges. Documents retain their contributor's identity.
 
 The graph refreshes immediately after the current user's upload and every three seconds while visible. Other sessions see permitted changes on their next refresh. This is polling, not WebSocket streaming or background updates to inactive browsers.
 
 Owners see drafts and rejected contributions. Reviewers see submitted documents and may review another contributor's submission. Approved material is shared with configured team operators and assistant retrieval. Access does not grant ownership, approve knowledge or clone a branch.
 
-The graph shows up to 150 recently updated permitted documents and discloses that limit. Access relationships aggregate the complete retained history; the recent-activity list is bounded separately. Legacy reviewed knowledge is searchable, but old author aliases are not silently reassigned to authenticated employees.
+The graph now uses Sigma/WebGL with a 2D canvas fallback and a worker layout, replacing the small fixed-column SVG. It projects up to 3,000 recently updated permitted documents and a bounded overview of up to 12,000 nodes / 50,000 relationships. JSON/CSV topology imports support up to 25,000 nodes / 100,000 relationships within 16 MiB. Server search and bounded neighborhood expansion reach entities outside the overview. Clipping is disclosed. Access relationships aggregate the complete retained history; the recent-activity list is bounded separately. Legacy reviewed knowledge is searchable, but old author aliases are not silently reassigned to authenticated employees.
+
+Source entities and their actual supplied relationships can be imported as a private review-gated dataset or read from an authorized source-specific topology gateway. The three optional CAIL_LIVE_<SOURCE>_TOPOLOGY_URL settings use the corresponding existing source token. Topology is separate from numeric snapshots; source/system identities, observation time, bounded structure and SHA-256 provenance are validated. Failed reads retain labelled stale topology; disabling the source hides it. No sample data substitutes for live data.
+
+Selecting an entity shows its properties and neighbors. Attaching knowledge inserts the draft contribution and explicit link in one transaction. Import approval controls sharing; only approved document text enters assistant retrieval. See the [large graph and topology guide](SCALABLE_GRAPH.md) for schemas, foreground refresh behavior, limits and verification.
 
 Uploads retain extracted text rather than the original binary. Overlapping chunks, stable citation IDs, content digests and review status are stored. Scans require OCR. Retrieval uses lexical matching with model-driven rewriting and relevance evaluation; it does not claim vector embeddings.
 
@@ -120,6 +124,12 @@ All paths below are under /api/v1/workspace. Record permissions are enforced ser
 | GET | /conversations/{id} | Complete transcript and response metadata |
 | POST | /conversations/{id}/messages | Persist question, orchestrate, persist answer |
 | GET | /graph | Permission-scoped ownership/access projection |
+| POST | /graph/import | Import review-gated JSON/CSV topology |
+| POST | /graph/sync | Read configured authorized topology gateways |
+| GET | /graph/search | Search permitted source entities beyond the overview |
+| GET | /graph/node | Source entity details and provenance |
+| GET | /graph/neighborhood | Bounded permitted relationships and attachments |
+| POST | /graph/links | Attach an owned document to a permitted node |
 | POST | /documents | Add text under the current operator |
 | POST | /documents/upload | Extract a document into a draft |
 | GET | /documents/{id} | Check access and record a view |
@@ -135,4 +145,4 @@ Tests use isolated SQLite databases, configured test identities, controlled mode
 
 The frontend is typechecked and production-built, and the existing contracts remain intact. On November 4, 2026, the owner passed the real-model acknowledgement/topic-change/recall/transcript test in the running Windows/Docker application. Browser screenshots also confirmed the light workspace, document ingestion, ownership/access/topic edges, and submission changing to Awaiting Review. See the [local verification record](LOCAL_VERIFICATION_2026-11-04.md).
 
-The editing environment itself lacked FastAPI dependencies in its managed browser preview. The owner's checks establish the specific flows above, not exhaustive browser coverage or general model correctness. Independent approval, cross-employee access and timed cross-session refresh remain to be checked. Real authorized vendor endpoints are still unavailable, so vendor compatibility and live NonStop connectivity remain unverified.
+The managed browser preview could not run the Python backend. The owner's checks establish the specific flows above, not exhaustive browser coverage or general model correctness. Later renderer checks used clearly labelled synthetic networks of up to 12,000 nodes, including fallback rendering, zoom, selection, focused connections and an added linked document. Backend tests separately exercise large imports, privacy, independent review, attachments and all three topology-only connectors. Independent approval, cross-employee access and timed cross-session refresh remain to be checked in the owner's running application. Real authorized vendor endpoints are still unavailable, so vendor compatibility and live NonStop connectivity remain unverified.

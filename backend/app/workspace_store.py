@@ -47,11 +47,35 @@ SCHEMA = (
         person_id TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS ws_connector_state (
         source_id TEXT PRIMARY KEY, status TEXT NOT NULL, checked_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_topology_datasets (
+        id TEXT PRIMARY KEY, document_id TEXT REFERENCES ws_documents(id),
+        title TEXT NOT NULL, source_kind TEXT NOT NULL, source_id TEXT,
+        system_id TEXT, observed_at TEXT, sha256 TEXT NOT NULL,
+        structure_sha256 TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_topology_nodes (
+        id TEXT PRIMARY KEY, dataset_id TEXT NOT NULL REFERENCES ws_topology_datasets(id),
+        local_id TEXT NOT NULL, label TEXT NOT NULL, entity_type TEXT NOT NULL,
+        status TEXT NOT NULL, properties TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_topology_edges (
+        id TEXT PRIMARY KEY, dataset_id TEXT NOT NULL REFERENCES ws_topology_datasets(id),
+        source_node TEXT NOT NULL, target_node TEXT NOT NULL, kind TEXT NOT NULL,
+        label TEXT NOT NULL, properties TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_graph_links (
+        id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES ws_documents(id),
+        target_node TEXT NOT NULL, creator_id TEXT NOT NULL, created_at TEXT NOT NULL,
+        UNIQUE(document_id,target_node))""",
+    """CREATE TABLE IF NOT EXISTS ws_topology_sync (
+        source_id TEXT PRIMARY KEY, status TEXT NOT NULL, attempted_at TEXT NOT NULL)""",
     'CREATE INDEX IF NOT EXISTS ws_conversations_owner ON ws_conversations(owner_id,updated_at)',
     'CREATE INDEX IF NOT EXISTS ws_messages_thread ON ws_messages(conversation_id,sequence)',
     'CREATE INDEX IF NOT EXISTS ws_documents_status ON ws_documents(status,owner_id)',
     'CREATE INDEX IF NOT EXISTS ws_chunks_document ON ws_chunks(document_id)',
     'CREATE INDEX IF NOT EXISTS ws_events_document ON ws_events(document_id,sequence)',
+    'CREATE INDEX IF NOT EXISTS ws_topology_nodes_dataset ON ws_topology_nodes(dataset_id)',
+    'CREATE INDEX IF NOT EXISTS ws_topology_edges_dataset ON ws_topology_edges(dataset_id)',
+    'CREATE INDEX IF NOT EXISTS ws_topology_edges_source ON ws_topology_edges(source_node)',
+    'CREATE INDEX IF NOT EXISTS ws_topology_edges_target ON ws_topology_edges(target_node)',
+    'CREATE INDEX IF NOT EXISTS ws_graph_links_target ON ws_graph_links(target_node)',
 )
 
 
@@ -161,19 +185,31 @@ def can_see(doc, principal):
     return doc['status'] == 'approved' or doc['owner_id'] == principal['id'] or (principal['can_review'] and doc['status'] == 'submitted')
 
 
-def create_document(principal, title, filename, content, topic):
+def insert_document(db, principal, title, filename, content, topic, target_node_id=None):
+    """Insert in the caller's transaction, including an optional real graph link."""
     identifier, timestamp = str(uuid4()), now()
     content = content.strip()
     if len(content) < 20 or len(content) > 200_000:
         raise HTTPException(422, 'Document text must contain 20–200,000 characters.')
+    if target_node_id:
+        from .workspace_topology import require_node
+        require_node(db, principal, target_node_id)
+    db.execute('INSERT INTO ws_documents(id,owner_id,title,filename,content,sha256,topic,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+               (identifier, principal['id'], title.strip(), filename, content, hashlib.sha256(content.encode()).hexdigest(), topic.strip() or 'General', 'draft', timestamp, timestamp))
+    for ordinal, offset in enumerate(range(0, len(content), 1100)):
+        db.execute('INSERT INTO ws_chunks VALUES (?,?,?,?)', (f'DOC-{identifier[:8]}-{ordinal + 1}', identifier, ordinal, content[offset:offset + 1400]))
+    if target_node_id:
+        db.execute('INSERT INTO ws_graph_links VALUES (?,?,?,?,?)',
+                   (str(uuid4()), identifier, target_node_id, principal['id'], timestamp))
+        event(db, principal, 'linked', identifier, {'target_node_id': target_node_id})
+    event(db, principal, 'uploaded', identifier)
+    return identifier
+
+
+def create_document(principal, title, filename, content, topic, target_node_id=None):
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
-        db.execute('INSERT INTO ws_documents(id,owner_id,title,filename,content,sha256,topic,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-                   (identifier, principal['id'], title.strip(), filename, content, hashlib.sha256(content.encode()).hexdigest(), topic.strip() or 'General', 'draft', timestamp, timestamp))
-        # Overlapping, stable chunks retain exact source provenance; no unreviewed text enters team retrieval.
-        for ordinal, offset in enumerate(range(0, len(content), 1100)):
-            db.execute('INSERT INTO ws_chunks VALUES (?,?,?,?)', (f'DOC-{identifier[:8]}-{ordinal + 1}', identifier, ordinal, content[offset:offset + 1400]))
-        event(db, principal, 'uploaded', identifier)
+        identifier = insert_document(db, principal, title, filename, content, topic, target_node_id)
         db.execute('COMMIT')
     return document(principal, identifier, record_access=False)
 
@@ -244,13 +280,14 @@ def record_retrieval(principal, sources):
             event(db, principal, 'retrieved', identifier)
 
 
-def graph(principal):
+def knowledge_graph(principal, document_limit=3000):
     """The graph is a projection of actual records, never decorative demo people."""
     with database() as db:
-        rows = db.execute('SELECT d.*,p.name AS owner_name FROM ws_documents d JOIN ws_people p ON p.id=d.owner_id ORDER BY d.updated_at DESC').fetchall()
-        visible = [dict(row) for row in rows if can_see(row, principal)]
-        total = len(visible)
-        visible = visible[:150]
+        clause = "(d.status='approved' OR d.owner_id=? OR (?=1 AND d.status='submitted'))"
+        args = (principal['id'], int(principal['can_review']))
+        total = db.execute('SELECT COUNT(*) AS n FROM ws_documents d WHERE ' + clause, args).fetchone()['n']
+        rows = db.execute('SELECT d.id,d.owner_id,d.title,d.topic,d.status,d.updated_at,p.name AS owner_name FROM ws_documents d JOIN ws_people p ON p.id=d.owner_id WHERE ' + clause + ' ORDER BY d.updated_at DESC,d.id LIMIT ?', (*args, document_limit)).fetchall()
+        visible = [dict(row) for row in rows]
         ids = {row['id'] for row in visible}
         events = [dict(row) for row in db.execute('SELECT * FROM ws_events ORDER BY sequence DESC LIMIT 2000') if row['document_id'] in ids]
         access_rows = []
@@ -279,7 +316,12 @@ def graph(principal):
                       'kind': 'accessed', 'label': 'accessed', 'last_accessed': item['last_accessed'], 'count': item['access_count']})
     return {'nodes': nodes, 'edges': edges, 'events': [dict(item, detail=json.loads(item['detail'])) for item in events[:20]],
             'revision': max((item['sequence'] for item in events), default=0), 'updated_at': now(),
-            'total_documents': total, 'truncated': total > 150, 'poll_interval_ms': 3000}
+            'total_documents': total, 'truncated': total > document_limit, 'poll_interval_ms': 3000}
+
+
+def graph(principal):
+    from .workspace_topology import graph as topology_graph
+    return topology_graph(principal)
 
 
 def save_snapshot(principal, source_id, payload):
