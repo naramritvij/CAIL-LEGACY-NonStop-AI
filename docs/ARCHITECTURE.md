@@ -33,6 +33,9 @@ This diagram describes responsibility and event flow. Workers cannot execute ope
 - ws_documents, ws_chunks: ownership, extracted content, topic, digest, review and citation chunks.
 - ws_events: actual contribution, review, document-view, retrieval and source events.
 - ws_snapshots, ws_connector_state: bounded telemetry history and latest success/failure.
+- ws_topology_datasets, ws_topology_nodes, ws_topology_edges: permission-scoped imported or authorized live topology, stable source identities and provenance.
+- ws_graph_links: explicit links from owned knowledge documents to accessible graph nodes.
+- ws_topology_sync: latest live topology read state, including failures that invalidate freshness.
 
 Older lesson, corpus and audit tables remain unchanged and searchable when approved. Their aliases are not reassigned to authenticated employees.
 
@@ -41,5 +44,7 @@ Older lesson, corpus and audit tables remain unchanged and searchable when appro
 General questions use history without unrelated telemetry. Knowledge questions retrieve approved sources. Live status needs fresh authorized observations. Synthetic cases are explicit and labelled. No synthetic fallback masks a failed source.
 
 The model sees bounded context and normalized evidence, never source credentials. It cannot grant access or approve its own evidence. The graph projects actual permitted records rather than inferring an organizational chart.
+
+The graph has a separate topology read/import path. It stores supplied relationships transactionally, applies dataset and document permissions, and exposes a bounded overview plus server search and neighborhood expansion. Optional source-specific topology HTTPS endpoints are independent of numeric telemetry endpoints. The browser renders keyed graph updates with Sigma/WebGL or a 2D canvas fallback and a worker layout. Importing an entity network does not automatically turn its properties into approved assistant evidence. See [the large graph guide](SCALABLE_GRAPH.md).
 
 See [the workspace guide](AGENT_WORKSPACE.md) for integration configuration, schemas, permissions, API paths and verification limits.

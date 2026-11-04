@@ -8,7 +8,7 @@ import hashlib
 import os
 import zipfile
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from . import workspace_store as store
@@ -42,6 +42,12 @@ class TextDocument(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     content: str = Field(min_length=20, max_length=200000)
     topic: str = Field(default='General', min_length=1, max_length=60)
+    target_node_id: str | None = Field(default=None, max_length=300)
+
+
+class GraphLink(BaseModel):
+    document_id: str = Field(min_length=1, max_length=100)
+    target_node_id: str = Field(min_length=1, max_length=300)
 
 
 class ReviewBody(BaseModel):
@@ -107,13 +113,57 @@ def conversation_turn(conversation_id: str, body: TurnBody, user=Depends(princip
 
 
 @router.get('/graph')
-def knowledge_graph(user=Depends(principal)):
-    return store.graph(user)
+def knowledge_graph(cursor: str | None = Query(default=None, max_length=100), user=Depends(principal)):
+    from . import workspace_topology as topology
+    current, revision = topology.cursor(user)
+    if cursor == current:
+        return {'not_modified': True, 'cursor': current, 'revision': revision, 'updated_at': store.now()}
+    return topology.graph(user)
+
+
+@router.post('/graph/import', status_code=201)
+async def topology_import(file: UploadFile = File(...), title: str = Form('Imported topology'), user=Depends(principal)):
+    from . import workspace_topology as topology
+    payload = await file.read(topology.MAX_BYTES + 1)
+    if len(payload) > topology.MAX_BYTES:
+        raise HTTPException(413, 'Choose a topology export smaller than 16 MB.')
+    filename = Path((file.filename or 'topology.json').replace('\\', '/')).name[:160]
+    return topology.import_dataset(user, title, filename, payload)
+
+
+@router.post('/graph/sync')
+def topology_sync(source_id: Literal['prognosis', 'asap', 'momi'] | None = None, user=Depends(principal)):
+    from .workspace_topology import sync
+    return sync(user, [source_id] if source_id else None)
+
+
+@router.get('/graph/node')
+def topology_node(node_id: str = Query(min_length=1, max_length=300), user=Depends(principal)):
+    from .workspace_topology import detail
+    return detail(user, node_id)
+
+
+@router.get('/graph/search')
+def topology_search(q: str = Query(min_length=1, max_length=160), user=Depends(principal)):
+    from .workspace_topology import search
+    return search(user, q)
+
+
+@router.get('/graph/neighborhood')
+def topology_neighborhood(node_id: str = Query(min_length=1, max_length=300), user=Depends(principal)):
+    from .workspace_topology import neighborhood
+    return neighborhood(user, node_id)
+
+
+@router.post('/graph/links', status_code=201)
+def topology_link(body: GraphLink, user=Depends(principal)):
+    from .workspace_topology import link_document
+    return link_document(user, body.document_id, body.target_node_id)
 
 
 @router.post('/documents', status_code=201)
 def document_create(body: TextDocument, user=Depends(principal)):
-    return store.create_document(user, body.title, body.title + '.txt', body.content, body.topic)
+    return store.create_document(user, body.title, body.title + '.txt', body.content, body.topic, body.target_node_id)
 
 
 def extract_text(filename, payload):
@@ -155,7 +205,7 @@ def extract_text(filename, payload):
 
 
 @router.post('/documents/upload', status_code=201)
-async def document_upload(file: UploadFile = File(...), topic: str = Form('General'), user=Depends(principal)):
+async def document_upload(file: UploadFile = File(...), topic: str = Form('General'), target_node_id: str | None = Form(default=None), user=Depends(principal)):
     payload = await file.read(4 * 1024 * 1024 + 1)
     if len(payload) > 4 * 1024 * 1024:
         raise HTTPException(413, 'Choose a file smaller than 4 MB.')
@@ -163,7 +213,9 @@ async def document_upload(file: UploadFile = File(...), topic: str = Form('Gener
     if not 1 <= len(topic.strip()) <= 60:
         raise HTTPException(422, 'Topic must contain 1–60 characters.')
     content = extract_text(filename, payload)
-    return store.create_document(user, Path(filename).stem[:160], filename, content, topic)
+    if target_node_id and len(target_node_id) > 300:
+        raise HTTPException(422, 'Graph node ID is too long.')
+    return store.create_document(user, Path(filename).stem[:160], filename, content, topic, target_node_id)
 
 
 @router.get('/documents/{document_id}')
@@ -192,6 +244,8 @@ def check_source(user, source_id):
 
 @router.get('/connections')
 def connections(user=Depends(principal)):
+    from .workspace_topology import connection_states
+    topology_states = connection_states(user)
     capabilities = {item['tool_id']: item for item in live_sources.capabilities()['sources']}
     rows = []
     from datetime import datetime, timezone
@@ -201,9 +255,12 @@ def connections(user=Depends(principal)):
         current = store.source_state(key)
         fresh = bool(latest and current and current['status'] == 'connected' and capabilities.get(key, {}).get('configured') and
                      (datetime.now(timezone.utc) - live_sources._timestamp(latest['observed_at'])).total_seconds() <= live_sources.MAX_AGE_SECONDS)
-        rows.append({'id': key, **metadata, 'configured': capabilities.get(key, {}).get('configured', False),
-                     'connected': fresh, 'status': 'connected' if fresh else 'not_connected',
-                     'last_observed_at': latest['observed_at'] if latest else None,
+        topology = topology_states[key]
+        connected = fresh or topology['topology_connected']
+        rows.append({'id': key, **metadata, **topology, 'metrics_configured': capabilities.get(key, {}).get('configured', False),
+                     'configured': capabilities.get(key, {}).get('configured', False) or topology['topology_configured'],
+                     'connected': connected, 'metrics_connected': fresh, 'status': 'connected' if connected else 'not_connected',
+                     'last_observed_at': latest['observed_at'] if latest else topology['topology_observed_at'],
                      'snapshot': latest if fresh else None, 'history': history,
                      'execution_allowed': False})
     return {'sources': rows, 'can_read_live': user['can_read_live'], 'model': os.getenv('OLLAMA_MODEL', 'qwen3:4b-instruct')}

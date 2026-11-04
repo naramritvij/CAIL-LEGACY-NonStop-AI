@@ -5,8 +5,8 @@ A focused, light workspace for operational questions, persistent conversation me
 The application now has **three screens**:
 
 - **Assistant:** one conversational interface. User messages, assistant answers, evidence and agent activity are saved in SQLite. Follow-ups receive relevant earlier user **and** assistant turns; new topics are routed independently.
-- **Knowledge graph:** actual people, documents, topics, contributions and access events. Uploads appear under the authenticated contributor. The graph refreshes every three seconds while visible. Access creates a relationship without copying ownership.
-- **Connections:** IR Prognosis, HPE ASAP and MOMI verification, timestamped observations and charts of actual numeric history. No invented live values.
+- **Knowledge graph:** a zoomable network of contributions, actual access events and imported or authorized source topology. Explore thousands of small nodes, inspect neighbors and properties, and attach a document to a specific entity. Source provenance, review state and stale data are visible. Committed knowledge refreshes every three seconds while visible; uploads retain their contributor.
+- **Connections:** IR Prognosis, HPE ASAP and MOMI verification, topology status, timestamped observations and charts of actual numeric history. Metric and topology endpoints can be configured separately. No invented live values.
 
 The orchestrator delegates to memory, knowledge, telemetry and evidence-evaluation workers, then synthesizes an answer with the existing local Ollama model. The evaluator can reject irrelevant excerpts and request another query, with at most five retrieval attempts. Access control and document approval remain outside the model.
 
@@ -18,7 +18,9 @@ The owner has now built and started the application on Windows, opened the new l
 
 Document upload and extracted text, contributor/document/topic links, and a real document-access edge were also observed in the browser. The uploaded contribution moved from **Draft** to **Submitted / Awaiting Review**. Independent approval and another employee's access remain to be checked with separate configured accounts. The three-second graph refresh is implemented; a timed cross-session refresh test has not yet been reported.
 
-**Automated validation:** 259 backend tests, 26 existing frontend contracts, the production TypeScript/Vite build and GitHub CI passed. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the observed results and remaining integration boundaries. Real Prognosis, ASAP and MOMI access still requires authorized environment configuration.
+**Large graph update:** JSON/CSV/Graphology topology imports, stable source identities, linked knowledge, dataset filters and search beyond the overview are implemented. The bounded overview loads up to 12,000 nodes and 50,000 relationships; individual imports support 25,000 nodes / 100,000 relationships within 16 MiB. Sigma/WebGL and a 2D canvas fallback replace the small fixed-column SVG. Browser renderer checks covered explicit synthetic networks up to 12,000 nodes; these are never seeded into the app. See the [large graph guide](docs/SCALABLE_GRAPH.md) for source formats, bounds and verification limits.
+
+**Automated validation:** 281 backend tests, 26 existing frontend contracts and the production TypeScript/Vite build pass. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the owner's earlier observed results. Real Prognosis, ASAP and MOMI access still requires authorized environment configuration or an authorized dataset export; the update does not supply customer data or credentials.
 
 ## Run the update
 
@@ -70,6 +72,8 @@ Replace the example keys; do not use them. Recreate the backend after configurat
 
 Upload PDF, DOCX, UTF-8 TXT/Markdown/CSV/LOG, or write a note. Extracted text is retained with its filename, owner, topic, digest and review state. Limits: 4 MB per file, 200,000 extracted characters and 100 PDF pages. Scans require OCR first.
 
+Use **Knowledge graph → Import dataset** for a topology JSON/CSV export. This is separate from knowledge-document upload: an arbitrary PDF does not contain a verified operational network. Imported topology starts as a private draft and follows the same independent review policy. Select a source entity, then **Attach knowledge** to connect a new document or note without changing its contributor.
+
 The owner submits a contribution. A different reviewer approves or requests revision. **Only approved content enters assistant retrieval.** Owners see their drafts; reviewers see submitted material; team members see approved material. Existing approved Decision DNA and release-filtered corpus records remain searchable.
 
 ## Real source access
@@ -84,6 +88,8 @@ See [the workspace and integration guide](docs/AGENT_WORKSPACE.md) for the contr
 
 Also set CAIL_LIVE_ENABLED=true and CAIL_LIVE_ALLOWED_HOSTS. The separate CAIL_OPERATOR_READ_KEY applies to older integration endpoints; the new workspace uses per-operator can_read_live authorization.
 
+For source networks, configure `CAIL_LIVE_PROGNOSIS_TOPOLOGY_URL`, `CAIL_LIVE_ASAP_TOPOLOGY_URL` and/or `CAIL_LIVE_MOMI_TOPOLOGY_URL` with the corresponding server-only token above. These optional read-only gateway endpoints return source/system identity, observation time, nodes and relationships. They are not guessed native product API paths. The graph can refresh configured sources every 15 seconds while open. See the [topology contract and activation steps](docs/SCALABLE_GRAPH.md#connect-actual-prognosis-asap-and-momi-topology).
+
 Only fixed, allowlisted HTTPS GET requests are issued. TLS is verified. Redirects, stale snapshots, wrong identities and malformed responses are rejected. A failed read invalidates the connected state even when older snapshots exist. No API executes a NonStop command.
 
 The former public Tailscale demonstration does **not** enable this private persistent workspace. Deploy privately with authenticated identities rather than exposing the local demonstration identity.
@@ -97,7 +103,7 @@ npm --prefix frontend run build
 node --check scripts/dev-workspace.mjs
 ~~~
 
-Regressions cover persisted two-role history, topic changes, older relevant memory, private conversations, session revocation, independent approval, real ownership/access edges, idempotency, concurrent response leases, failure recovery, source authorization, connection failure states, citation IDs and bounded evaluation retries.
+Regressions cover persisted two-role history, topic changes, older relevant memory, private conversations, session revocation, independent approval, real ownership/access edges, large topology imports, bounded search/expansion, atomic document attachments, stable source IDs, source revocation/staleness, all three topology-only connectors, idempotency, concurrent response leases, failure recovery, citation IDs and bounded evaluation retries.
 
 Automated model and connector tests use controlled doubles. They verify contracts and workflows, not actual Qwen answer quality or licensed vendor compatibility. The frontend is typechecked and production-built. The owner has separately passed the real-model smoke test and verified the browser flows listed above; broader model and browser coverage remains incomplete.
 
@@ -112,6 +118,7 @@ This creates one test conversation with a fresh checklist name, asks an unrelate
 ## Further detail
 
 - [As-built workspace and integration guide](docs/AGENT_WORKSPACE.md)
+- [Large graph, topology contract and source activation](docs/SCALABLE_GRAPH.md)
 - [Local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Existing source gateway contract](docs/LIVE_SOURCE_GATEWAY.md)

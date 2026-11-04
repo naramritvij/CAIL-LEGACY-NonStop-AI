@@ -51,11 +51,16 @@ export interface Message {
 export interface GraphNode {
   id: string;
   entity_id: string;
-  kind: "person" | "document" | "topic";
+  kind: "person" | "document" | "topic" | "entity" | "source";
   label: string;
   status: string;
   owner_name?: string;
   updated_at?: string;
+  entity_type?: string;
+  dataset_id?: string;
+  source_kind?: string;
+  observed_at?: string;
+  stale?: boolean;
 }
 export interface GraphEdge {
   id: string;
@@ -65,6 +70,39 @@ export interface GraphEdge {
   label: string;
   last_accessed?: string;
   count?: number;
+  dataset_id?: string;
+  stale?: boolean;
+}
+export interface TopologyDataset {
+  id: string;
+  title: string;
+  document_id: string | null;
+  source_kind: string;
+  source_id: string | null;
+  node_count: number;
+  edge_count: number;
+  observed_at: string | null;
+  stale: boolean;
+  status: string;
+  sha256: string;
+}
+export interface TopologySource {
+  id: string;
+  configured: boolean;
+  can_sync: boolean;
+}
+export interface GraphEntityDetail {
+  id: string;
+  label: string;
+  local_id: string;
+  entity_type: string;
+  status: string;
+  properties: Record<string, string | number | boolean | null>;
+  source_kind: string;
+  observed_at: string | null;
+  sha256: string;
+  relationship_count: number;
+  stale?: boolean;
 }
 export interface GraphData {
   nodes: GraphNode[];
@@ -73,6 +111,13 @@ export interface GraphData {
   updated_at: string;
   total_documents: number;
   truncated: boolean;
+  cursor: string;
+  datasets: TopologyDataset[];
+  sources: TopologySource[];
+  total_nodes: number;
+  total_edges: number;
+  node_limit: number;
+  edge_limit: number;
   events: {
     sequence: number;
     person_id: string;
@@ -126,6 +171,11 @@ export interface Connection {
   last_observed_at: string | null;
   snapshot: Snapshot | null;
   history: Snapshot[];
+  metrics_configured?: boolean;
+  metrics_connected?: boolean;
+  topology_configured?: boolean;
+  topology_connected?: boolean;
+  topology_node_count?: number;
 }
 
 export class WorkspaceError extends Error {

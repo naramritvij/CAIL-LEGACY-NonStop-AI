@@ -13,7 +13,8 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: 5173,
-      // Do not enable wildcard host acceptance; default Vite localhost allowances suffice.
+      // Explicit development-preview host; keep wildcard host acceptance disabled.
+      allowedHosts: ['terminal.local'],
       // Only used when VITE_LEGACY_DATA_MODE=http: forwards /api/v1 to the local FastAPI service.
       proxy: {
         '/api': {
