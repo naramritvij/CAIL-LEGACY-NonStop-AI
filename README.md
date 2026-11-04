@@ -12,13 +12,22 @@ The orchestrator delegates to memory, knowledge, telemetry and evidence-evaluati
 
 **Integration boundary:** adapters are implemented for authorized HTTPS snapshot gateways. This repository does not contain CAIL/customer credentials, a verified customer connection, or invented native vendor API paths. The environment owner must provision the installed Prognosis interface, ASAP Consumer/query access, and an approved MOMI bridge. Missing or stale observations remain unknown.
 
+## Verified locally — November 4, 2026
+
+The owner has now built and started the application on Windows, opened the new light workspace, and passed the **real Qwen conversation test**: acknowledge a fresh checklist name, answer an unrelated API question, recall the name, and read back all six saved turns.
+
+Document upload and extracted text, contributor/document/topic links, and a real document-access edge were also observed in the browser. The uploaded contribution moved from **Draft** to **Submitted / Awaiting Review**. Independent approval and another employee's access remain to be checked with separate configured accounts. The three-second graph refresh is implemented; a timed cross-session refresh test has not yet been reported.
+
+**Automated validation:** 259 backend tests, 26 existing frontend contracts, the production TypeScript/Vite build and GitHub CI passed. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the observed results and remaining integration boundaries. Real Prognosis, ASAP and MOMI access still requires authorized environment configuration.
+
 ## Run the update
 
-In an existing checkout, preserve local edits before switching to the update branch.
+In an existing checkout, preserve local edits before switching branches or pulling updates.
 
 ~~~powershell
 git fetch origin
-git switch codex/contextual-agent-workspace
+git switch main
+git pull --ff-only origin main
 docker compose up -d --build
 ~~~
 
@@ -90,7 +99,7 @@ node --check scripts/dev-workspace.mjs
 
 Regressions cover persisted two-role history, topic changes, older relevant memory, private conversations, session revocation, independent approval, real ownership/access edges, idempotency, concurrent response leases, failure recovery, source authorization, connection failure states, citation IDs and bounded evaluation retries.
 
-Automated model and connector tests use controlled doubles. They verify contracts and workflows, not actual Qwen answer quality or licensed vendor compatibility. The frontend is typechecked and production-built. Full Python-backed browser preview requires a runtime with the backend dependencies.
+Automated model and connector tests use controlled doubles. They verify contracts and workflows, not actual Qwen answer quality or licensed vendor compatibility. The frontend is typechecked and production-built. The owner has separately passed the real-model smoke test and verified the browser flows listed above; broader model and browser coverage remains incomplete.
 
 To check the real model in your running Docker application, run:
 
@@ -103,6 +112,7 @@ This creates one test conversation with a fresh checklist name, asks an unrelate
 ## Further detail
 
 - [As-built workspace and integration guide](docs/AGENT_WORKSPACE.md)
+- [Local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Existing source gateway contract](docs/LIVE_SOURCE_GATEWAY.md)
 - [Existing backend contracts](docs/BACKEND_API_CONTRACT.md)

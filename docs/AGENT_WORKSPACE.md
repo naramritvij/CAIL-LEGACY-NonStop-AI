@@ -133,4 +133,6 @@ Older APIs remain available. Their shared demonstration credentials do not grant
 
 Tests use isolated SQLite databases, configured test identities, controlled model responses and connector snapshots. They exercise actual API/storage/orchestration/graph behavior without claiming customer connectivity.
 
-The frontend is typechecked and production-built. Existing contracts remain intact. The managed preview here lacked FastAPI's Python dependencies, so full browser verification remains incomplete. A running local Qwen instance and real authorized vendor endpoints were also unavailable; model quality and vendor compatibility require validation in the owner's environment.
+The frontend is typechecked and production-built, and the existing contracts remain intact. On November 4, 2026, the owner passed the real-model acknowledgement/topic-change/recall/transcript test in the running Windows/Docker application. Browser screenshots also confirmed the light workspace, document ingestion, ownership/access/topic edges, and submission changing to Awaiting Review. See the [local verification record](LOCAL_VERIFICATION_2026-11-04.md).
+
+The editing environment itself lacked FastAPI dependencies in its managed browser preview. The owner's checks establish the specific flows above, not exhaustive browser coverage or general model correctness. Independent approval, cross-employee access and timed cross-session refresh remain to be checked. Real authorized vendor endpoints are still unavailable, so vendor compatibility and live NonStop connectivity remain unverified.
