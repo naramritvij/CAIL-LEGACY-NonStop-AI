@@ -3,6 +3,8 @@ import { MultiDirectedGraph } from "graphology";
 import Sigma from "sigma";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { CanvasNetwork } from "./CanvasNetwork";
+import { PerspectiveNetwork } from "./PerspectiveNetwork";
+import { Force3DLayout } from "./Force3DLayout";
 import { Focus, Maximize2, Minus, Pause, Play, Plus } from "lucide-react";
 import type { GraphEdge, GraphNode } from "./types";
 
@@ -13,6 +15,7 @@ interface Props {
   visible: Set<string>;
   focusOnly: boolean;
   onSelect: (id: string | null) => void;
+  dimension?: "2d" | "3d";
 }
 const COLORS: Record<GraphNode["kind"], string> = {
   person: "#72a269",
@@ -36,12 +39,13 @@ export function GraphCanvas({
   visible,
   focusOnly,
   onSelect,
+  dimension = "3d",
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<MultiDirectedGraph | null>(null);
   const renderer = useRef<Sigma | null>(null);
-  const fallback = useRef<CanvasNetwork | null>(null);
-  const layout = useRef<FA2Layout | null>(null);
+  const fallback = useRef<CanvasNetwork | PerspectiveNetwork | null>(null);
+  const layout = useRef<FA2Layout | Force3DLayout | null>(null);
   const onSelectRef = useRef(onSelect);
   const positionCache = useRef(new Map<string, { x: number; y: number }>());
   const animation = useRef<number>(0);
@@ -60,16 +64,22 @@ export function GraphCanvas({
     if (!data || data.order < 2 || reduced.current) return;
     window.clearTimeout(layoutTimer.current);
     layout.current?.kill();
-    layout.current = new FA2Layout(data, {
-      settings: {
-        barnesHutOptimize: true,
-        barnesHutTheta: 0.7,
-        gravity: 1,
-        scalingRatio: 12,
-        slowDown: 6,
-        adjustSizes: false,
-      },
-    });
+    layout.current =
+      dimension === "3d"
+        ? new Force3DLayout(data, milliseconds, () => {
+            fallback.current?.freezeFit();
+            setRunning(false);
+          })
+        : new FA2Layout(data, {
+            settings: {
+              barnesHutOptimize: true,
+              barnesHutTheta: 0.7,
+              gravity: 1,
+              scalingRatio: 12,
+              slowDown: 6,
+              adjustSizes: false,
+            },
+          });
     layout.current.start();
     setRunning(true);
     layoutTimer.current = window.setTimeout(() => {
@@ -83,50 +93,68 @@ export function GraphCanvas({
     if (!container.current) return;
     const data = new MultiDirectedGraph();
     graph.current = data;
+    setFailure("");
+    setCanvasMode(false);
+    setRatio(1);
     try {
-      const sigma = new Sigma(data, container.current, {
-        defaultEdgeType: "arrow",
-        defaultEdgeColor: "#dbe4df",
-        minEdgeThickness: 0.3,
-        renderLabels: true,
-        renderEdgeLabels: false,
-        labelFont: "Inter, sans-serif",
-        labelSize: 12,
-        labelColor: { color: "#435b4e" },
-        labelDensity: 0.3,
-        labelRenderedSizeThreshold: 5,
-        labelGridCellSize: 120,
-        hideLabelsOnMove: true,
-        hideEdgesOnMove: nodes.length > 5000,
-        minCameraRatio: 0.006,
-        maxCameraRatio: 8,
-        stagePadding: 60,
-        enableCameraRotation: false,
-        zIndex: true,
-      });
-      renderer.current = sigma;
-      sigma.on("clickNode", ({ node }) => onSelectRef.current(node));
-      sigma.on("clickStage", () => onSelectRef.current(null));
-      sigma.getCamera().on("updated", (state) => setRatio(state.ratio));
-      let dragged: string | null = null;
-      sigma.on("downNode", ({ node }) => {
-        dragged = node;
-        layout.current?.stop();
-        setRunning(false);
-        data.setNodeAttribute(node, "fixed", true);
-        if (!sigma.getCustomBBox()) sigma.setCustomBBox(sigma.getBBox());
-      });
-      sigma.getMouseCaptor().on("mousemovebody", (event) => {
-        if (!dragged) return;
-        const position = sigma.viewportToGraph(event);
-        data.mergeNodeAttributes(dragged, position);
-        event.preventSigmaDefault();
-        event.original.preventDefault();
-        event.original.stopPropagation();
-      });
-      sigma.getMouseCaptor().on("mouseup", () => {
-        dragged = null;
-      });
+      if (dimension === "3d") {
+        fallback.current = new PerspectiveNetwork(
+          data,
+          container.current,
+          (id) => onSelectRef.current(id),
+          setRatio,
+          () => {
+            layout.current?.stop();
+            setRunning(false);
+          },
+          reduced.current,
+        );
+        setCanvasMode(false);
+      } else {
+        const sigma = new Sigma(data, container.current, {
+          defaultEdgeType: "arrow",
+          defaultEdgeColor: "#dbe4df",
+          minEdgeThickness: 0.3,
+          renderLabels: true,
+          renderEdgeLabels: false,
+          labelFont: "Inter, sans-serif",
+          labelSize: 12,
+          labelColor: { color: "#435b4e" },
+          labelDensity: 0.3,
+          labelRenderedSizeThreshold: 5,
+          labelGridCellSize: 120,
+          hideLabelsOnMove: true,
+          hideEdgesOnMove: nodes.length > 5000,
+          minCameraRatio: 0.006,
+          maxCameraRatio: 8,
+          stagePadding: 60,
+          enableCameraRotation: false,
+          zIndex: true,
+        });
+        renderer.current = sigma;
+        sigma.on("clickNode", ({ node }) => onSelectRef.current(node));
+        sigma.on("clickStage", () => onSelectRef.current(null));
+        sigma.getCamera().on("updated", (state) => setRatio(state.ratio));
+        let dragged: string | null = null;
+        sigma.on("downNode", ({ node }) => {
+          dragged = node;
+          layout.current?.stop();
+          setRunning(false);
+          data.setNodeAttribute(node, "fixed", true);
+          if (!sigma.getCustomBBox()) sigma.setCustomBBox(sigma.getBBox());
+        });
+        sigma.getMouseCaptor().on("mousemovebody", (event) => {
+          if (!dragged) return;
+          const position = sigma.viewportToGraph(event);
+          data.mergeNodeAttributes(dragged, position);
+          event.preventSigmaDefault();
+          event.original.preventDefault();
+          event.original.stopPropagation();
+        });
+        sigma.getMouseCaptor().on("mouseup", () => {
+          dragged = null;
+        });
+      }
     } catch {
       container.current.replaceChildren();
       try {
@@ -148,6 +176,12 @@ export function GraphCanvas({
       }
     }
     return () => {
+      data.forEachNode((id, attributes) =>
+        positionCache.current.set(id, {
+          x: Number(attributes.x),
+          y: Number(attributes.y),
+        }),
+      );
       window.clearTimeout(layoutTimer.current);
       cancelAnimationFrame(animation.current);
       layout.current?.kill();
@@ -157,7 +191,7 @@ export function GraphCanvas({
       renderer.current = null;
       graph.current = null;
     };
-  }, []);
+  }, [dimension]);
 
   useEffect(() => {
     const data = graph.current,
@@ -183,10 +217,12 @@ export function GraphCanvas({
         changed = true;
       }
     });
-    const adjacency = new Map<string, string>();
+    const adjacency = new Map<string, string[]>();
     for (const edge of edges) {
-      if (data.hasNode(edge.source)) adjacency.set(edge.target, edge.source);
-      if (data.hasNode(edge.target)) adjacency.set(edge.source, edge.target);
+      if (!adjacency.has(edge.target)) adjacency.set(edge.target, []);
+      if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+      adjacency.get(edge.target)!.push(edge.source);
+      adjacency.get(edge.source)!.push(edge.target);
     }
     const additions: string[] = [];
     const entitySize =
@@ -197,13 +233,21 @@ export function GraphCanvas({
       const values = {
         label: node.label,
         kind: node.kind,
-        color: node.stale ? "#b4b9b6" : COLORS[node.kind],
+        color: node.stale
+          ? "#b4b9b6"
+          : node.entity_type === "passage"
+            ? "#94a8ba"
+            : node.entity_type === "command_reference"
+              ? "#b79b63"
+              : node.entity_type === "mentioned_term"
+                ? "#9984ae"
+                : COLORS[node.kind],
         size,
         baseSize: size,
         zIndex: node.kind === "entity" ? 0 : 1,
       };
       if (!data.hasNode(node.id)) {
-        const neighbor = adjacency.get(node.id),
+        const neighbor = adjacency.get(node.id)?.find((id) => data.hasNode(id)),
           saved = positionCache.current.get(node.id);
         const angle = index * 2.3999632297,
           radius = Math.sqrt(index + 1) * 12;
@@ -219,7 +263,19 @@ export function GraphCanvas({
                   Math.sin(angle) * 30,
               }
             : { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-        data.addNode(node.id, { ...values, ...position });
+        let hash = 2166136261;
+        for (const character of node.id)
+          hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+        const depth = ((hash >>> 0) % 1000) / 1000 - 0.5;
+        const z =
+          node.kind === "person"
+            ? 160
+            : node.kind === "document"
+              ? -120 + depth * 100
+              : node.kind === "topic"
+                ? -150
+                : depth * Math.max(150, Math.sqrt(nodes.length) * 8);
+        data.addNode(node.id, { ...values, ...position, z });
         additions.push(node.id);
         changed = true;
       } else {
@@ -252,6 +308,12 @@ export function GraphCanvas({
         .animatedReset({ duration: reduced.current ? 0 : 300 });
     if (!existing && data.order) fallback.current?.fit();
     fallback.current?.refresh();
+    if (existing && fallback.current instanceof PerspectiveNetwork)
+      fallback.current.arrive(
+        additions.filter(
+          (id) => data.getNodeAttribute(id, "kind") === "document",
+        ),
+      );
     if (changed && data.order > 1) settle();
     if (
       existing &&
@@ -275,7 +337,7 @@ export function GraphCanvas({
       };
       animation.current = requestAnimationFrame(animate);
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, dimension]);
 
   useEffect(() => {
     const data = graph.current,
@@ -321,7 +383,7 @@ export function GraphCanvas({
     });
     sigma.setSetting("renderEdgeLabels", Boolean(selected && focusOnly));
     sigma.refresh();
-  }, [selected, visible, focusOnly, nodes, edges]);
+  }, [selected, visible, focusOnly, nodes, edges, dimension]);
 
   function focus() {
     if (selected) fallback.current?.focus(selected, reduced.current);
@@ -339,11 +401,11 @@ export function GraphCanvas({
       );
   }
   return (
-    <div className="network-stage">
+    <div className="network-stage" data-dimension={dimension}>
       <div
         ref={container}
         className="network-webgl"
-        aria-label={`Interactive network with ${nodes.length} nodes and ${edges.length} relationships. Use search and the node list for keyboard navigation.`}
+        aria-label={`Interactive ${dimension === "3d" ? "3D" : "2D"} network with ${nodes.length} nodes and ${edges.length} relationships. Use search and the node list for keyboard navigation.`}
         role="img"
       />
       {failure && (
@@ -351,7 +413,11 @@ export function GraphCanvas({
           {failure}
         </div>
       )}
-      {canvasMode && <span className="network-render-mode">Canvas mode</span>}
+      {(canvasMode || dimension === "3d") && (
+        <span className="network-render-mode">
+          {dimension === "3d" ? "3D perspective" : "Canvas mode"}
+        </span>
+      )}
       <div className="network-controls">
         <button
           className="icon-button"
@@ -414,12 +480,14 @@ export function GraphCanvas({
         {(Object.keys(COLORS) as GraphNode["kind"][]).map((kind) => (
           <span key={kind}>
             <i style={{ background: COLORS[kind] }} />
-            {kind === "entity" ? "Source entity" : kind}
+            {kind === "entity" ? "Evidence / source entity" : kind}
           </span>
         ))}
       </div>
       <div className="network-help">
-        Scroll to zoom · Drag to pan · Select a node to explore its connections
+        {dimension === "3d"
+          ? "Drag background to orbit · Shift + drag to pan · Scroll to zoom"
+          : "Scroll to zoom · Drag to pan · Select a node to explore its connections"}
       </div>
     </div>
   );

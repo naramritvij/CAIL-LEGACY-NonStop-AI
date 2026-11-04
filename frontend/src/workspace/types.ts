@@ -91,6 +91,7 @@ export interface TopologySource {
   id: string;
   configured: boolean;
   can_sync: boolean;
+  mode?: string;
 }
 export interface GraphEntityDetail {
   id: string;
@@ -142,6 +143,12 @@ export interface KnowledgeDocument {
   can_submit: boolean;
   review_notes?: string;
   sha256: string;
+  reference?: {
+    source_url?: string;
+    edition?: string;
+    source_kind: string;
+    file_sha256: string;
+  } | null;
 }
 export interface Observation {
   id: string;
@@ -168,6 +175,7 @@ export interface Connection {
   description: string;
   documentation: string;
   configured: boolean;
+  topology_mode?: string;
   connected: boolean;
   status: string;
   last_observed_at: string | null;

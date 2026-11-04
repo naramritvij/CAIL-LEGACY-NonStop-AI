@@ -10,12 +10,13 @@ function Benchmark() {
   const [selected, setSelected] = useState<string | null>(null);
   const [documents, setDocuments] = useState(0);
   const [focus, setFocus] = useState(false);
+  const [dimension, setDimension] = useState<"2d" | "3d">("3d");
   const data = useMemo(() => {
     const nodes: GraphNode[] = Array.from({ length: count }, (_, index) => ({
       id: "fixture-" + index,
       entity_id: String(index),
-      kind: "entity",
-      label: "Synthetic node " + index,
+      kind: index === 0 ? "person" : "entity",
+      label: index === 0 ? "Synthetic contributor" : "Synthetic node " + index,
       entity_type: index % 20 === 0 ? "system" : "service",
       status: "synthetic_fixture",
     }));
@@ -69,6 +70,16 @@ function Benchmark() {
         </div>
         <div className="qa-actions">
           <select
+            aria-label="Renderer dimensions"
+            value={dimension}
+            onChange={(event) =>
+              setDimension(event.target.value as "2d" | "3d")
+            }
+          >
+            <option value="3d">3D perspective</option>
+            <option value="2d">2D network</option>
+          </select>
+          <select
             aria-label="Fixture node count"
             value={count}
             onChange={(event) => {
@@ -102,6 +113,7 @@ function Benchmark() {
         </div>
       </header>
       <GraphCanvas
+        dimension={dimension}
         nodes={data.nodes}
         edges={data.edges}
         selected={selected}

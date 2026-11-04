@@ -27,17 +27,19 @@ A live investigation without fresh authorized observations deterministically wit
 
 ## Knowledge provenance
 
-Nodes represent stored people, documents, topics and permitted imported/live source entities. Directed edges distinguish contribution, topic membership, access, supplied source relationships and explicit document attachments. Actual document-view and assistant-retrieval events create access edges. Documents retain their contributor's identity.
+Nodes represent stored people, documents, topics, cited passages, literal references and permitted imported/live source entities. Directed edges distinguish contribution, topic membership, access, contains/mentions, supplied source relationships and explicit document attachments. Actual document-view and assistant-retrieval events create access edges. Documents retain their contributor's identity.
 
 The graph refreshes immediately after the current user's upload and every three seconds while visible. Other sessions see permitted changes on their next refresh. This is polling, not WebSocket streaming or background updates to inactive browsers.
 
 Owners see drafts and rejected contributions. Reviewers see submitted documents and may review another contributor's submission. Approved material is shared with configured team operators and assistant retrieval. Access does not grant ownership, approve knowledge or clone a branch.
 
-The graph now uses Sigma/WebGL with a 2D canvas fallback and a worker layout, replacing the small fixed-column SVG. It projects up to 3,000 recently updated permitted documents and a bounded overview of up to 12,000 nodes / 50,000 relationships. JSON/CSV topology imports support up to 25,000 nodes / 100,000 relationships within 16 MiB. Server search and bounded neighborhood expansion reach entities outside the overview. Clipping is disclosed. Access relationships aggregate the complete retained history; the recent-activity list is bounded separately. Legacy reviewed knowledge is searchable, but old author aliases are not silently reassigned to authenticated employees.
+The graph defaults to a perspective 3D view with a three-dimensional worker layout and animated document arrivals/link growth. A 2D Sigma/WebGL view with a canvas fallback remains available. It projects up to 3,000 recently updated permitted documents and a bounded overview of up to 12,000 nodes / 50,000 relationships. JSON/CSV topology imports support up to 25,000 nodes / 100,000 relationships within 16 MiB. Server search and bounded neighborhood expansion reach entities outside the overview. Clipping is disclosed. Access relationships aggregate the complete retained history; the recent-activity list is bounded separately. Legacy reviewed knowledge is searchable, but old author aliases are not silently reassigned to authenticated employees.
 
 Source entities and their actual supplied relationships can be imported as a private review-gated dataset or read from an authorized source-specific topology gateway. The three optional CAIL_LIVE_<SOURCE>_TOPOLOGY_URL settings use the corresponding existing source token. Topology is separate from numeric snapshots; source/system identities, observation time, bounded structure and SHA-256 provenance are validated. Failed reads retain labelled stale topology; disabling the source hides it. No sample data substitutes for live data.
 
 Selecting an entity shows its properties and neighbors. Attaching knowledge inserts the draft contribution and explicit link in one transaction. Import approval controls sharing; only approved document text enters assistant retrieval. See the [large graph and topology guide](SCALABLE_GRAPH.md) for schemas, foreground refresh behavior, limits and verification.
+
+New document uploads automatically create passage networks using stored citation IDs and literal references. Existing owned contributions can be indexed in batches. Reference manuals support 32 MiB / 1,000 pages / 2,000,000 extracted characters. The fixed HPE publisher catalog can download actual reference PDFs with original file hashes and cover edition metadata, without fetching arbitrary user-entered URLs. Reimporting an identical publisher file under the same owner reuses it. Public references remain review-gated; older editions do not imply compatibility with the current release.
 
 Uploads retain extracted text rather than the original binary. Overlapping chunks, stable citation IDs, content digests and review status are stored. Scans require OCR. Retrieval uses lexical matching with model-driven rewriting and relevance evaluation; it does not claim vector embeddings.
 
@@ -55,9 +57,9 @@ These are separate products/interfaces. Monitoring access does not automatically
 
 | Connector | Implemented CAIL transport | Environment owner must provision |
 | --- | --- | --- |
-| prognosis | Fixed HTTPS GET, Bearer authentication and normalized snapshot validation | Installed Prognosis release/API, licensing, read scopes and field mapping |
+| prognosis | Direct fixed allowlisted HTTPS dataset GET with Basic authentication and configurable columns, or normalized Bearer-authenticated gateways | Installed Prognosis release/API, approved dataset, read account and field mapping |
 | asap | The same read-only HTTPS contract | Authorized Consumer API, EMS or published query/database path; Provider API supplies data and is not this assistant's read path |
-| momi | The same read-only HTTPS contract | Vendor-approved collector for its proprietary client/server interface; no universal public MOMI REST endpoint is invented |
+| momi | Read-only alarm export directory / explicit export import, or normalized HTTPS gateway | Approved MOMI client/export job or vendor-approved collector; no universal public MOMI REST endpoint is invented |
 
 Primary sources checked November 4, 2026:
 
@@ -68,6 +70,8 @@ Primary sources checked November 4, 2026:
 The MOMI reference is older documentation and does not establish the customer's current supported interface. Confirm the installed release with the vendor or CAIL sponsor.
 
 No customer endpoint, credential or schema was supplied. This change implements and tests the connector boundary, not a live customer integration. The UI shows no verified sources until configuration and a successful authorized check.
+
+Direct native settings and publisher import are documented in [NATIVE_SOURCE_SETUP.md](NATIVE_SOURCE_SETUP.md). Native observations also flow into the authorized telemetry worker. Wrong-system reads fail; changing a native system scope hides the old graph/history before another read. Native health remains unknown rather than being inferred from an empty alarm collection or successful transport. The Bearer snapshot contract below still applies to normalized gateways.
 
 ### Gateway contract
 
@@ -130,8 +134,12 @@ All paths below are under /api/v1/workspace. Record permissions are enforced ser
 | GET | /graph/node | Source entity details and provenance |
 | GET | /graph/neighborhood | Bounded permitted relationships and attachments |
 | POST | /graph/links | Attach an owned document to a permitted node |
+| POST | /graph/index-documents | Index existing owned text into cited passage/reference networks |
+| POST | /graph/monitoring-import | Parse a Prognosis JSON or MOMI TXT/LOG/TSV export |
 | POST | /documents | Add text under the current operator |
 | POST | /documents/upload | Extract a document into a draft |
+| POST | /documents/manual | Large reference document with edition/source metadata |
+| GET / POST | /references / /references/import | Fixed public HPE catalog / actual publisher import |
 | GET | /documents/{id} | Check access and record a view |
 | POST | /documents/{id}/review | Owner submission or independent review |
 | GET | /connections | Safe metadata and permitted observations |
@@ -146,3 +154,5 @@ Tests use isolated SQLite databases, configured test identities, controlled mode
 The frontend is typechecked and production-built, and the existing contracts remain intact. On November 4, 2026, the owner passed the real-model acknowledgement/topic-change/recall/transcript test in the running Windows/Docker application. Browser screenshots also confirmed the light workspace, document ingestion, ownership/access/topic edges, and submission changing to Awaiting Review. See the [local verification record](LOCAL_VERIFICATION_2026-11-04.md).
 
 The managed browser preview could not run the Python backend. The owner's checks establish the specific flows above, not exhaustive browser coverage or general model correctness. Later renderer checks used clearly labelled synthetic networks of up to 12,000 nodes, including fallback rendering, zoom, selection, focused connections and an added linked document. Backend tests separately exercise large imports, privacy, independent review, attachments and all three topology-only connectors. Independent approval, cross-employee access and timed cross-session refresh remain to be checked in the owner's running application. Real authorized vendor endpoints are still unavailable, so vendor compatibility and live NonStop connectivity remain unverified.
+
+The subsequent publisher-import API performed real HPE HTTPS downloads and generated a 1,524-node / 2,607-edge projection from two actual PDFs; that projection was rendered in the shared 3D viewer. This verifies public documentation ingestion, not a private customer connection. The [technical review](TEAM31_TECHNICAL_REVIEW.md) records original file hashes, editions, counts and comparison-source permalinks.

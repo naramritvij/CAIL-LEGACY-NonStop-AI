@@ -279,6 +279,16 @@ export function Connections({
               <h2>{source.name}</h2>
               <div className="connection-interface">{source.interface}</div>
               <p className="muted">{source.description}</p>
+              {source.topology_mode === "prognosis_rest_dataset" && (
+                <p className="fine-print">
+                  Configured mode: direct Prognosis REST dataset.
+                </p>
+              )}
+              {source.topology_mode === "momi_export_directory" && (
+                <p className="fine-print">
+                  Configured mode: read-only MOMI export folder.
+                </p>
+              )}
               <MetricChart source={source} />
               {source.topology_configured && (
                 <p className="fine-print">

@@ -14,6 +14,7 @@ export function TopologyImport({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState("network");
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     close.current?.focus();
@@ -30,10 +31,14 @@ export function TopologyImport({
       const data = new FormData();
       data.append("file", file);
       data.append("title", title);
-      const result = await request<{ document_id: string }>("/graph/import", {
-        method: "POST",
-        body: data,
-      });
+      if (format !== "network") data.append("source_id", format);
+      const result = await request<{ document_id: string }>(
+        format === "network" ? "/graph/import" : "/graph/monitoring-import",
+        {
+          method: "POST",
+          body: data,
+        },
+      );
       onAdded(result.document_id);
     } catch (error) {
       onError(errorMessage(error));
@@ -73,8 +78,24 @@ export function TopologyImport({
         </p>
         <form onSubmit={submit}>
           <label>
+            Export format
+            <select
+              aria-label="Export format"
+              value={format}
+              onChange={(event) => {
+                setFormat(event.target.value);
+                setFile(null);
+              }}
+            >
+              <option value="network">Network JSON / CSV / Graphology</option>
+              <option value="prognosis">Prognosis dataset JSON</option>
+              <option value="momi">MOMI alarm export (TXT / TSV / LOG)</option>
+            </select>
+          </label>
+          <label>
             Dataset name
             <input
+              key={format}
               required
               minLength={2}
               maxLength={160}
@@ -90,7 +111,13 @@ export function TopologyImport({
             <input
               required
               type="file"
-              accept=".json,.csv"
+              accept={
+                format === "momi"
+                  ? ".txt,.tsv,.log"
+                  : format === "prognosis"
+                    ? ".json"
+                    : ".json,.csv"
+              }
               onChange={(event) => {
                 const chosen = event.target.files?.[0] || null;
                 setFile(chosen);
@@ -109,6 +136,13 @@ export function TopologyImport({
             {busy ? "Validating and importing…" : "Import network"}
           </button>
         </form>
+        {format !== "network" && (
+          <p className="fine-print">
+            Source rows create observations linked to their reported system and
+            category. These links describe the export; they do not imply
+            physical dependencies or current system health.
+          </p>
+        )}
         <details className="import-format">
           <summary>Accepted export formats</summary>
           <p>

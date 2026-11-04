@@ -83,7 +83,7 @@ def normalize(raw):
         found.add(identifier)
         normalized_nodes.append({'id': identifier,
             'label': bounded(item.get('label', attributes.get('label')), 'Node label', 240, identifier),
-            'entity_type': bounded(item.get('type', item.get('kind', attributes.get('type'))), 'Node type', 80, 'entity'),
+            'entity_type': bounded(item.get('type', item.get('entity_type', item.get('kind', attributes.get('type')))), 'Node type', 80, 'entity'),
             'status': bounded(item.get('status', attributes.get('status')), 'Node status', 80, 'observed'),
             'properties': properties(item.get('properties', {key: value for key, value in attributes.items() if key not in ('label', 'type', 'status', 'x', 'y', 'size', 'color')}))})
     edge_ids = set()
@@ -170,9 +170,9 @@ def structure_digest(payload):
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def import_dataset(user, title, filename, content):
+def import_dataset(user, title, filename, content, *, supplied_payload=None, source_kind='imported_export'):
     try:
-        payload = parse_file(filename, content)
+        payload = normalize(supplied_payload) if supplied_payload is not None else parse_file(filename, content)
         title = bounded(title, 'Dataset title', 160)
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, str(exc)) from None
@@ -182,14 +182,14 @@ def import_dataset(user, title, filename, content):
                'Imported snapshot; not a verified live CAIL connection. Dataset digest: ' + digest)
     with store.database() as db:
         db.execute('BEGIN IMMEDIATE')
-        doc_id = store.insert_document(db, user, title, filename, summary, 'Imported topology')
+        doc_id = store.insert_document(db, user, title, filename, summary, 'Imported topology', build_network=False)
         db.execute('INSERT INTO ws_topology_datasets VALUES (?,?,?,?,?,?,?,?,?,?)',
-                   (dataset_id, doc_id, title, 'imported_export', None, None, None, digest, structure_digest(payload), timestamp))
+                   (dataset_id, doc_id, title, source_kind, None, None, None, digest, structure_digest(payload), timestamp))
         write_payload(db, dataset_id, '', payload)
         store.event(db, user, 'topology_imported', doc_id, {'nodes': len(payload['nodes']), 'relationships': len(payload['edges'])})
         db.execute('COMMIT')
     return {'dataset_id': dataset_id, 'document_id': doc_id, 'node_count': len(payload['nodes']), 'edge_count': len(payload['edges']),
-            'source_kind': 'imported_export', 'live': False, 'status': 'draft'}
+            'source_kind': source_kind, 'live': False, 'status': 'draft'}
 
 
 def config(source_id):
@@ -209,17 +209,22 @@ def config(source_id):
 def capabilities(user):
     items = []
     for source_id in VENDORS:
+        from . import vendor_datasets
         try:
-            config(source_id)
+            if vendor_datasets.mode(source_id):
+                vendor_datasets.configured(source_id)
+            else:
+                config(source_id)
             configured = True
         except HTTPException:
             configured = False
-        items.append({'id': source_id, 'configured': configured, 'can_sync': configured and user['can_read_live']})
+        items.append({'id': source_id, 'configured': configured, 'can_sync': configured and user['can_read_live'],
+                      'mode': vendor_datasets.mode(source_id) or 'topology_gateway'})
     return items
 
 
 def connection_states(user):
-    result = {item['id']: {'topology_configured': item['configured'], 'topology_connected': False, 'topology_node_count': 0, 'topology_observed_at': None} for item in capabilities(user)}
+    result = {item['id']: {'topology_configured': item['configured'], 'topology_connected': False, 'topology_node_count': 0, 'topology_observed_at': None, 'topology_mode': item['mode']} for item in capabilities(user)}
     if user['can_read_live']:
         with store.database() as db:
             for dataset in visible_datasets(db, user):
@@ -231,6 +236,9 @@ def connection_states(user):
 
 
 def read_live(source_id):
+    from . import vendor_datasets
+    if vendor_datasets.mode(source_id):
+        return vendor_datasets.read(source_id)
     url, token = config(source_id)
     request = Request(url, method='GET', headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'})
     try:
@@ -286,11 +294,14 @@ def sync(user, source_ids=None):
 
 
 def visible_datasets(db, user):
+    from . import vendor_datasets
     allowed_live = {item['id'] for item in capabilities(user) if item['can_sync']}
+    native_scopes = {source: vendor_datasets.canonical_system(os.getenv(f'CAIL_{source.upper()}_SYSTEM_ID', '')) for source in allowed_live if vendor_datasets.mode(source)}
     rows = db.execute('SELECT t.*,d.owner_id,d.status AS review_status FROM ws_topology_datasets t LEFT JOIN ws_documents d ON d.id=t.document_id').fetchall()
     visible = [dict(row) for row in rows if
-            (row['source_kind'] == 'live_topology' and row['source_id'] in allowed_live) or
-            (row['source_kind'] == 'imported_export' and store.can_see({'status': row['review_status'], 'owner_id': row['owner_id']}, user))]
+            (row['source_kind'] == 'live_topology' and row['source_id'] in allowed_live and
+             (row['source_id'] not in native_scopes or vendor_datasets.canonical_system(row['system_id']) == native_scopes[row['source_id']])) or
+            (row['source_kind'] in ('imported_export', 'document_evidence', 'monitoring_export') and store.can_see({'status': row['review_status'], 'owner_id': row['owner_id']}, user))]
     for dataset in visible:
         if dataset['source_kind'] == 'live_topology':
             state = db.execute('SELECT status FROM ws_topology_sync WHERE source_id=?', (dataset['source_id'],)).fetchone()
@@ -331,7 +342,8 @@ def link_document(user, document_id, target_node_id):
 def cursor(user):
     with store.database() as db:
         revision = db.execute('SELECT COALESCE(MAX(sequence),0) AS n FROM ws_events').fetchone()['n']
-    view = [revision, user['id'], user['can_review'], user['can_read_live'], capabilities(user), int(datetime.now(timezone.utc).timestamp() / 30)]
+    scopes = [os.getenv('CAIL_PROGNOSIS_SYSTEM_ID', ''), os.getenv('CAIL_MOMI_SYSTEM_ID', '')]
+    view = [revision, user['id'], user['can_review'], user['can_read_live'], capabilities(user), scopes, int(datetime.now(timezone.utc).timestamp() / 30)]
     return hashlib.sha256(json.dumps(view, sort_keys=True).encode()).hexdigest()[:24], revision
 
 
@@ -360,7 +372,7 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
                 for node in nodes:
                     if node['id'] == parent:
                         node['dataset_id'] = dataset['id']
-                        node['source_kind'] = 'imported_export'
+                        node['source_kind'] = dataset['source_kind']
             count = db.execute('SELECT COUNT(*) AS n FROM ws_topology_nodes WHERE dataset_id=?', (dataset['id'],)).fetchone()['n']
             relation_count = db.execute('SELECT COUNT(*) AS n FROM ws_topology_edges WHERE dataset_id=?', (dataset['id'],)).fetchone()['n']
             metadata.append({'id': dataset['id'], 'title': dataset['title'], 'document_id': dataset['document_id'], 'source_kind': dataset['source_kind'],
@@ -374,6 +386,10 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
                 nodes.append({'id': row['id'], 'entity_id': row['local_id'], 'kind': 'entity', 'label': row['label'],
                               'entity_type': row['entity_type'], 'status': 'stale' if stale else row['status'], 'dataset_id': dataset['id'],
                               'source_kind': dataset['source_kind'], 'observed_at': dataset['observed_at'], 'stale': stale})
+                if row['local_id'] == 'collection' and (dataset['source_kind'] == 'monitoring_export' or
+                        (dataset['source_kind'] == 'live_topology' and any(item['id'] == dataset['source_id'] and item.get('mode') != 'topology_gateway' for item in capabilities(user)))):
+                    edges.append({'id': 'provenance:' + dataset['id'], 'source': parent, 'target': row['id'],
+                                  'kind': 'provenance', 'label': 'supplied dataset', 'dataset_id': dataset['id'], 'stale': stale})
             for row in db.execute('SELECT id,source_node,target_node,kind,label FROM ws_topology_edges WHERE dataset_id=? LIMIT ?', (dataset['id'], max(0, edge_limit - len(edges)))):
                 edges.append({'id': row['id'], 'source': row['source_node'], 'target': row['target_node'], 'kind': row['kind'], 'label': row['label'], 'dataset_id': dataset['id'], 'stale': stale})
         allowed_ids = {node['id'] for node in nodes}
@@ -401,6 +417,10 @@ def detail(user, node_id):
             dataset = db.execute('SELECT * FROM ws_topology_datasets WHERE id=?', (node['dataset_id'],)).fetchone()
             node['source_kind'], node['observed_at'], node['sha256'] = dataset['source_kind'], dataset['observed_at'], dataset['sha256']
             node['system_id'] = dataset['system_id']
+            if dataset['source_kind'] == 'document_evidence' and node['entity_type'] == 'passage':
+                chunk = db.execute('SELECT content FROM ws_chunks WHERE id=? AND document_id=?', (node['properties'].get('citation_id'), dataset['document_id'])).fetchone()
+                if chunk:
+                    node['properties']['excerpt'] = chunk['content']
             state = next(item for item in visible_datasets(db, user) if item['id'] == dataset['id'])
             node['stale'] = state.get('stale', False)
             if node['stale']:

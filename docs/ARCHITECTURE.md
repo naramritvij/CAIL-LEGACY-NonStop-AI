@@ -36,6 +36,7 @@ This diagram describes responsibility and event flow. Workers cannot execute ope
 - ws_topology_datasets, ws_topology_nodes, ws_topology_edges: permission-scoped imported or authorized live topology, stable source identities and provenance.
 - ws_graph_links: explicit links from owned knowledge documents to accessible graph nodes.
 - ws_topology_sync: latest live topology read state, including failures that invalidate freshness.
+- ws_document_sources: original reference-file hashes, source URLs and actual cover editions.
 
 Older lesson, corpus and audit tables remain unchanged and searchable when approved. Their aliases are not reassigned to authenticated employees.
 
@@ -45,6 +46,6 @@ General questions use history without unrelated telemetry. Knowledge questions r
 
 The model sees bounded context and normalized evidence, never source credentials. It cannot grant access or approve its own evidence. The graph projects actual permitted records rather than inferring an organizational chart.
 
-The graph has a separate topology read/import path. It stores supplied relationships transactionally, applies dataset and document permissions, and exposes a bounded overview plus server search and neighborhood expansion. Optional source-specific topology HTTPS endpoints are independent of numeric telemetry endpoints. The browser renders keyed graph updates with Sigma/WebGL or a 2D canvas fallback and a worker layout. Importing an entity network does not automatically turn its properties into approved assistant evidence. See [the large graph guide](SCALABLE_GRAPH.md).
+The graph has separate document-evidence and monitoring read/import paths. It stores supplied or literal textual relationships transactionally, applies dataset/document permissions, and exposes a bounded overview plus search and neighborhood expansion. A fixed publisher catalog can download real HPE PDFs into private review-gated knowledge. Direct Prognosis datasets and read-only MOMI exports complement the normalized gateways. The browser renders keyed updates with a perspective 3D view and a three-dimensional worker layout; Sigma/WebGL and a canvas fallback remain available in 2D. Importing an entity network does not automatically turn its properties into approved assistant evidence. See [the large graph guide](SCALABLE_GRAPH.md) and [native source setup](NATIVE_SOURCE_SETUP.md).
 
 See [the workspace guide](AGENT_WORKSPACE.md) for integration configuration, schemas, permissions, API paths and verification limits.
