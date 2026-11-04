@@ -7,11 +7,13 @@ Implemented November 4, 2026. This guide describes the graph renderer, stored to
 1. Open **Knowledge graph**. Existing contributions and actual access events remain visible.
 2. Choose **Import dataset** for JSON/CSV topology, Prognosis dataset JSON or a MOMI alarm export. Choose **Add knowledge → HPE references** to import a real publisher PDF, or upload a manual. Documents create actual passage/reference nodes; they do not establish physical infrastructure dependencies.
 3. Zoom with the wheel or controls; drag the background to pan. Drag a node to reposition it. The layout runs in a worker; pause or arrange it with the layout control.
-4. Select a node to inspect its source, properties and connected nodes. **Connections only** isolates its immediate relationships. Use the inspector's connected-node list to follow a relationship.
+4. Select a node to inspect its source, properties and connected nodes. **Focus only** isolates a bounded selection of immediate relationships. Use the inspector's connected-node list to browse every loaded connection and follow a particular passage or entity.
 5. Select **Attach knowledge** to add a note or document linked to that node. It appears under its actual contributor, with a separate directed document-to-node relationship. Existing contributor and topic relationships remain.
 6. Submit the contribution for independent review when ready. Adding or accessing knowledge never transfers ownership or approves it.
 
-New nodes enter near an existing neighbor and animate into view. Keyed updates preserve positions and the camera. People, documents, topics, source entities and source roots have different colors; colors identify categories, not system health. Stale source entities are grey. Relationship labels and arrows are available in the selected view.
+New nodes enter near an existing neighbor and animate into view. Keyed updates preserve positions and the camera. People, documents, topics, source entities and source roots have different colors; colors identify categories, not system health. Stale source entities are grey. Selected relationships have arrows; their exact relationship labels appear in the inspector.
+
+A large manual does not highlight every passage at once. Selection emphasizes at most 24 relationships, prioritizing contributors, topics, sources and attached documents before sampling passages. The canvas reports the highlighted and loaded counts. Source records remain intact; the connected-node list, search and individual passage selection still reach the other relationships. Canvas labels use strict collision rejection, with the selected label first and passage excerpts deferred until zoomed in. Focus frames the selected connections rather than applying a fixed zoom into the hub. The same selection budget applies to 3D, 2D WebGL and the 2D fallback.
 
 Search covers loaded knowledge and the permitted stored topology. A server search can find an entity outside the initial overview, and selecting it loads its neighborhood. Dataset and review filters narrow the display. The expandable node list and inspector provide keyboard navigation alongside the canvas.
 
@@ -119,6 +121,7 @@ Failed reads mark retained source data stale; old data is never presented as a s
 | Initial graph overview | 12,000 nodes, up to 50,000 relationships with visible endpoints |
 | Knowledge contribution projection | Up to 3,000 permitted documents; clipping is disclosed |
 | Entity neighborhood expansion | Up to 500 relationships, including permitted attachments; truncation is disclosed |
+| Selected-node emphasis | Up to 24 loaded relationships; contributor/topic/attachment links precede sampled passages |
 | Server entity search | Up to 50 results per query, across permitted datasets |
 | Workspace graph polling | Every 3 seconds while visible, with a revision cursor to skip unchanged payloads |
 | Configured topology reads | Every 15 seconds while the graph is visible and live updates are enabled |
@@ -151,6 +154,10 @@ Backend tests exercise 5,000-node imports, a 13,000-node bounded projection/sear
 Browser checks used the shared renderer with explicit synthetic networks of 1,000, 5,000 and 12,000 nodes (up to 15,998 edges). The cloud browser lacked WebGL, so the 2D fallback was visually checked, including selection, focused relationships, a linked document addition, fit and zoom. No application console errors were reported. This does not establish hardware WebGL performance or an end-to-end customer integration. The managed browser preview could not run the Python backend; actual API/storage/review behavior was covered separately by backend tests.
 
 For repeatable renderer QA, run frontend development and open `/graph-benchmark.html`. That page is labelled synthetic, writes no database records and is not an entry in the production Vite build or app navigation. No test network is seeded into the application.
+
+Run `npm run test:graph` for the dense-manual regression: 1,222 passage leaves, contributor/topic/source/attachment priority, unchanged source records, stable selection across insertion order, visibility filters, individual passage navigation, strict label collisions, bounded 3D/2D drawing at three zoom levels, framing of selected connections, bounded manual-arrival animation and changed relationship endpoints without moving nodes. The QA page also offers a **Large manual hub** topology up to 12,000 nodes, which covers the high-degree selection missed by a branching network.
+
+The readability fix was also checked in the browser against the actual 1,524-node publisher projection: selecting TACL disclosed 24 of 1,224 loaded relationships, and an individual passage retained all three of its connections. The separate synthetic manual fixture disclosed 24 of 11,999 connections at 12,000 nodes, then 24 of 12,000 after adding a linked document. The 3D view and 2D canvas fallback were checked; the verification browser did not provide WebGL.
 
 The owner's earlier Windows/Qwen/contribution checks are recorded separately in [local verification](LOCAL_VERIFICATION_2026-11-04.md). Actual CAIL connectivity requires an authorized export or provisioned topology endpoints; neither was supplied during this change.
 

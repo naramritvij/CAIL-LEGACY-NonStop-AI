@@ -22,6 +22,8 @@ Document upload and extracted text, contributor/document/topic links, and a real
 
 **Real publisher import:** actual HPE HTTPS downloads of the 93-page Security Hardening Guide and 674-page TACL Reference Manual passed through CAIL's import API. They produced **1,524 nodes / 2,607 relationships**, including 1,498 cited text passages. The shared 3D renderer displayed that backend projection in an isolated verification workspace. No fictional experts, customer telemetry or PDF copies are seeded into the app/repository. See the [technical source review](docs/TEAM31_TECHNICAL_REVIEW.md).
 
+**Dense manual readability:** selecting a document highlights at most 24 relationships, with contributor/topic/attachment links first and passage sampling after that. The canvas discloses the highlighted count, avoids overlapping labels and frames selected connections. All source records remain available through the inspector, search and passage selection. Run `npm --prefix frontend run test:graph` for the dense-manual regression.
+
 **Automated validation:** 303 backend tests, 26 existing frontend contracts and the production TypeScript/Vite build pass. Native source tests use controlled responses; the publisher import above used actual public PDFs. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the owner's earlier observed results. Customer monitoring access still requires the actual environment's configured read access.
 
 ## Run the update
@@ -105,6 +107,7 @@ The former public Tailscale demonstration does **not** enable this private persi
 ~~~bash
 PYTHONPATH=backend .venv/bin/python -m pytest -q backend/tests
 npm --prefix frontend run test:contract
+npm --prefix frontend run test:graph
 npm --prefix frontend run build
 node --check scripts/dev-workspace.mjs
 ~~~

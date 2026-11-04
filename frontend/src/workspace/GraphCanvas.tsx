@@ -5,6 +5,8 @@ import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { CanvasNetwork } from "./CanvasNetwork";
 import { PerspectiveNetwork } from "./PerspectiveNetwork";
 import { Force3DLayout } from "./Force3DLayout";
+import { graphLabelPriority, graphSelection } from "./graphReadability";
+import { syncGraphEdges } from "./syncGraphEdges";
 import { Focus, Maximize2, Minus, Pause, Play, Plus } from "lucide-react";
 import type { GraphEdge, GraphNode } from "./types";
 
@@ -54,6 +56,10 @@ export function GraphCanvas({
   const [canvasMode, setCanvasMode] = useState(false);
   const [running, setRunning] = useState(false);
   const [ratio, setRatio] = useState(1);
+  const [selectionSummary, setSelectionSummary] = useState({
+    shown: 0,
+    total: 0,
+  });
   const reduced = useRef(
     window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -122,7 +128,7 @@ export function GraphCanvas({
           labelColor: { color: "#435b4e" },
           labelDensity: 0.3,
           labelRenderedSizeThreshold: 5,
-          labelGridCellSize: 120,
+          labelGridCellSize: 260,
           hideLabelsOnMove: true,
           hideEdgesOnMove: nodes.length > 5000,
           minCameraRatio: 0.006,
@@ -197,16 +203,9 @@ export function GraphCanvas({
     const data = graph.current,
       sigma = renderer.current;
     if (!data) return;
-    const nodeIds = new Set(nodes.map((node) => node.id)),
-      edgeIds = new Set(edges.map((edge) => edge.id));
+    const nodeIds = new Set(nodes.map((node) => node.id));
     const existing = data.order;
     let changed = false;
-    data.forEachEdge((id) => {
-      if (!edgeIds.has(id)) {
-        data.dropEdge(id);
-        changed = true;
-      }
-    });
     data.forEachNode((id, attributes) => {
       if (!nodeIds.has(id)) {
         positionCache.current.set(id, {
@@ -233,6 +232,7 @@ export function GraphCanvas({
       const values = {
         label: node.label,
         kind: node.kind,
+        entity_type: node.entity_type,
         color: node.stale
           ? "#b4b9b6"
           : node.entity_type === "passage"
@@ -282,24 +282,14 @@ export function GraphCanvas({
         const old = data.getNodeAttributes(node.id);
         if (
           old.label !== values.label ||
+          old.entity_type !== values.entity_type ||
           old.color !== values.color ||
           old.baseSize !== values.baseSize
         )
           data.mergeNodeAttributes(node.id, values);
       }
     }
-    for (const edge of edges) {
-      if (!data.hasNode(edge.source) || !data.hasNode(edge.target)) continue;
-      if (!data.hasEdge(edge.id)) {
-        data.addDirectedEdgeWithKey(edge.id, edge.source, edge.target, {
-          label: edge.label,
-          kind: edge.kind,
-          color: edge.kind === "documents" ? "#72ad97" : "#dce5df",
-          size: edge.kind === "documents" ? 1.2 : 0.5,
-        });
-        changed = true;
-      }
-    }
+    changed = syncGraphEdges(data, edges) || changed;
     if (positionCache.current.size > 25000) positionCache.current.clear();
     sigma?.setSetting("hideEdgesOnMove", nodes.length > 5000);
     if (!existing && data.order)
@@ -344,28 +334,43 @@ export function GraphCanvas({
       sigma = renderer.current;
     if (!data) return;
     fallback.current?.setView(selected, visible, focusOnly);
+    const selection = graphSelection(data, selected, visible);
+    setSelectionSummary({
+      shown: selection?.edges.size ?? 0,
+      total: selection?.total ?? 0,
+    });
     if (!sigma) return;
-    const neighborhood =
-      selected && data.hasNode(selected)
-        ? new Set([selected, ...data.neighbors(selected)])
-        : null;
+    const neighborhood = selection?.nodes;
     sigma.setSetting("nodeReducer", (id, attributes) => {
       const active = neighborhood?.has(id);
+      const label = String(attributes.label);
       return {
         ...attributes,
+        label:
+          graphLabelPriority(
+            id,
+            attributes,
+            selected,
+            selection,
+            sigma.getCamera().ratio,
+          ) === null
+            ? ""
+            : label.length > 32
+              ? label.slice(0, 31) + "…"
+              : label,
         hidden:
           !visible.has(id) || Boolean(focusOnly && neighborhood && !active),
         color:
           neighborhood && !active ? "#e1e6e1" : (attributes.color as string),
         highlighted: selected === id,
-        forceLabel: Boolean(active),
+        forceLabel: id === selected,
         size: (attributes.size as number) * (selected === id ? 1.5 : 1),
         zIndex: selected === id ? 3 : active ? 2 : 0,
       };
     });
     sigma.setSetting("edgeReducer", (id, attributes) => {
       const [source, target] = data.extremities(id);
-      const incident = source === selected || target === selected;
+      const incident = selection?.edges.has(id);
       return {
         ...attributes,
         hidden:
@@ -378,10 +383,10 @@ export function GraphCanvas({
             : "#edf0ec"
           : (attributes.color as string),
         size: incident ? 1.5 : (attributes.size as number),
-        forceLabel: incident && focusOnly,
+        forceLabel: false,
       };
     });
-    sigma.setSetting("renderEdgeLabels", Boolean(selected && focusOnly));
+    sigma.setSetting("renderEdgeLabels", false);
     sigma.refresh();
   }, [selected, visible, focusOnly, nodes, edges, dimension]);
 
@@ -389,13 +394,38 @@ export function GraphCanvas({
     if (selected) fallback.current?.focus(selected, reduced.current);
     const sigma = renderer.current;
     if (!sigma || !selected) return;
-    const point = sigma.getNodeDisplayData(selected);
-    if (point)
+    const selection = graphSelection(sigma.getGraph(), selected, visible);
+    if (!selection) return;
+    const points = [...selection.nodes]
+      .map((id) => sigma.getNodeDisplayData(id)!)
+      .filter(Boolean);
+    const projected = points.map((point) => sigma.framedGraphToViewport(point));
+    const dimensions = sigma.getDimensions();
+    const spanX =
+      Math.max(...projected.map((p) => p.x)) -
+      Math.min(...projected.map((p) => p.x));
+    const spanY =
+      Math.max(...projected.map((p) => p.y)) -
+      Math.min(...projected.map((p) => p.y));
+    if (points.length)
       void sigma.getCamera().animate(
         {
-          x: point.x,
-          y: point.y,
-          ratio: Math.min(0.3, sigma.getCamera().ratio),
+          x:
+            (Math.min(...points.map((p) => p.x)) +
+              Math.max(...points.map((p) => p.x))) /
+            2,
+          y:
+            (Math.min(...points.map((p) => p.y)) +
+              Math.max(...points.map((p) => p.y))) /
+            2,
+          ratio: Math.max(
+            0.025,
+            sigma.getCamera().ratio *
+              Math.max(
+                (spanX + 100) / Math.max(100, dimensions.width - 100),
+                (spanY + 100) / Math.max(100, dimensions.height - 160),
+              ),
+          ),
         },
         { duration: reduced.current ? 0 : 450 },
       );
@@ -489,6 +519,21 @@ export function GraphCanvas({
           ? "Drag background to orbit · Shift + drag to pan · Scroll to zoom"
           : "Scroll to zoom · Drag to pan · Select a node to explore its connections"}
       </div>
+      {selected && selectionSummary.total > 0 && (
+        <div className="network-selection-summary" role="status">
+          <strong>
+            {focusOnly ? "Connection focus" : "Selected connections"}
+          </strong>
+          <span>
+            {selectionSummary.shown.toLocaleString()} of{" "}
+            {selectionSummary.total.toLocaleString()} loaded relationships
+            highlighted
+            {selectionSummary.total > selectionSummary.shown
+              ? " · Browse Connected nodes for all loaded relationships"
+              : ""}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

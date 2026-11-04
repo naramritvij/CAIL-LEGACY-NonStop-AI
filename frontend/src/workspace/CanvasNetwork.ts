@@ -1,4 +1,9 @@
 import type { MultiDirectedGraph } from "graphology";
+import {
+  drawGraphLabels,
+  graphSelection,
+  type GraphSelection,
+} from "./graphReadability";
 
 // A CPU renderer for browsers without WebGL. It shares the same graph and
 // background layout as Sigma, without creating a DOM element for every node.
@@ -14,6 +19,7 @@ export class CanvasNetwork {
   private camera = { x: 0, y: 0, ratio: 1 };
   private autoFit = true;
   private selected: string | null = null;
+  private selection: GraphSelection | null = null;
   private visible = new Set<string>();
   private focusOnly = false;
   private screen = new Map<string, { x: number; y: number; size: number }>();
@@ -75,6 +81,7 @@ export class CanvasNetwork {
     this.selected = selected;
     this.visible = visible;
     this.focusOnly = focusOnly;
+    this.selection = graphSelection(this.graph, selected, visible);
     this.refresh();
   }
 
@@ -83,7 +90,12 @@ export class CanvasNetwork {
       maxX = -Infinity,
       minY = Infinity,
       maxY = -Infinity;
-    this.graph.forEachNode((_id, attributes) => {
+    this.graph.forEachNode((id, attributes) => {
+      if (
+        !this.visible.has(id) ||
+        (this.focusOnly && this.selection && !this.selection.nodes.has(id))
+      )
+        return;
       const x = Number(attributes.x),
         y = Number(attributes.y);
       minX = Math.min(minX, x);
@@ -119,12 +131,27 @@ export class CanvasNetwork {
   }
 
   focus(id: string, reduced: boolean) {
-    if (!this.graph.hasNode(id)) return;
+    const selection = graphSelection(this.graph, id, this.visible);
+    if (!selection) return;
+    const points = [...selection.nodes].map((key) =>
+      this.graph.getNodeAttributes(key),
+    );
+    const minX = Math.min(...points.map((p) => Number(p.x))),
+      maxX = Math.max(...points.map((p) => Number(p.x)));
+    const minY = Math.min(...points.map((p) => Number(p.y))),
+      maxY = Math.max(...points.map((p) => Number(p.y)));
     this.animate(
       {
-        x: Number(this.graph.getNodeAttribute(id, "x")),
-        y: Number(this.graph.getNodeAttribute(id, "y")),
-        ratio: Math.min(0.18, this.camera.ratio),
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        ratio: Math.max(
+          0.025,
+          this.scale *
+            Math.max(
+              (maxX - minX + 120) / Math.max(100, this.width - 120),
+              (maxY - minY + 120) / Math.max(100, this.height - 160),
+            ),
+        ),
       },
       reduced ? 0 : 400,
     );
@@ -156,10 +183,8 @@ export class CanvasNetwork {
     const ctx = this.context,
       graph = this.graph,
       selected = this.selected;
-    const neighborhood =
-      selected && graph.hasNode(selected)
-        ? new Set([selected, ...graph.neighbors(selected)])
-        : null;
+    const selection = this.selection,
+      neighborhood = selection?.nodes;
     const scale = this.scale / this.camera.ratio;
     ctx.clearRect(0, 0, this.width, this.height);
     this.screen.clear();
@@ -184,14 +209,13 @@ export class CanvasNetwork {
     ctx.beginPath();
     ctx.strokeStyle = selected ? "#e9eeeb" : "#d7e1dc";
     ctx.lineWidth = 0.55;
-    graph.forEachEdge((_id, _attributes, source, target) => {
+    graph.forEachEdge((id, _attributes, source, target) => {
       const a = this.screen.get(source),
         b = this.screen.get(target);
       if (
         !a ||
         !b ||
-        source === selected ||
-        target === selected ||
+        selection?.edges.has(id) ||
         (this.focusOnly && neighborhood)
       )
         return;
@@ -199,9 +223,8 @@ export class CanvasNetwork {
       ctx.lineTo(b.x, b.y);
     });
     ctx.stroke();
-    let edgeLabels = 0;
-    graph.forEachEdge((_id, attributes, source, target) => {
-      const incident = source === selected || target === selected;
+    graph.forEachEdge((id, _attributes, source, target) => {
+      const incident = selection?.edges.has(id);
       if (!incident) return;
       const a = this.screen.get(source),
         b = this.screen.get(target);
@@ -228,18 +251,7 @@ export class CanvasNetwork {
       );
       ctx.closePath();
       ctx.fill();
-      if (this.focusOnly && edgeLabels++ < 60) {
-        ctx.font = "11px Inter, sans-serif";
-        ctx.fillStyle = "#5a7868";
-        ctx.fillText(
-          String(attributes.label || ""),
-          (a.x + b.x) / 2,
-          (a.y + b.y) / 2 - 5,
-        );
-      }
     });
-    let labels = 0;
-    const labelBoxes: { x: number; y: number; width: number }[] = [];
     for (const [id, point] of this.screen) {
       if (
         point.x < -100 ||
@@ -262,32 +274,16 @@ export class CanvasNetwork {
         ctx.arc(point.x, point.y, point.size + 4, 0, Math.PI * 2);
         ctx.stroke();
       }
-      if (
-        (active || attributes.kind !== "entity" || this.camera.ratio < 0.15) &&
-        labels++ < 120
-      ) {
-        ctx.font = `${id === selected ? 600 : 400} 12px Inter, sans-serif`;
-        ctx.fillStyle = "#435b4e";
-        const text = String(attributes.label).slice(0, 60);
-        const x = point.x + point.size + 5,
-          width = ctx.measureText(text).width;
-        let y = point.y + 4;
-        for (
-          let attempt = 0;
-          attempt < 6 &&
-          labelBoxes.some(
-            (box) =>
-              x < box.x + box.width + 5 &&
-              x + width + 5 > box.x &&
-              Math.abs(y - box.y) < 16,
-          );
-          attempt++
-        )
-          y += 17;
-        labelBoxes.push({ x, y, width });
-        ctx.fillText(text, x, y);
-      }
     }
+    drawGraphLabels(
+      ctx,
+      graph,
+      this.screen,
+      selected,
+      selection,
+      this.camera.ratio,
+      { width: this.width, height: this.height },
+    );
   };
 
   private point(event: MouseEvent) {
