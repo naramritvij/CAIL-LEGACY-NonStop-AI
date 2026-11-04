@@ -20,7 +20,7 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 from fastapi import HTTPException
 
 LOGGER = logging.getLogger("cail.live_sources")
-SOURCE_IDS = ("asap", "ems", "scf", "guardian", "pathway")
+SOURCE_IDS = ("prognosis", "asap", "momi", "ems", "scf", "guardian", "pathway")
 MAX_BYTES = 512 * 1024
 MAX_RECORDS = 100
 MAX_AGE_SECONDS = 300

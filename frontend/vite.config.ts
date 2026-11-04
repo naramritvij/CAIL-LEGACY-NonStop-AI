@@ -18,7 +18,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: env.LEGACY_API_PROXY_TARGET || 'http://localhost:8000',
-          changeOrigin: true,
+          // Preserve the browser Host for the workspace's same-origin mutation checks.
+          changeOrigin: false,
         },
       },
     },

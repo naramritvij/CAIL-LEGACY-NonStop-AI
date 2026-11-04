@@ -1,92 +1,45 @@
-# CAIL/Nonstop AI Operations Assistant — Current Architecture
+# CAIL / Nonstop AI Operations Assistant: architecture
 
-**18 October 2026 · PRs #14 and #15 merged into `main`; locally verified synthetic sponsor prototype. Browser acceptance pending.**
+The existing React/TypeScript/Vite frontend, FastAPI backend, SQLite volume and Ollama model now serve one assistant, one knowledge graph and one connection screen.
 
-The React/Vite interface communicates with a FastAPI backend. The backend
-collects only hand-authored synthetic incident fixtures, applies a default-deny
-read-only policy, retrieves locally approved source excerpts and optionally
-calls a Windows-hosted Ollama/Qwen3 model. SQLite stores reviewed Decision DNA.
-It never connects to or controls a real HPE NonStop installation.
+~~~mermaid
+flowchart TD
+    User["Operator"] --> UI["Single workspace"]
+    UI --> API["Authenticated FastAPI"]
+    API --> Memory["Conversation memory"]
+    API --> Orchestrator["Agent orchestrator"]
+    Memory --> Orchestrator
+    Orchestrator --> Knowledge["Knowledge agent"]
+    Orchestrator --> Telemetry["Telemetry agent"]
+    Knowledge --> Reviewed["Approved source chunks"]
+    Telemetry --> Gateway["Authorized read-only gateway"]
+    Gateway --> Sources["Prognosis · ASAP · MOMI"]
+    Knowledge --> Evaluator["Evidence evaluator"]
+    Telemetry --> Evaluator
+    Evaluator -->|Sufficient| Answer["Response agent"]
+    Evaluator -->|Rewrite, at most 5 attempts| Knowledge
+    Answer --> Saved["Saved answer and sources"]
+    Saved --> UI
+    API --> Graph["Ownership and access events"]
+    Graph --> UI
+~~~
 
-## System and trust flow
+This diagram describes responsibility and event flow. Workers cannot execute operating-system or NonStop commands. Qwen performs routing, relevance evaluation and synthesis. Access checks, source allowlisting, review transitions, retry bounds and citation checks are deterministic code.
 
-```text
-Operator (React / Vite)  ──▶ Unified Command Console
-                               │
-              (validated exact reference / bounded natural question)
-                               ▼
-                         FastAPI Router
-                               │
-          ┌────────────────────┼─────────────────────┐
-          ▼                    ▼                     ▼
-   EMS / ASAP / Guardian    SCF / PATHCOM       Unsupported tools
-  synthetic fixture read    reference-only      explicit UNAVAILABLE
-          │                    │
-          ▼                    ▼
-   event/metric data       UNKNOWN real output
-          │                    │
-          └────────────┬───────┘
-                       ▼
-          Chronology and unknowns
-                       │
-         ┌─────────────┴─────────────────┐
-         ▼                               ▼
-    Local Qwen                      Human reasoning
- citation-ID validation           + independent review
-         │                               │
-    unverified claims             approved Knowledge Tree
-         └───────────────────────────────┘
-```
+## Records
 
-## APIs and lifecycle
+- ws_people, ws_sessions: stable identity references and hashed browser sessions.
+- ws_conversations, ws_messages: private complete history, answer metadata, idempotency and leases.
+- ws_documents, ws_chunks: ownership, extracted content, topic, digest, review and citation chunks.
+- ws_events: actual contribution, review, document-view, retrieval and source events.
+- ws_snapshots, ws_connector_state: bounded telemetry history and latest success/failure.
 
-| Domain | Path | Trust status |
-|---|---|---|
-| Incident queue and evidence | `/api/v1/incidents*` | Two original synthetic scenarios |
-| Financial hardware failure | `/api/v1/operations/lab/scenarios` | Third fictional scenario, separate from original queue |
-| Allowlisted command input | `POST /api/v1/operations/lab/command` | No native execution |
-| Adapter inventory | `GET /api/v1/operations/lab/tools` | All eleven categories disclose no live connection |
-| Qwen financial investigation | `POST /api/v1/operations/lab/ask` | Registered citation IDs, not claim entailment |
-| Chronology and management briefing | `GET /api/v1/operations/lab/shift-summary` | Synthetic only |
-| Study protocol | `GET /api/v1/operations/lab/evaluation-protocol` | No fabricated results |
-| Incident-scoped command learning | `GET /api/v1/operations/incidents/{id}/playbook` | Documentation / preview |
-| Source excerpt intake | `POST /api/v1/knowledge/corpus/documents` | Authorized paste, not verified original |
-| Expert lessons and Mentor | `/api/v1/knowledge/lessons*` | Demo keys, draft→submit→review |
-| Approved lesson tree | `/api/v1/knowledge/knowledge-tree` | Approved-only local data |
+Older lesson, corpus and audit tables remain unchanged and searchable when approved. Their aliases are not reassigned to authenticated employees.
 
-**Frontend:** Home, Investigate, Evidence, Operations Lab, Library, Mentor,
-Knowledge Tree and Apprentice. Operators can switch from cross-tool console
-results to existing incident investigations. The financial case has a separate
-lab because adding a new fixture to the original `/incidents` queue would
-change already tested sprint contracts; no substitution or hidden mapping is
-claimed.
+## Boundaries
 
-## Safety and source boundaries
+General questions use history without unrelated telemetry. Knowledge questions retrieve approved sources. Live status needs fresh authorized observations. Synthetic cases are explicit and labelled. No synthetic fallback masks a failed source.
 
-- `STATUS PATHWAY`, `STATUS SERVER <serverclass>, DETAIL`, and
-  `STATUS DISK $DATA03` are displayed only as HPE-documentation references.
-  The command console does not execute them.
-- `SHOW ALERTS`, `SHOW CPU METRICS` and similar phrases are CAIL UI
-  intents to local fixtures, not native HPE commands.
-- User input cannot pass executable shell commands, scripts or command
-  pipelines to a tool. Unknown native syntax is blocked.
-- A PATHCOM request on the disk scenario is context-mismatched and suggests
-  switching to the correct Pathway scenario.
-- SCF, PATHCOM and the remaining unsupported subsystems do not return invented
-  authenticated native status.
-- Ollama inference may return text only with registered citation identifiers;
-  semantic support and document authenticity still require human review.
-- Different private local expert/reviewer keys gate document and lesson
-  approvals. No production identity or authorization system exists.
-- No automatic text extraction from large copyrighted manuals, no external
-  speech/audio capture, real time tool polling or production execution.
+The model sees bounded context and normalized evidence, never source credentials. It cannot grant access or approve its own evidence. The graph projects actual permitted records rather than inferring an organizational chart.
 
-## Verification and limitations
-
-The latest complete developer-run local verification (18 October 2026, commit `6d92fd4`, now merged) passed **184 Python tests**, **17 frontend safety/API contract checks**, **2/2 bounded local Qwen investigations**, TypeScript/Vite build (2,005 modules transformed), Docker startup, and all synthetic Operations Lab and command-safety HTTP smoke checks. One Starlette/httpx deprecation warning remains nonblocking.
-
-Browser interaction acceptance, production integration, and independent expert source validation remain pending.
-
-Do not invent new passing test counts, live uptime, authenticated source
-provenance, real MTTR improvements or recovery results. See
-`docs/REQUIREMENTS.md` and `docs/SPONSOR_MISSION_ACCEPTANCE.md`.
+See [the workspace guide](AGENT_WORKSPACE.md) for integration configuration, schemas, permissions, API paths and verification limits.
