@@ -92,6 +92,14 @@ Regressions cover persisted two-role history, topic changes, older relevant memo
 
 Automated model and connector tests use controlled doubles. They verify contracts and workflows, not actual Qwen answer quality or licensed vendor compatibility. The frontend is typechecked and production-built. Full Python-backed browser preview requires a runtime with the backend dependencies.
 
+To check the real model in your running Docker application, run:
+
+~~~powershell
+docker compose exec backend python -m app.conversation_smoke
+~~~
+
+This creates one test conversation with a fresh checklist name, asks an unrelated API question, checks recall, and reads back all six persisted turns. It reports PASS only after real model responses pass these checks. Ordinary conversation uses its own instructions without an empty monitoring-evidence packet. Explicitly requested notes are prioritized when older context is loaded; user-reported operational information still does not establish verified live health.
+
 ## Further detail
 
 - [As-built workspace and integration guide](docs/AGENT_WORKSPACE.md)

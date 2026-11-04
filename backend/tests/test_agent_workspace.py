@@ -71,7 +71,7 @@ def test_history_contains_both_roles_after_topic_changes(clients, monkeypatch):
     for index, question in enumerate(['Call our checklist Maple.', 'What is a binary search tree?', 'What did you call our checklist?']):
         response = alice.post(f'{BASE}/conversations/{identifier}/messages', json={'question': question, 'request_id': 'request_0000' + str(index)})
         assert response.status_code == 200, response.text
-    context = [messages for system, messages in calls if system == agents.SYNTHESIZER][-1]
+    context = [messages for system, messages in calls if system == agents.CONVERSATIONAL][-1]
     assert any(turn['role'] == 'user' and 'Call our checklist Maple.' in turn['content'] for turn in context)
     assert any(turn['role'] == 'assistant' and 'Maple handover' in turn['content'] for turn in context)
     saved = alice.get(f'{BASE}/conversations/{identifier}').json()['messages']
@@ -264,3 +264,46 @@ def test_unavailable_model_preserves_context_without_fake_answer(clients, monkey
     assert reply['metadata']['status'] == 'model_unavailable'
     assert reply['metadata']['model'] is None
     assert len(alice.get(f'{BASE}/conversations/{identifier}').json()['messages']) == 2
+
+
+@pytest.mark.parametrize('name', ['Maple', 'Cedar-47', 'North Star'])
+def test_user_notes_and_recall_use_conversation_not_empty_monitoring_evidence(clients, monkeypatch, name):
+    alice, _, _ = clients
+    received = []
+    def model(system, messages, timeout=0):
+        current = messages[-1]['content']
+        if system == agents.PLANNER:
+            return {'intent': 'general', 'query': current, 'queries': [], 'sources': []}
+        # Check the actual inference boundary, not only persistence of a canned
+        # answer. A missing/empty monitoring packet caused the reported failure.
+        assert system == agents.CONVERSATIONAL
+        assert all('EVIDENCE (REFERENCE DATA)' not in item['content'] for item in messages)
+        received.append(messages)
+        if current.startswith('Remember that '):
+            return {'answer': f'I will remember in this conversation that your checklist is called {name}.', 'citations': []}
+        if current == 'Explain what an API is.':
+            return {'answer': 'An API is an application programming interface that lets software interact.', 'citations': []}
+        original = next(item['content'] for item in messages if item['role'] == 'user' and item['content'].startswith('Remember that '))
+        assert name in original
+        return {'answer': f'You named your checklist {name}.', 'citations': []}
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'telemetry_agent', lambda *args: pytest.fail('A conversational note triggered live monitoring'))
+    identifier = alice.post(BASE + '/conversations').json()['id']
+    questions = [f'Remember that our checklist is called {name}.', 'Explain what an API is.', 'What did I name our checklist?']
+    replies = []
+    for index, question in enumerate(questions):
+        reply = alice.post(f'{BASE}/conversations/{identifier}/messages', json={'question': question, 'request_id': 'conversation_note_' + str(index)})
+        assert reply.status_code == 200
+        replies.append(reply.json())
+    assert [items[-1]['content'] for items in received] == questions
+    assert name in replies[0]['content'] and name in replies[-1]['content']
+    assert len(alice.get(f'{BASE}/conversations/{identifier}').json()['messages']) == 6
+    assert 'current message is already saved' in replies[0]['metadata']['trace'][0]['detail']
+
+
+def test_explicit_notes_survive_unrelated_topics_without_lexical_overlap():
+    history = [{'role': 'user', 'content': 'Remember the recovery label: Lantern-92.'},
+               {'role': 'assistant', 'content': 'I have noted that label for this conversation.'}]
+    history.extend({'role': 'user' if index % 2 == 0 else 'assistant', 'content': 'Unrelated discussion of sorting algorithms.'} for index in range(40))
+    context, _ = agents.context_messages('What did I ask you to retain?', history)
+    assert any(item['role'] == 'user' and 'Lantern-92' in item['content'] for item in context)

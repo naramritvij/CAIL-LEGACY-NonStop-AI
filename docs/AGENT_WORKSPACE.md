@@ -8,6 +8,8 @@ Every user turn and accepted assistant response is stored with evidence, source 
 
 Inference uses recent exchanges and earlier lexically relevant exchanges, including neighboring answers, within a bounded context budget. This is retrieval over complete saved history, not unlimited model memory. Standalone topics are routed afresh. Model unavailability is saved explicitly rather than replaced by a scripted imitation of an answer.
 
+Explicit user requests to remember a note are prioritized even when a later recall question shares no words with that note. General conversation uses a dedicated conversational prompt and the original user message, without an empty monitoring-evidence envelope. User-supplied names, preferences and corrections need no external monitoring verification. Their reports about operational status remain unverified reports and cannot confer permissions or substitute for live evidence.
+
 Requests use idempotency keys and a database response lease. A retry returns the same answer. Reusing a key for a different question is rejected. Concurrent responses in one thread are rejected rather than reordered. Interrupted placeholders recover after the bounded lease expires.
 
 ## Orchestration
