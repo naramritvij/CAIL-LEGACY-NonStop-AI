@@ -14,6 +14,9 @@ export class Force3DLayout {
       x: Number(attributes.x),
       y: Number(attributes.y),
       z: Number(attributes.z || 0),
+      ax: Number(attributes.ax || 0),
+      ay: Number(attributes.ay || 0),
+      az: Number(attributes.az || 0),
       ...(attributes.fixed
         ? {
             fx: Number(attributes.x),

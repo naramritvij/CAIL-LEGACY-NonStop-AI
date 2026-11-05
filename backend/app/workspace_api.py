@@ -118,6 +118,15 @@ def conversation_turn(conversation_id: str, body: TurnBody, user=Depends(princip
         logging.getLogger(__name__).exception('Workspace agent run failed')
         result = {'answer': 'The investigation was interrupted. Your question and earlier conversation are saved. Try a follow-up.',
                   'status': 'failed', 'sources': [], 'trace': [], 'execution_allowed': False}
+    from .semantic_graph import record_question
+    try:
+        record_question(user, question, result.get('sources', []), body.request_id)
+    except Exception:
+        # Optional graph bookkeeping must never lose a completed conversation turn.
+        import logging
+        logging.getLogger(__name__).warning('Learning-link bookkeeping was deferred.')
+        result.setdefault('trace', []).append({'agent': 'Learning links', 'status': 'deferred',
+                                               'detail': 'The answer is saved; learning links were unavailable.', 'elapsed_ms': 0})
     return store.finish_turn(conversation_id, body.request_id, turn['answer_id'], result)
 
 
@@ -346,3 +355,7 @@ def connections(user=Depends(principal)):
 @router.post('/connections/{source_id}/check')
 def connection_check(source_id: str, user=Depends(principal)):
     return check_source(user, source_id)
+
+
+from .semantic_api import router as semantic_router
+router.include_router(semantic_router)

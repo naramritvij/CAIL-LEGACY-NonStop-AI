@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -13,10 +21,19 @@ import {
   Upload,
   Users,
   X,
+  Route,
+  Play,
+  Pause,
 } from "lucide-react";
 import { GraphCanvas } from "./GraphCanvas";
 import { KnowledgeUpload } from "./KnowledgeUpload";
 import { TopologyImport } from "./TopologyImport";
+import type { EvidenceTrail } from "./KnowledgeStudio";
+const KnowledgeStudio = lazy(() =>
+  import("./KnowledgeStudio").then((module) => ({
+    default: module.KnowledgeStudio,
+  })),
+);
 import {
   errorMessage,
   request,
@@ -79,6 +96,15 @@ export function KnowledgeGraph({
   const [connectionLimit, setConnectionLimit] = useState(40);
   const [dimension, setDimension] = useState<"2d" | "3d">("3d");
   const [indexBusy, setIndexBusy] = useState(false);
+  const [scene, setScene] = useState("knowledge");
+  const [showPassages, setShowPassages] = useState(false);
+  const [pathStart, setPathStart] = useState<GraphNode | null>(null);
+  const [trail, setTrail] = useState<EvidenceTrail | null>(null);
+  const [trailBusy, setTrailBusy] = useState(false);
+  const [playingTrail, setPlayingTrail] = useState(false);
+  const [trailStep, setTrailStep] = useState(0);
+  const [spotlight, setSpotlight] = useState<string | null>(null);
+  const attemptedIndexCounts = useRef(new Set<number>());
   const inFlight = useRef(false);
   const refreshSequence = useRef(0);
   const syncFlight = useRef(false);
@@ -97,10 +123,16 @@ export function KnowledgeGraph({
         graphRef.current = result;
         setGraph(result);
         const allowed = new Set(result.datasets.map((item) => item.id));
+        const freshNodeIds = new Set(result.nodes.map((item) => item.id));
         setExpansion((previous) => ({
-          nodes: previous.nodes.filter(
-            (node) => !node.dataset_id || allowed.has(node.dataset_id),
-          ),
+          nodes: previous.nodes
+            .filter((node) => !node.dataset_id || allowed.has(node.dataset_id))
+            .filter(
+              (node) =>
+                node.source_kind !== "semantic_knowledge" ||
+                freshNodeIds.has(node.id) ||
+                node.permission_dataset_ids?.some((id) => allowed.has(id)),
+            ),
           edges: previous.edges.filter(
             (edge) => !edge.dataset_id || allowed.has(edge.dataset_id),
           ),
@@ -197,7 +229,8 @@ export function KnowledgeGraph({
     };
   }, [selected, onError, refresh]);
   useEffect(() => {
-    if (!selected?.startsWith("entity:")) return;
+    if (!selected?.startsWith("entity:") && !selected?.startsWith("concept:"))
+      return;
     let current = true;
     Promise.allSettled([
       request<GraphEntityDetail>(
@@ -263,6 +296,9 @@ export function KnowledgeGraph({
     ].slice(0, 20);
   }, [search, view.nodes, remoteResults]);
   function choose(id: string | null, result?: GraphNode) {
+    setTrail(null);
+    setPlayingTrail(false);
+    setSpotlight(null);
     if (result && !view.index.has(result.id))
       setExpansion({ nodes: [result], edges: [] });
     setSelected(id);
@@ -278,10 +314,30 @@ export function KnowledgeGraph({
   }
 
   const visible = useMemo(() => {
-    if (scope === "all" && reviewFilter === "all")
-      return new Set(view.nodes.map((node) => node.id));
     const datasets = new Map(
       (graph?.datasets || []).map((dataset) => [dataset.id, dataset]),
+    );
+    const scopedDocumentIds = new Set(
+      view.nodes
+        .filter(
+          (item) =>
+            item.kind === "document" &&
+            (reviewFilter === "all" || item.status === reviewFilter) &&
+            (scope === "all" ||
+              scope === "knowledge" ||
+              item.dataset_id === scope ||
+              datasets.get(scope)?.document_id === item.entity_id),
+        )
+        .map((item) => item.id),
+    );
+    const scopedConcepts = new Set(
+      view.edges
+        .filter(
+          (edge) =>
+            edge.kind === "documents_concept" &&
+            scopedDocumentIds.has(edge.source),
+        )
+        .map((edge) => edge.target),
     );
     const initial = new Set(
       view.nodes
@@ -289,18 +345,22 @@ export function KnowledgeGraph({
           const dataset = node.dataset_id
             ? datasets.get(node.dataset_id)
             : null;
-          const matchesSource =
-            scope === "all" ||
-            (scope === "knowledge"
-              ? node.source_kind === "document_evidence" ||
-                (!node.dataset_id &&
-                  node.kind !== "entity" &&
-                  node.kind !== "source")
-              : node.dataset_id === scope ||
-                dataset?.document_id === node.entity_id);
+          const matchesSource = node.id.startsWith("concept:")
+            ? scopedConcepts.has(node.id)
+            : scope === "all" ||
+              (scope === "knowledge"
+                ? node.source_kind === "document_evidence" ||
+                  (!node.dataset_id &&
+                    node.kind !== "entity" &&
+                    node.kind !== "source")
+                : node.dataset_id === scope ||
+                  dataset?.document_id === node.entity_id);
           const status = dataset?.status || node.status;
           return (
-            matchesSource && (reviewFilter === "all" || status === reviewFilter)
+            matchesSource &&
+            (node.id.startsWith("concept:") ||
+              reviewFilter === "all" ||
+              status === reviewFilter)
           );
         })
         .map((node) => node.id),
@@ -318,8 +378,76 @@ export function KnowledgeGraph({
       )
         keep.add(edge.source);
     }
-    return keep;
-  }, [view, scope, reviewFilter, graph?.datasets]);
+    const pathIds = new Set(trail?.nodes.map((n) => n.id) || []);
+    const peopleIds = new Set(
+      view.edges
+        .filter(
+          (edge) =>
+            [
+              "expert_in",
+              "asked_about",
+              "knows",
+              "learned_from",
+              "wrote",
+              "applies_to",
+            ].includes(edge.kind) ||
+            (edge.kind === "about" &&
+              view.index.get(edge.source)?.entity_type === "expert_note"),
+        )
+        .flatMap((edge) => [edge.source, edge.target]),
+    );
+    for (const edge of view.edges)
+      if (edge.kind === "belongs_to" && peopleIds.has(edge.source))
+        peopleIds.add(edge.target);
+    return new Set(
+      [...keep].filter((id) => {
+        const item = view.index.get(id)!;
+        if (pathIds.has(id) || id === selected) return true;
+        const type = item.entity_type || item.kind;
+        if (type === "passage") return showPassages;
+        if (scene === "all") return true;
+        if (["mentioned_term", "command_reference"].includes(type))
+          return scene === "evidence";
+        if (scene === "people")
+          return (
+            item.kind === "person" ||
+            type === "expert_note" ||
+            peopleIds.has(id)
+          );
+        if (scene === "operations")
+          return (
+            item.kind === "source" ||
+            item.kind === "entity" ||
+            item.category === "warning"
+          );
+        if (scene === "evidence")
+          return (
+            ["person", "document", "topic"].includes(item.kind) ||
+            item.source_kind === "document_evidence" ||
+            item.source_kind === "semantic_knowledge"
+          );
+        return true;
+      }),
+    );
+  }, [
+    view,
+    scope,
+    reviewFilter,
+    graph?.datasets,
+    scene,
+    showPassages,
+    trail,
+    selected,
+  ]);
+  const renderNodes = useMemo(
+    () => view.nodes.filter((n) => visible.has(n.id)),
+    [view.nodes, visible],
+  );
+  const renderEdges = useMemo(
+    () =>
+      view.edges.filter((e) => visible.has(e.source) && visible.has(e.target)),
+    [view.edges, visible],
+  );
   const connections = useMemo(
     () =>
       selected
@@ -395,6 +523,64 @@ export function KnowledgeGraph({
       setIndexBusy(false);
     }
   }
+
+  useEffect(() => {
+    const remaining = graph?.semantic?.needs_index || 0;
+    if (!remaining || indexBusy || attemptedIndexCounts.current.has(remaining))
+      return;
+    attemptedIndexCounts.current.add(remaining);
+    void indexDocuments();
+  }, [graph?.semantic?.needs_index, indexBusy]);
+
+  async function traceToSelected() {
+    if (!pathStart || !selected) return;
+    setTrailBusy(true);
+    setPlayingTrail(false);
+    try {
+      const result = await request<EvidenceTrail>(
+        "/graph/path?source=" +
+          encodeURIComponent(pathStart.id) +
+          "&target=" +
+          encodeURIComponent(selected),
+      );
+      setTrail(result);
+      if (result.found)
+        setExpansion((previous) => ({
+          nodes: [
+            ...new Map(
+              [...previous.nodes, ...result.nodes].map((n) => [n.id, n]),
+            ).values(),
+          ],
+          edges: [
+            ...new Map(
+              [...previous.edges, ...result.edges].map((e) => [e.id, e]),
+            ).values(),
+          ],
+        }));
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setTrailBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (!playingTrail || !trail?.found) return;
+    let index = 0;
+    const show = () => {
+      const id = trail.nodes[index].id;
+      setSelected(id);
+      setSpotlight(id);
+      setTrailStep(index);
+      index++;
+      if (index >= trail.nodes.length) {
+        window.clearInterval(timer);
+        setPlayingTrail(false);
+      }
+    };
+    const timer = window.setInterval(show, 1800);
+    show();
+    return () => window.clearInterval(timer);
+  }, [playingTrail, trail]);
 
   return (
     <div className="graph-page network-page">
@@ -482,12 +668,57 @@ export function KnowledgeGraph({
           <FileText size={16} />
           <strong>{graph?.total_documents || 0}</strong> documents
         </span>
+        <span>
+          <strong>{graph?.semantic?.concepts || 0}</strong> documented concepts
+        </span>
+        <span>
+          <strong>{graph?.semantic?.expert_notes || 0}</strong> signed guidance
+        </span>
+        <span>
+          <strong>{renderNodes.length.toLocaleString()}</strong> visible in this
+          view
+        </span>
+        {graph?.semantic?.bounded && (
+          <span className="network-limit">
+            Concept and evidence links are bounded. Search a concept to inspect
+            its permitted neighborhood.
+          </span>
+        )}
         {graph?.truncated && (
           <span className="network-limit">
             Showing a bounded view of {graph.total_nodes.toLocaleString()} known
             nodes. Search to load another neighborhood.
           </span>
         )}
+      </div>
+      <div className="knowledge-lenses" aria-label="Knowledge graph views">
+        {[
+          ["knowledge", "Knowledge map"],
+          ["people", "People & expertise"],
+          ["operations", "Operational context"],
+          ["evidence", "Source evidence"],
+          ["all", "All relationships"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            aria-pressed={scene === id}
+            className={scene === id ? "active" : ""}
+            onClick={() => {
+              setScene(id);
+              setShowPassages(id === "evidence" || id === "all");
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        <label>
+          <input
+            type="checkbox"
+            checked={showPassages}
+            onChange={(event) => setShowPassages(event.target.checked)}
+          />{" "}
+          Manual passages
+        </label>
       </div>
       <div className="network-workspace">
         <section className="network-panel">
@@ -594,12 +825,15 @@ export function KnowledgeGraph({
             <>
               <GraphCanvas
                 dimension={dimension}
-                nodes={view.nodes}
-                edges={view.edges}
+                nodes={renderNodes}
+                edges={renderEdges}
                 selected={selected}
                 visible={visible}
                 focusOnly={focusOnly}
                 onSelect={choose}
+                trailEdges={trail?.found ? trail.edges.map((e) => e.id) : []}
+                spotlight={spotlight}
+                viewKey={scene + ":" + showPassages}
               />
               {graph.nodes.length <= 1 && !graph.datasets.length && (
                 <div className="network-empty">
@@ -632,6 +866,86 @@ export function KnowledgeGraph({
                 : "Waiting for records"}
             </span>
           </footer>
+          <div className="evidence-trail-bar">
+            <Route size={17} />
+            <span>
+              {pathStart
+                ? "Trace from: " + pathStart.label
+                : "Select a node, then choose “Start evidence trail” in its details."}
+            </span>
+            {pathStart && (
+              <button
+                className="text-button"
+                disabled={!selected || trailBusy}
+                onClick={() => void traceToSelected()}
+              >
+                {trailBusy ? "Tracing…" : "Trace to selected node"}
+              </button>
+            )}
+            {trail && (
+              <>
+                <span>
+                  {trail.found
+                    ? trail.edges.length + " stored relationships"
+                    : trail.meaning}
+                </span>
+                {trail.found && (
+                  <button
+                    className="text-button"
+                    onClick={() => setPlayingTrail((v) => !v)}
+                  >
+                    {playingTrail ? <Pause size={14} /> : <Play size={14} />}{" "}
+                    {playingTrail ? "Pause trail" : "Play 3D trail"}
+                  </button>
+                )}
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    setTrail(null);
+                    setPlayingTrail(false);
+                    setSpotlight(null);
+                  }}
+                >
+                  Clear trail
+                </button>
+              </>
+            )}
+          </div>
+          {trail?.found && (
+            <ol className="trail-itinerary" aria-label="Evidence trail steps">
+              {trail.nodes.map((item, index) => (
+                <li
+                  key={item.id}
+                  className={index === trailStep ? "active" : ""}
+                >
+                  <button
+                    onClick={() => {
+                      setSelected(item.id);
+                      setSpotlight(item.id);
+                      setTrailStep(index);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                  {trail.edges[index] && (
+                    <small>
+                      {trail.edges[index].source === item.id ? "→ " : "← "}
+                      {trail.edges[index].label}
+                      {trail.edges[index].citation_id
+                        ? " · " + trail.edges[index].citation_id
+                        : ""}
+                    </small>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {trail?.found && (
+            <p className="trail-direction-note">
+              Arrows retain the stored relationship direction. A trail can
+              follow a link backwards without reversing its meaning.
+            </p>
+          )}
           <details className="network-node-browser">
             <summary>Browse loaded nodes · keyboard-accessible list</summary>
             <div>
@@ -721,6 +1035,28 @@ export function KnowledgeGraph({
                 {node.entity_type || node.kind}
               </span>
               <h3>{node.label}</h3>
+              <button
+                className="text-button"
+                onClick={() => {
+                  setPathStart(node);
+                  setTrail(null);
+                  setPlayingTrail(false);
+                }}
+              >
+                Start evidence trail here <Route size={14} />
+              </button>
+              {node.person_role && (
+                <p className="fine-print">
+                  {node.person_role} · self-described contribution role
+                </p>
+              )}
+              {(node.needs_review || node.superseded) && (
+                <p className="studio-review-alert">
+                  {node.superseded
+                    ? "A reviewed newer edition is available."
+                    : "The cited source needs review or has a newer approved edition."}
+                </p>
+              )}
               {selectedDataset && (
                 <div className="network-provenance">
                   <strong>
@@ -797,6 +1133,30 @@ export function KnowledgeGraph({
                           </dl>
                         </>
                       )}
+                      {entity.evidence?.length ? (
+                        <div className="concept-evidence-list">
+                          <h4>Cited documentation</h4>
+                          {entity.evidence.map((item) => (
+                            <article key={item.citation_id}>
+                              <strong>{item.title}</strong>
+                              <small>
+                                {item.citation_id} ·{" "}
+                                {item.method.replaceAll("_", " ")}
+                              </small>
+                              {item.edition && <small>{item.edition}</small>}
+                              <blockquote>{item.quote}</blockquote>
+                              <button
+                                className="text-button"
+                                onClick={() =>
+                                  choose("document:" + item.document_id)
+                                }
+                              >
+                                Open source document <ArrowRight size={13} />
+                              </button>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
                     </>
                   ) : (
                     <p className="muted">Loading node details…</p>
@@ -838,6 +1198,28 @@ export function KnowledgeGraph({
                           </a>
                         )}
                         <span>Release applicability requires review.</span>
+                      </div>
+                    )}
+                    {doc.expert_note && (
+                      <div className="network-provenance">
+                        <strong>
+                          Signed guidance ·{" "}
+                          {doc.expert_note.category.replaceAll("_", " ")}
+                        </strong>
+                        <span>
+                          {doc.owner_name} ·{" "}
+                          {new Date(doc.expert_note.signed_at).toLocaleString()}
+                        </span>
+                        <span>
+                          {doc.expert_note.citations.length} exact source
+                          citations · {doc.expert_note.concept_ids.length}{" "}
+                          scoped concepts
+                        </span>
+                        {doc.expert_note.citations.map((c) => (
+                          <span key={c.citation_id}>
+                            {c.relation} · {c.citation_id}
+                          </span>
+                        ))}
                       </div>
                     )}
                     <details className="source-text-details">
@@ -923,6 +1305,9 @@ export function KnowledgeGraph({
                           <small>
                             {edge.source === selected ? "→ " : "← "}
                             {edge.label}
+                            {edge.citation_id && " · " + edge.citation_id}
+                            {edge.assertion_status === "awaiting_review" &&
+                              " · author declaration, pending review"}
                           </small>
                         </span>
                         <ArrowRight size={12} />
@@ -954,6 +1339,68 @@ export function KnowledgeGraph({
           )}
         </aside>
       </div>
+      <section
+        className="graph-change-journal"
+        aria-label="Recent knowledge changes"
+      >
+        <header>
+          <h3>Recent changes</h3>
+          <button
+            className="text-button"
+            disabled={!graph?.events.length}
+            onClick={() => {
+              const event = graph?.events.find((e) =>
+                view.index.has("document:" + e.document_id),
+              );
+              if (event) {
+                choose("document:" + event.document_id);
+                setSpotlight("document:" + event.document_id);
+              }
+            }}
+          >
+            Show latest change <ArrowRight size={14} />
+          </button>
+        </header>
+        <div>
+          {graph?.events.slice(0, 6).map((event) => (
+            <button
+              key={event.sequence}
+              onClick={() => {
+                const id =
+                  event.detail?.concept_id || "document:" + event.document_id;
+                if (view.index.has(id)) {
+                  choose(id);
+                  setSpotlight(id);
+                }
+              }}
+            >
+              <span>{event.kind.replaceAll("_", " ")}</span>
+              <strong>
+                {view.index.get("document:" + event.document_id)?.label ||
+                  "Knowledge activity"}
+              </strong>
+              <small>{shortTime(event.created_at)}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+      <Suspense fallback={<p className="muted">Loading knowledge transfer…</p>}>
+        <KnowledgeStudio
+          graph={graph}
+          selected={node}
+          document={doc}
+          operator={operator}
+          onChoose={choose}
+          onRefresh={() => refresh(true)}
+          onError={onError}
+          initialCitation={
+            entity?.evidence?.[0]?.citation_id ||
+            (typeof entity?.properties.citation_id === "string"
+              ? entity.properties.citation_id
+              : undefined)
+          }
+        />
+      </Suspense>
       {upload && (
         <KnowledgeUpload
           target={attach}

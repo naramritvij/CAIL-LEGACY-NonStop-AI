@@ -52,11 +52,13 @@ def index(db, document_id):
     if db.execute("SELECT 1 FROM ws_topology_datasets WHERE document_id=? AND source_kind!='document_evidence'", (document_id,)).fetchone():
         return False
     dataset_id = 'document-' + document_id
+    chunks = db.execute('SELECT * FROM ws_chunks WHERE document_id=? ORDER BY ordinal', (document_id,)).fetchall()
+    from .semantic_graph import index_document
+    semantic_changed = index_document(db, document, chunks)
     digest = hashlib.sha256((VERSION + document['sha256']).encode()).hexdigest()
     previous = db.execute('SELECT structure_sha256 FROM ws_topology_datasets WHERE id=?', (dataset_id,)).fetchone()
     if previous and previous['structure_sha256'] == digest:
-        return False
-    chunks = db.execute('SELECT * FROM ws_chunks WHERE document_id=? ORDER BY ordinal', (document_id,)).fetchall()
+        return semantic_changed
     data = payload(document, chunks)
     db.execute('INSERT INTO ws_topology_datasets VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET sha256=excluded.sha256,structure_sha256=excluded.structure_sha256,updated_at=excluded.updated_at',
                (dataset_id, document_id, document['title'], 'document_evidence', None, None, None, document['sha256'], digest, store.now()))
@@ -76,7 +78,12 @@ def index_owned(user, document_id=None):
             if not rows:
                 raise HTTPException(404, 'Owned document not found')
         else:
-            rows = db.execute("SELECT d.id FROM ws_documents d LEFT JOIN ws_topology_datasets t ON t.document_id=d.id WHERE d.owner_id=? AND t.id IS NULL ORDER BY d.updated_at DESC LIMIT 20", (user['id'],)).fetchall()
+            from .semantic_graph import VERSION as SEMANTIC_VERSION
+            rows = db.execute("SELECT d.id FROM ws_documents d LEFT JOIN ws_topology_datasets t ON t.document_id=d.id "
+                              "LEFT JOIN ws_semantic_indexes s ON s.document_id=d.id WHERE d.owner_id=? AND "
+                              "(t.id IS NULL OR s.document_id IS NULL OR s.version!=? OR s.sha256!=d.sha256) "
+                              "AND (t.source_kind IS NULL OR t.source_kind='document_evidence') ORDER BY d.updated_at DESC LIMIT 20",
+                              (user['id'], SEMANTIC_VERSION)).fetchall()
         count = sum(int(index(db, row['id'])) for row in rows)
         if count:
             store.event(db, user, 'document_network_indexed', detail={'documents': count})

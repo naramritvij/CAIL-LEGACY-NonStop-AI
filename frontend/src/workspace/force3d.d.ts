@@ -7,6 +7,9 @@ declare module "d3-force-3d" {
     fx?: number;
     fy?: number;
     fz?: number;
+    ax?: number;
+    ay?: number;
+    az?: number;
   }
   export interface SimulationLink {
     source: string | SimulationNode;
@@ -43,7 +46,13 @@ declare module "d3-force-3d" {
   ): Simulation;
   export function forceLink(links: SimulationLink[]): LinkForce;
   export function forceManyBody(): ChargeForce;
-  export function forceX(position: number): PositionForce;
-  export function forceY(position: number): PositionForce;
-  export function forceZ(position: number): PositionForce;
+  export function forceX(
+    position: number | ((node: SimulationNode) => number),
+  ): PositionForce;
+  export function forceY(
+    position: number | ((node: SimulationNode) => number),
+  ): PositionForce;
+  export function forceZ(
+    position: number | ((node: SimulationNode) => number),
+  ): PositionForce;
 }

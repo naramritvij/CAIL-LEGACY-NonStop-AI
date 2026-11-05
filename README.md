@@ -24,6 +24,8 @@ Document upload and extracted text, contributor/document/topic links, and a real
 
 **Dense manual readability:** selecting a document highlights at most 24 relationships, with contributor/topic/attachment links first and passage sampling after that. The canvas discloses the highlighted count, avoids overlapping labels and frames selected connections. All source records remain available through the inspector, search and passage selection. Run `npm --prefix frontend run test:graph` for the dense-manual regression.
 
+**Semantic knowledge and transfer:** the graph now connects cited commands, messages, subsystems, objects, metrics and versions with contributors and signed guidance. Independent review enables expertise links; source-bound recall checks and reviewed explanations enable learning links. New editions flag dependent guidance. Five views, subsystem clustering, a change journal and playable 3D evidence trails expose the relationships. Existing owned manuals upgrade automatically in batches. See [the semantic graph guide](docs/SEMANTIC_KNOWLEDGE_GRAPH.md) for workflows, assessment meaning, permissions and verification limits.
+
 **Automated validation:** 303 backend tests, 26 existing frontend contracts and the production TypeScript/Vite build pass. Native source tests use controlled responses; the publisher import above used actual public PDFs. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the owner's earlier observed results. Customer monitoring access still requires the actual environment's configured read access.
 
 ## Run the update

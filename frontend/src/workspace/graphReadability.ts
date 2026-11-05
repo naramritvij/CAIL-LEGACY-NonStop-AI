@@ -7,9 +7,11 @@ export type GraphSelection = {
   nodes: Set<string>;
   edges: Set<string>;
   total: number;
+  trail?: boolean;
 };
 
 function priority(attributes: Record<string, unknown>) {
+  if (attributes.entity_type === "subsystem") return 2;
   switch (attributes.kind) {
     case "person":
       return 0;
@@ -32,6 +34,22 @@ export function graphSelection(
   selected: string | null,
   visible: Set<string>,
 ): GraphSelection | null {
+  const trail: string[] = graph.getAttribute("trailEdges") || [];
+  if (trail.length) {
+    const edges = trail
+      .slice(0, 8)
+      .filter(
+        (id) =>
+          graph.hasEdge(id) &&
+          graph.extremities(id).every((endpoint) => visible.has(endpoint)),
+      );
+    return {
+      edges: new Set(edges),
+      nodes: new Set(edges.flatMap((id) => graph.extremities(id))),
+      total: edges.length,
+      trail: true,
+    };
+  }
   if (!selected || !graph.hasNode(selected) || !visible.has(selected))
     return null;
   const candidates = graph
@@ -119,7 +137,13 @@ export function graphLabelPriority(
   if (id === selected) return -1;
   if (selection && !selection.nodes.has(id)) return null;
   const rank = priority(attributes);
+  if (selection?.trail) return rank;
   if (rank < 4) return rank;
+  if (
+    ["command", "event"].includes(String(attributes.entity_type)) &&
+    ratio < 1.3
+  )
+    return rank;
   // Passage excerpts belong in the inspector until the user zooms in.
   return selection && ratio < (rank === 5 ? 0.35 : 0.8) ? rank : null;
 }
