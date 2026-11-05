@@ -311,6 +311,9 @@ def visible_datasets(db, user):
 
 
 def require_node(db, user, node_id):
+    if node_id.startswith('concept:'):
+        from .semantic_graph import require_concept
+        return require_concept(db, user, node_id)
     if node_id.startswith('entity:'):
         row = db.execute('SELECT * FROM ws_topology_nodes WHERE id=?', (node_id,)).fetchone()
         if row and row['dataset_id'] in {item['id'] for item in visible_datasets(db, user)}:
@@ -319,8 +322,22 @@ def require_node(db, user, node_id):
         row = db.execute('SELECT * FROM ws_documents WHERE id=?', (node_id[len('document:'):],)).fetchone()
         if row and store.can_see(row, user):
             return dict(row)
-    elif node_id == 'person:' + user['id']:
-        return {'id': node_id, 'label': user['name']}
+    elif node_id.startswith('person:'):
+        from .semantic_graph import permitted, args
+        pid = node_id[len('person:'):]
+        allowed = pid == user['id'] or db.execute(
+            f'SELECT 1 FROM ws_documents d WHERE d.owner_id=? AND {permitted()} LIMIT 1',
+            (pid, *args(user))).fetchone() or db.execute(
+                'SELECT 1 FROM ws_events e JOIN ws_documents d ON d.id=e.document_id '
+                f"WHERE e.person_id=? AND e.kind IN ('viewed','retrieved') AND {permitted()} LIMIT 1",
+                (pid, *args(user))).fetchone() or db.execute(
+                'SELECT 1 FROM ws_learning_activity a JOIN ws_documents d ON d.id=a.document_id '
+                'JOIN ws_learning_profiles p ON p.person_id=a.person_id '
+                f'WHERE a.person_id=? AND a.shared=1 AND p.share_activity=1 AND {permitted()} LIMIT 1',
+                (pid, *args(user))).fetchone()
+        person = db.execute('SELECT * FROM ws_people WHERE id=?', (pid,)).fetchone()
+        if allowed and person:
+            return {'id': node_id, 'label': person['name']}
     elif node_id.startswith('source:') and node_id[len('source:'):] in {item['source_id'] for item in visible_datasets(db, user) if item['source_kind'] == 'live_topology'}:
         return {'id': node_id, 'label': node_id[len('source:'):].upper()}
     raise HTTPException(404, 'Graph node not found or not accessible')
@@ -343,7 +360,8 @@ def cursor(user):
     with store.database() as db:
         revision = db.execute('SELECT COALESCE(MAX(sequence),0) AS n FROM ws_events').fetchone()['n']
     scopes = [os.getenv('CAIL_PROGNOSIS_SYSTEM_ID', ''), os.getenv('CAIL_MOMI_SYSTEM_ID', '')]
-    view = [revision, user['id'], user['can_review'], user['can_read_live'], capabilities(user), scopes, int(datetime.now(timezone.utc).timestamp() / 30)]
+    from .semantic_graph import VERSION
+    view = [revision, VERSION, user['id'], user['can_review'], user['can_read_live'], capabilities(user), scopes, int(datetime.now(timezone.utc).timestamp() / 30)]
     return hashlib.sha256(json.dumps(view, sort_keys=True).encode()).hexdigest()[:24], revision
 
 
@@ -357,6 +375,25 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
     metadata = []
     with store.database() as db:
         db.execute('BEGIN')
+        from . import semantic_graph as semantic
+        semantic_nodes, semantic_edges, semantic_meta = semantic.project(db, user)
+        # Merge note/person metadata without dropping existing contributor fields.
+        merged = {n['id']: n for n in nodes}
+        for node in semantic_nodes:
+            merged[node['id']] = {**merged.get(node['id'], {}), **node}
+        nodes = list(merged.values())
+        edges.extend(semantic_edges)
+        base_node_count = len(nodes)
+        profiles = semantic_meta.pop('profiles')
+        base['events'] = [e for e in base['events'] if e['kind'] not in ('question_linked', 'knowledge_demonstrated', 'explanation_submitted', 'explanation_reviewed') or
+                          e['person_id'] == user['id'] or (
+                              profiles.get(e['person_id'], {}).get('share_activity') and db.execute(
+                                  'SELECT 1 FROM ws_learning_activity WHERE person_id=? AND document_id=? AND shared=1 LIMIT 1',
+                                  (e['person_id'], e['document_id'])).fetchone())]
+        for node in nodes:
+            if node['kind'] == 'person':
+                node['person_role'] = profiles.get(node['entity_id'], {}).get('role', 'contributor')
+        concept_ids = {n['id'] for n in semantic_nodes if n['id'].startswith('concept:')}
         datasets = visible_datasets(db, user)
         for dataset in datasets:
             if dataset['source_kind'] == 'live_topology':
@@ -369,10 +406,13 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
             else:
                 stale = False
                 parent = 'document:' + dataset['document_id']
+                subjects = {m['subsystem'] for m in semantic.extract(dataset['title']) if m['kind'] == 'subsystem'}
+                document_subsystem = next(iter(subjects)) if len(subjects) == 1 else ''
                 for node in nodes:
                     if node['id'] == parent:
                         node['dataset_id'] = dataset['id']
                         node['source_kind'] = dataset['source_kind']
+                        node['subsystem'] = document_subsystem
             count = db.execute('SELECT COUNT(*) AS n FROM ws_topology_nodes WHERE dataset_id=?', (dataset['id'],)).fetchone()['n']
             relation_count = db.execute('SELECT COUNT(*) AS n FROM ws_topology_edges WHERE dataset_id=?', (dataset['id'],)).fetchone()['n']
             metadata.append({'id': dataset['id'], 'title': dataset['title'], 'document_id': dataset['document_id'], 'source_kind': dataset['source_kind'],
@@ -381,11 +421,20 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
             remaining = max(0, node_limit - len(nodes))
             if not remaining:
                 continue
-            rows = db.execute('SELECT id,local_id,label,entity_type,status FROM ws_topology_nodes WHERE dataset_id=? ORDER BY id LIMIT ?', (dataset['id'], remaining)).fetchall()
+            rows = db.execute('SELECT * FROM ws_topology_nodes WHERE dataset_id=? ORDER BY id LIMIT ?', (dataset['id'], remaining)).fetchall()
             for row in rows:
                 nodes.append({'id': row['id'], 'entity_id': row['local_id'], 'kind': 'entity', 'label': row['label'],
                               'entity_type': row['entity_type'], 'status': 'stale' if stale else row['status'], 'dataset_id': dataset['id'],
-                              'source_kind': dataset['source_kind'], 'observed_at': dataset['observed_at'], 'stale': stale})
+                              'source_kind': dataset['source_kind'], 'observed_at': dataset['observed_at'], 'stale': stale,
+                              'subsystem': document_subsystem if dataset['source_kind'] == 'document_evidence' else ''})
+                if dataset['source_kind'] in ('live_topology', 'monitoring_export'):
+                    text = row['label'] + ' ' + str(json.loads(row['properties']).get('message', ''))
+                    for match in semantic.extract(text):
+                        if match['id'] in concept_ids:
+                            edges.append({'id': 'observation-concept:' + row['id'] + match['id'],
+                                          'source': row['id'], 'target': match['id'], 'kind': 'mentions_concept',
+                                          'label': 'mentions documentation term', 'dataset_id': dataset['id'], 'stale': stale,
+                                          'basis': 'literal_source_observation_text_not_causation'})
                 if row['local_id'] == 'collection' and (dataset['source_kind'] == 'monitoring_export' or
                         (dataset['source_kind'] == 'live_topology' and any(item['id'] == dataset['source_id'] and item.get('mode') != 'topology_gateway' for item in capabilities(user)))):
                     edges.append({'id': 'provenance:' + dataset['id'], 'source': parent, 'target': row['id'],
@@ -396,14 +445,17 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
         for row in db.execute('SELECT * FROM ws_graph_links ORDER BY created_at DESC'):
             source = 'document:' + row['document_id']
             if source in allowed_ids and row['target_node'] in allowed_ids:
-                edges.append({'id': 'attachment:' + row['id'], 'source': source, 'target': row['target_node'], 'kind': 'documents', 'label': 'documents', 'created_at': row['created_at']})
+                guidance = db.execute('SELECT 1 FROM ws_expert_notes WHERE document_id=?', (row['document_id'],)).fetchone()
+                edges.append({'id': 'attachment:' + row['id'], 'source': source, 'target': row['target_node'],
+                              'kind': 'applies_to' if guidance else 'documents', 'label': 'applies to' if guidance else 'documents',
+                              'created_at': row['created_at'], 'document_id': row['document_id'], 'basis': 'author_selected_source_entity'})
     total_nodes = base_node_count + sum(item['node_count'] + int(item['source_kind'] == 'live_topology') for item in metadata)
     nodes = nodes[:node_limit]
     ids = {node['id'] for node in nodes}
     edges = [edge for edge in edges if edge['source'] in ids and edge['target'] in ids]
     total_edges = len(edges)
     edges = edges[:edge_limit]
-    return {**base, 'nodes': nodes, 'edges': edges, 'datasets': metadata, 'sources': capabilities(user),
+    return {**base, 'nodes': nodes, 'edges': edges, 'datasets': metadata, 'sources': capabilities(user), 'semantic': semantic_meta,
             'cursor': current_cursor, 'revision': revision, 'total_nodes': total_nodes, 'total_edges': total_edges,
             'truncated': base['truncated'] or total_nodes > node_limit or total_edges > edge_limit,
             'node_limit': node_limit, 'edge_limit': edge_limit}
@@ -411,6 +463,9 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
 
 def detail(user, node_id):
     with store.database() as db:
+        if node_id.startswith('concept:'):
+            from .semantic_graph import detail as concept_detail
+            return concept_detail(db, user, node_id)
         node = require_node(db, user, node_id)
         if node_id.startswith('entity:'):
             node['properties'] = json.loads(node['properties'])
@@ -438,17 +493,24 @@ def project_node(row, dataset):
 
 def search(user, query):
     with store.database() as db:
+        from .semantic_graph import concept_rows
+        semantic_nodes = [{'id': r['id'], 'entity_id': r['id'], 'kind': 'entity', 'entity_type': r['kind'],
+                           'label': r['label'], 'subsystem': r['subsystem'], 'status': 'documented_concept',
+                           'source_kind': 'semantic_knowledge', 'permission_dataset_ids': ['document-' + d for d in r['support_docs'].split(',')[:20]]} for r in concept_rows(db, user, query, 30)]
         datasets = {item['id']: item for item in visible_datasets(db, user)}
         if not datasets:
-            return {'nodes': []}
+            return {'nodes': semantic_nodes}
         placeholders = ','.join('?' for _ in datasets)
         term = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
         rows = db.execute(f"SELECT * FROM ws_topology_nodes WHERE dataset_id IN ({placeholders}) AND (label LIKE ? ESCAPE '\\' OR local_id LIKE ? ESCAPE '\\') ORDER BY label LIMIT 50", (*datasets, term, term)).fetchall()
-        return {'nodes': [project_node(row, datasets[row['dataset_id']]) for row in rows]}
+        return {'nodes': semantic_nodes + [project_node(row, datasets[row['dataset_id']]) for row in rows][:50-len(semantic_nodes)]}
 
 
 def neighborhood(user, node_id, limit=500):
     with store.database() as db:
+        if node_id.startswith('concept:'):
+            from .semantic_graph import neighborhood as semantic_neighborhood
+            return semantic_neighborhood(db, user, node_id, limit)
         node = require_node(db, user, node_id)
         if not node_id.startswith('entity:'):
             base = graph(user)

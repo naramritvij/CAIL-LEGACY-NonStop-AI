@@ -2,6 +2,8 @@
 
 Implemented November 4, 2026. This guide describes the graph renderer, stored topology, attachments and read-only source contract. No customer credentials, proprietary dataset or verified CAIL connection are included in the repository.
 
+The [semantic knowledge and transfer update](SEMANTIC_KNOWLEDGE_GRAPH.md) adds typed concepts, signed guidance, expertise and learning relationships, edition review dependencies and 3D evidence trails. The default Knowledge map hides passage clouds until requested; stored evidence remains available.
+
 ## Use the graph
 
 1. Open **Knowledge graph**. Existing contributions and actual access events remain visible.

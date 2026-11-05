@@ -37,9 +37,9 @@ worker.onmessage = ({ data }) => {
         .distance((link) => (link.kind === "contains" ? 130 : 95))
         .strength(0.06),
     )
-    .force("x", forceX(0).strength(0.004))
-    .force("y", forceY(0).strength(0.004))
-    .force("z", forceZ(0).strength(0.004));
+    .force("x", forceX((node) => node.ax || 0).strength(0.022))
+    .force("y", forceY((node) => node.ay || 0).strength(0.022))
+    .force("z", forceZ((node) => node.az || 0).strength(0.022));
   const began = performance.now();
   let sent = 0,
     ticks = 0;

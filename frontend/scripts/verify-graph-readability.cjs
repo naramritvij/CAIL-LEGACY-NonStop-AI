@@ -14,6 +14,7 @@ try {
     "PerspectiveNetwork",
     "CanvasNetwork",
     "syncGraphEdges",
+    "semanticPresentation",
   ]) {
     const source = fs.readFileSync(
       path.join(__dirname, "../src/workspace", name + ".ts"),
@@ -112,6 +113,21 @@ try {
     [...graphSelection(graph, "manual", filtered).nodes].sort(),
     ["manual", "owner"],
   );
+  graph.setAttribute(
+    "trailEdges",
+    Array.from({ length: 12 }, (_, i) => "contains-" + i),
+  );
+  const trail = graphSelection(graph, null, visible);
+  assert(
+    trail.trail && trail.edges.size === 8,
+    "Evidence trails retain their own eight-link budget",
+  );
+  assert.equal(
+    graphSelection(graph, null, filtered).nodes.size,
+    0,
+    "Hidden endpoints cannot leak through a trail",
+  );
+  graph.setAttribute("trailEdges", []);
   assert.equal(
     graphLabelPriority(
       "passage-0000",

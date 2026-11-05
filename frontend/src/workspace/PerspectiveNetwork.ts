@@ -4,6 +4,7 @@ import {
   graphSelection,
   type GraphSelection,
 } from "./graphReadability";
+import { relationshipColor } from "./semanticPresentation";
 
 type Point = { x: number; y: number; z: number };
 type ScreenPoint = {
@@ -38,6 +39,7 @@ export class PerspectiveNetwork {
   private screen = new Map<string, ScreenPoint>();
   private arrivals = new Map<string, { at: number; side: number }>();
   private arrivalEdges = new Set<string>();
+  private edgeArrivals = new Map<string, number>();
   private arrivalSequence = 0;
   private pointer: {
     x: number;
@@ -119,6 +121,12 @@ export class PerspectiveNetwork {
     this.updateArrivalEdges();
     this.refresh();
   }
+  arriveEdges(ids: string[]) {
+    if (this.reduced) return;
+    const at = performance.now();
+    for (const id of ids.slice(0, 24)) this.edgeArrivals.set(id, at);
+    this.refresh();
+  }
   private updateArrivalEdges() {
     this.arrivalEdges.clear();
     for (const id of this.arrivals.keys()) {
@@ -176,10 +184,11 @@ export class PerspectiveNetwork {
       this.reduced ? 0 : 220,
     );
   }
-  focus(id: string, reduced: boolean) {
+  focus(id: string, reduced: boolean, single = false) {
+    if (!this.graph.hasNode(id) || !this.visible.has(id)) return;
     const selection = graphSelection(this.graph, id, this.visible);
     if (!selection) return;
-    const points = [...selection.nodes].map((key) => {
+    const points = (single ? [id] : [...selection.nodes]).map((key) => {
       const a = this.graph.getNodeAttributes(key);
       return { x: Number(a.x), y: Number(a.y), z: Number(a.z || 0) };
     });
@@ -262,6 +271,8 @@ export class PerspectiveNetwork {
       if (!data.hasNode(id) || now - arrival.at >= 850)
         this.arrivals.delete(id);
     }
+    for (const [id, at] of this.edgeArrivals)
+      if (!data.hasEdge(id) || now - at > 900) this.edgeArrivals.delete(id);
     data.forEachNode((id, a) => {
       if (
         !this.visible.has(id) ||
@@ -317,22 +328,48 @@ export class PerspectiveNetwork {
       });
       ctx.stroke();
     }
-    data.forEachEdge((id, _attributes, source, target) => {
+    let semanticEmphasis = 0;
+    data.forEachEdge((id, attributes, source, target) => {
       const a = this.screen.get(source),
         b = this.screen.get(target),
         incident = selection?.edges.has(id);
       const arrival = this.arrivalEdges.has(id)
         ? this.arrivals.get(source) || this.arrivals.get(target)
         : undefined;
-      if (!a || !b || (!incident && !arrival)) return;
+      const introduced = this.edgeArrivals.get(id);
+      const meaningful =
+        !selection &&
+        semanticEmphasis < 120 &&
+        [
+          "wrote",
+          "expert_in",
+          "knows",
+          "learned_from",
+          "supports",
+          "contradicts",
+          "supersedes",
+        ].includes(String(attributes.kind));
+      if (
+        !a ||
+        !b ||
+        (!incident && !arrival && introduced === undefined && !meaningful)
+      )
+        return;
+      if (meaningful) semanticEmphasis++;
       const progress = arrival
         ? Math.min(1, Math.max(0, (now - arrival.at - 350) / 500))
-        : 1;
+        : introduced !== undefined
+          ? Math.min(1, Math.max(0, (now - introduced) / 850))
+          : 1;
       const from = this.arrivals.has(source) ? b : a,
         to = this.arrivals.has(source) ? a : b;
-      ctx.globalAlpha = incident ? 0.9 : 0.6;
-      ctx.strokeStyle = "#5c9d82";
-      ctx.lineWidth = incident ? 1.6 : 1;
+      const edgeColor =
+        incident && selection?.trail
+          ? "#9073b1"
+          : relationshipColor(String(attributes.kind));
+      ctx.globalAlpha = incident ? 0.9 : 0.65;
+      ctx.strokeStyle = edgeColor;
+      ctx.lineWidth = incident && selection?.trail ? 2.4 : incident ? 1.6 : 1.1;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(
@@ -343,8 +380,8 @@ export class PerspectiveNetwork {
       const angle = Math.atan2(b.y - a.y, b.x - a.x),
         x = b.x - Math.cos(angle) * (b.size + 2),
         y = b.y - Math.sin(angle) * (b.size + 2);
-      if (incident && progress === 1) {
-        ctx.fillStyle = "#5c9d82";
+      if ((incident || meaningful) && progress === 1) {
+        ctx.fillStyle = edgeColor;
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(
@@ -392,7 +429,27 @@ export class PerspectiveNetwork {
         ctx.fillStyle = gradient;
       } else ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
+      const type = attributes.entity_type;
+      const sides =
+        type === "command"
+          ? 4
+          : type === "event"
+            ? 3
+            : type === "subsystem"
+              ? 6
+              : type === "expert_note"
+                ? 4
+                : 0;
+      if (sides) {
+        for (let i = 0; i <= sides; i++) {
+          const angle = (i * Math.PI * 2) / sides - Math.PI / 2;
+          const x = point.x + Math.cos(angle) * point.size * 1.2,
+            y = point.y + Math.sin(angle) * point.size * 1.2;
+          if (i) ctx.lineTo(x, y);
+          else ctx.moveTo(x, y);
+        }
+        ctx.closePath();
+      } else ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
       ctx.fill();
       if (id === selected) {
         ctx.strokeStyle = "#26765b";
@@ -407,7 +464,7 @@ export class PerspectiveNetwork {
       height: this.height,
     });
     ctx.globalAlpha = 1;
-    if (this.arrivals.size) this.refresh();
+    if (this.arrivals.size || this.edgeArrivals.size) this.refresh();
   };
   private point(event: MouseEvent) {
     const rect = this.canvas.getBoundingClientRect();

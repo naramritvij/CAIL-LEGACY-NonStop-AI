@@ -1,5 +1,6 @@
 import type { MultiDirectedGraph } from "graphology";
 import type { GraphEdge } from "./types";
+import { relationshipColor } from "./semanticPresentation";
 
 /** Preserve node positions while applying a source's current relationships. */
 export function syncGraphEdges(graph: MultiDirectedGraph, edges: GraphEdge[]) {
@@ -30,7 +31,7 @@ export function syncGraphEdges(graph: MultiDirectedGraph, edges: GraphEdge[]) {
     const attributes = {
       label: edge.label,
       kind: edge.kind,
-      color: edge.kind === "documents" ? "#72ad97" : "#dce5df",
+      color: relationshipColor(edge.kind),
       size: edge.kind === "documents" ? 1.2 : 0.5,
     };
     if (!graph.hasEdge(edge.id)) {

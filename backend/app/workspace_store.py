@@ -69,6 +69,34 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS ws_document_sources (
         document_id TEXT PRIMARY KEY REFERENCES ws_documents(id), source_url TEXT,
         edition TEXT, source_kind TEXT NOT NULL, file_sha256 TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_concepts (
+        id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, subsystem TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_concept_mentions (
+        id TEXT PRIMARY KEY, document_id TEXT NOT NULL, citation_id TEXT NOT NULL,
+        concept_id TEXT NOT NULL, quote TEXT NOT NULL, method TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_semantic_indexes (
+        document_id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, version TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_expert_notes (
+        document_id TEXT PRIMARY KEY, category TEXT NOT NULL, signed_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_note_concepts (
+        document_id TEXT NOT NULL, concept_id TEXT NOT NULL, PRIMARY KEY(document_id,concept_id))""",
+    """CREATE TABLE IF NOT EXISTS ws_note_citations (
+        document_id TEXT NOT NULL, citation_id TEXT NOT NULL, relation TEXT NOT NULL,
+        source_hash TEXT NOT NULL, PRIMARY KEY(document_id,citation_id))""",
+    """CREATE TABLE IF NOT EXISTS ws_document_editions (
+        newer_id TEXT PRIMARY KEY, previous_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_learning_profiles (
+        person_id TEXT PRIMARY KEY, role TEXT NOT NULL, share_activity INTEGER NOT NULL DEFAULT 0)""",
+    """CREATE TABLE IF NOT EXISTS ws_learning_activity (
+        id TEXT PRIMARY KEY, person_id TEXT NOT NULL, document_id TEXT NOT NULL,
+        concept_id TEXT, kind TEXT NOT NULL, shared INTEGER NOT NULL, created_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_knowledge_checks (
+        id TEXT PRIMARY KEY, person_id TEXT NOT NULL, document_id TEXT NOT NULL,
+        expected TEXT NOT NULL, prompt TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL,
+        completed_at TEXT, document_hash TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_check_reviews (
+        check_id TEXT PRIMARY KEY, answer TEXT NOT NULL, feedback TEXT NOT NULL,
+        status TEXT NOT NULL, reviewer_id TEXT, review_notes TEXT, reviewed_at TEXT)""",
     'CREATE INDEX IF NOT EXISTS ws_conversations_owner ON ws_conversations(owner_id,updated_at)',
     'CREATE INDEX IF NOT EXISTS ws_messages_thread ON ws_messages(conversation_id,sequence)',
     'CREATE INDEX IF NOT EXISTS ws_documents_status ON ws_documents(status,owner_id)',
@@ -79,6 +107,9 @@ SCHEMA = (
     'CREATE INDEX IF NOT EXISTS ws_topology_edges_source ON ws_topology_edges(source_node)',
     'CREATE INDEX IF NOT EXISTS ws_topology_edges_target ON ws_topology_edges(target_node)',
     'CREATE INDEX IF NOT EXISTS ws_graph_links_target ON ws_graph_links(target_node)',
+    'CREATE INDEX IF NOT EXISTS ws_mentions_document ON ws_concept_mentions(document_id,citation_id)',
+    'CREATE INDEX IF NOT EXISTS ws_mentions_concept ON ws_concept_mentions(concept_id)',
+    'CREATE INDEX IF NOT EXISTS ws_activity_document ON ws_learning_activity(document_id,person_id)',
 )
 
 
@@ -228,6 +259,8 @@ def document(principal, identifier, record_access=True):
         result = dict(row)
         source = db.execute('SELECT source_url,edition,source_kind,file_sha256 FROM ws_document_sources WHERE document_id=?', (identifier,)).fetchone()
         result['reference'] = dict(source) if source else None
+        from .semantic_graph import note_metadata
+        result['expert_note'] = note_metadata(db, identifier)
         if record_access:
             event(db, principal, 'viewed', identifier)
         result['can_review'] = bool(principal['can_review'] and result['owner_id'] != principal['id'] and result['status'] == 'submitted')
@@ -247,6 +280,9 @@ def transition_document(principal, identifier, decision, notes=''):
             allowed = principal['can_review'] and doc['owner_id'] != principal['id'] and doc['status'] == 'submitted'
         if not allowed:
             raise HTTPException(403, 'This transition requires the owner or an independent reviewer.')
+        if decision == 'approved':
+            from .semantic_graph import validate_approval
+            validate_approval(db, doc)
         db.execute('UPDATE ws_documents SET status=?,reviewer_id=?,review_notes=?,updated_at=? WHERE id=?',
                    (decision, None if decision == 'submitted' else principal['id'], notes, now(), identifier))
         event(db, principal, decision, identifier)
@@ -269,6 +305,10 @@ def retrieve_documents(principal, query, limit=6):
         rows = db.execute("SELECT c.*,d.title,d.owner_id,d.status,d.topic,p.name AS owner_name,s.source_url,s.edition FROM ws_chunks c JOIN ws_documents d ON d.id=c.document_id JOIN ws_people p ON p.id=d.owner_id LEFT JOIN ws_document_sources s ON s.document_id=d.id WHERE d.status='approved'").fetchall()
         ranked = []
         for row in rows:
+            from .semantic_graph import note_metadata
+            guidance = note_metadata(db, row['document_id'])
+            if guidance and (guidance['needs_review'] or guidance['superseded']):
+                continue
             text_words = tokens(row['content'])
             score = len(words & text_words) + 2 * len(words & tokens(row['title'] + ' ' + row['topic']))
             if score:

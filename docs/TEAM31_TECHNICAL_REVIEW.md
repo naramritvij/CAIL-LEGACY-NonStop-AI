@@ -59,7 +59,7 @@ The important implementation pattern is incremental updates: existing node/edge 
 
 The repository also has hybrid vector/keyword retrieval, reciprocal-rank fusion, a local cross-encoder and a cited Qwen answer path. It scopes retrieval, preserves manual editions, names note authors, and records learning relationships from questions/checks. Other modules cover deterministic warnings, training scenarios and simulated command approval. The README's evaluation results are reported results; they were not independently rerun in this review.
 
-CAIL retains its own conversation persistence, bounded context selection, orchestrator and independent knowledge review. This change does not claim to add vector embeddings, the other project's learning curriculum or its benchmarks.
+CAIL retains its own conversation persistence, bounded context selection, orchestrator and independent knowledge review. The later [semantic knowledge update](SEMANTIC_KNOWLEDGE_GRAPH.md) independently implements richer concept, guidance, expertise, learning and edition relationships, with 3D views and trails. It does not import the other project's fictional profiles, curriculum, vector pipeline or reported benchmarks.
 
 ## What CAIL implements independently
 

@@ -61,6 +61,12 @@ export interface GraphNode {
   source_kind?: string;
   observed_at?: string;
   stale?: boolean;
+  subsystem?: string;
+  person_role?: string;
+  needs_review?: boolean;
+  superseded?: boolean;
+  category?: string;
+  permission_dataset_ids?: string[];
 }
 export interface GraphEdge {
   id: string;
@@ -72,6 +78,11 @@ export interface GraphEdge {
   count?: number;
   dataset_id?: string;
   stale?: boolean;
+  document_id?: string;
+  citation_id?: string;
+  basis?: string;
+  assertion_status?: string;
+  created_at?: string;
 }
 export interface TopologyDataset {
   id: string;
@@ -106,6 +117,16 @@ export interface GraphEntityDetail {
   sha256: string;
   relationship_count: number;
   stale?: boolean;
+  evidence?: {
+    citation_id: string;
+    document_id: string;
+    title: string;
+    quote: string;
+    method: string;
+    edition?: string;
+    source_url?: string;
+    status?: string;
+  }[];
 }
 export interface GraphData {
   nodes: GraphNode[];
@@ -121,12 +142,24 @@ export interface GraphData {
   total_edges: number;
   node_limit: number;
   edge_limit: number;
+  semantic?: {
+    concepts: number;
+    expert_notes: number;
+    learning_records: number;
+    needs_index: number;
+    bounded: boolean;
+  };
   events: {
     sequence: number;
     person_id: string;
     document_id: string;
     kind: string;
     created_at: string;
+    detail?: {
+      concept_id?: string;
+      previous_id?: string;
+      private_activity?: boolean;
+    };
   }[];
 }
 export interface KnowledgeDocument {
@@ -143,6 +176,14 @@ export interface KnowledgeDocument {
   can_submit: boolean;
   review_notes?: string;
   sha256: string;
+  expert_note?: {
+    category: string;
+    signed_at: string;
+    needs_review: boolean;
+    superseded: boolean;
+    concept_ids: string[];
+    citations: { citation_id: string; relation: string }[];
+  } | null;
   reference?: {
     source_url?: string;
     edition?: string;

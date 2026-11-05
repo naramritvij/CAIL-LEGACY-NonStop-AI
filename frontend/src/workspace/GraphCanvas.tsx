@@ -7,6 +7,7 @@ import { PerspectiveNetwork } from "./PerspectiveNetwork";
 import { Force3DLayout } from "./Force3DLayout";
 import { graphLabelPriority, graphSelection } from "./graphReadability";
 import { syncGraphEdges } from "./syncGraphEdges";
+import { clusterTarget, CONCEPT_COLORS } from "./semanticPresentation";
 import { Focus, Maximize2, Minus, Pause, Play, Plus } from "lucide-react";
 import type { GraphEdge, GraphNode } from "./types";
 
@@ -18,6 +19,9 @@ interface Props {
   focusOnly: boolean;
   onSelect: (id: string | null) => void;
   dimension?: "2d" | "3d";
+  trailEdges?: string[];
+  spotlight?: string | null;
+  viewKey?: string;
 }
 const COLORS: Record<GraphNode["kind"], string> = {
   person: "#72a269",
@@ -33,6 +37,7 @@ const SIZE: Record<GraphNode["kind"], number> = {
   entity: 2.8,
   source: 9,
 };
+const EMPTY_TRAIL: string[] = [];
 
 export function GraphCanvas({
   nodes,
@@ -42,6 +47,9 @@ export function GraphCanvas({
   focusOnly,
   onSelect,
   dimension = "3d",
+  trailEdges = EMPTY_TRAIL,
+  spotlight = null,
+  viewKey = "",
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<MultiDirectedGraph | null>(null);
@@ -228,20 +236,31 @@ export function GraphCanvas({
       SIZE.entity *
       Math.min(1, Math.pow(1500 / Math.max(1, nodes.length), 0.25));
     for (const [index, node] of nodes.entries()) {
-      const size = node.kind === "entity" ? entitySize : SIZE[node.kind];
+      const size =
+        node.entity_type === "subsystem"
+          ? 11
+          : node.entity_type === "expert_note"
+            ? 8
+            : node.entity_type === "command" || node.entity_type === "event"
+              ? 5
+              : node.kind === "entity"
+                ? entitySize
+                : SIZE[node.kind];
       const values = {
         label: node.label,
         kind: node.kind,
         entity_type: node.entity_type,
+        ...clusterTarget(node),
         color: node.stale
           ? "#b4b9b6"
-          : node.entity_type === "passage"
-            ? "#94a8ba"
-            : node.entity_type === "command_reference"
-              ? "#b79b63"
-              : node.entity_type === "mentioned_term"
-                ? "#9984ae"
-                : COLORS[node.kind],
+          : CONCEPT_COLORS[node.entity_type || ""] ||
+            (node.entity_type === "passage"
+              ? "#94a8ba"
+              : node.entity_type === "command_reference"
+                ? "#b79b63"
+                : node.entity_type === "mentioned_term"
+                  ? "#9984ae"
+                  : COLORS[node.kind]),
         size,
         baseSize: size,
         zIndex: node.kind === "entity" ? 0 : 1,
@@ -289,6 +308,9 @@ export function GraphCanvas({
           data.mergeNodeAttributes(node.id, values);
       }
     }
+    const addedEdges = edges
+      .filter((edge) => !data.hasEdge(edge.id))
+      .map((edge) => edge.id);
     changed = syncGraphEdges(data, edges) || changed;
     if (positionCache.current.size > 25000) positionCache.current.clear();
     sigma?.setSetting("hideEdgesOnMove", nodes.length > 5000);
@@ -298,12 +320,14 @@ export function GraphCanvas({
         .animatedReset({ duration: reduced.current ? 0 : 300 });
     if (!existing && data.order) fallback.current?.fit();
     fallback.current?.refresh();
-    if (existing && fallback.current instanceof PerspectiveNetwork)
+    if (existing && fallback.current instanceof PerspectiveNetwork) {
+      fallback.current.arriveEdges(addedEdges);
       fallback.current.arrive(
         additions.filter(
           (id) => data.getNodeAttribute(id, "kind") === "document",
         ),
       );
+    }
     if (changed && data.order > 1) settle();
     if (
       existing &&
@@ -329,6 +353,9 @@ export function GraphCanvas({
     }
   }, [nodes, edges, dimension]);
 
+  useEffect(() => {
+    graph.current?.setAttribute("trailEdges", trailEdges);
+  }, [trailEdges, dimension]);
   useEffect(() => {
     const data = graph.current,
       sigma = renderer.current;
@@ -379,7 +406,9 @@ export function GraphCanvas({
           Boolean(focusOnly && neighborhood && !incident),
         color: selected
           ? incident
-            ? "#78a78f"
+            ? selection?.trail
+              ? "#9073b1"
+              : String(attributes.color)
             : "#edf0ec"
           : (attributes.color as string),
         size: incident ? 1.5 : (attributes.size as number),
@@ -388,7 +417,34 @@ export function GraphCanvas({
     });
     sigma.setSetting("renderEdgeLabels", false);
     sigma.refresh();
-  }, [selected, visible, focusOnly, nodes, edges, dimension]);
+  }, [selected, visible, focusOnly, nodes, edges, dimension, trailEdges]);
+
+  useEffect(() => {
+    if (!viewKey) return;
+    fallback.current?.fit();
+    void renderer.current
+      ?.getCamera()
+      .animatedReset({ duration: reduced.current ? 0 : 650 });
+    if (!reduced.current)
+      container.current?.animate([{ opacity: 0.35 }, { opacity: 1 }], {
+        duration: 450,
+      });
+  }, [viewKey, dimension]);
+  useEffect(() => {
+    if (!spotlight || !graph.current?.hasNode(spotlight)) return;
+    layout.current?.stop();
+    setRunning(false);
+    fallback.current?.focus(spotlight, reduced.current, true);
+    const sigma = renderer.current;
+    const point = sigma?.getNodeDisplayData(spotlight);
+    if (point && sigma)
+      void sigma
+        .getCamera()
+        .animate(
+          { x: point.x, y: point.y, ratio: 0.3 },
+          { duration: reduced.current ? 0 : 850 },
+        );
+  }, [spotlight, dimension]);
 
   function focus() {
     if (selected) fallback.current?.focus(selected, reduced.current);
@@ -513,6 +569,14 @@ export function GraphCanvas({
             {kind === "entity" ? "Evidence / source entity" : kind}
           </span>
         ))}
+        {Object.entries(CONCEPT_COLORS)
+          .filter(([type]) => nodes.some((node) => node.entity_type === type))
+          .map(([type, color]) => (
+            <span key={type}>
+              <i style={{ background: color }} />
+              {type.replaceAll("_", " ")}
+            </span>
+          ))}
       </div>
       <div className="network-help">
         {dimension === "3d"
@@ -522,7 +586,11 @@ export function GraphCanvas({
       {selected && selectionSummary.total > 0 && (
         <div className="network-selection-summary" role="status">
           <strong>
-            {focusOnly ? "Connection focus" : "Selected connections"}
+            {trailEdges.length
+              ? "Evidence trail"
+              : focusOnly
+                ? "Connection focus"
+                : "Selected connections"}
           </strong>
           <span>
             {selectionSummary.shown.toLocaleString()} of{" "}

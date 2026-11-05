@@ -4,6 +4,7 @@ import {
   graphSelection,
   type GraphSelection,
 } from "./graphReadability";
+import { relationshipColor } from "./semanticPresentation";
 
 // A CPU renderer for browsers without WebGL. It shares the same graph and
 // background layout as Sigma, without creating a DOM element for every node.
@@ -130,10 +131,11 @@ export class CanvasNetwork {
     });
   }
 
-  focus(id: string, reduced: boolean) {
+  focus(id: string, reduced: boolean, single = false) {
+    if (!this.graph.hasNode(id) || !this.visible.has(id)) return;
     const selection = graphSelection(this.graph, id, this.visible);
     if (!selection) return;
-    const points = [...selection.nodes].map((key) =>
+    const points = (single ? [id] : [...selection.nodes]).map((key) =>
       this.graph.getNodeAttributes(key),
     );
     const minX = Math.min(...points.map((p) => Number(p.x))),
@@ -223,15 +225,21 @@ export class CanvasNetwork {
       ctx.lineTo(b.x, b.y);
     });
     ctx.stroke();
-    graph.forEachEdge((id, _attributes, source, target) => {
+    let semanticEmphasis = 0;
+    graph.forEachEdge((id, attributes, source, target) => {
       const incident = selection?.edges.has(id);
-      if (!incident) return;
+      const meaningful = !selection && semanticEmphasis < 120 &&
+        ["wrote", "expert_in", "knows", "learned_from", "supports", "contradicts", "supersedes"].includes(String(attributes.kind));
+      if (!incident && !meaningful) return;
+      if (meaningful) semanticEmphasis++;
       const a = this.screen.get(source),
         b = this.screen.get(target);
       if (!a || !b) return;
-      ctx.strokeStyle = "#78a78f";
-      ctx.fillStyle = "#78a78f";
-      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = selection?.trail
+        ? "#9073b1"
+        : relationshipColor(String(attributes.kind));
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = selection?.trail ? 2.4 : 1.3;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
