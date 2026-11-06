@@ -28,6 +28,12 @@ import {
 import { GraphCanvas } from "./GraphCanvas";
 import { KnowledgeUpload } from "./KnowledgeUpload";
 import { TopologyImport } from "./TopologyImport";
+import {
+  mergeGraphSnapshot,
+  reconcileExpansion,
+  retainTrail,
+  type GraphNeighborhood as Neighborhood,
+} from "./graphSnapshot";
 import type { EvidenceTrail } from "./KnowledgeStudio";
 const KnowledgeStudio = lazy(() =>
   import("./KnowledgeStudio").then((module) => ({
@@ -39,18 +45,11 @@ import {
   request,
   shortTime,
   type GraphData,
-  type GraphEdge,
   type GraphEntityDetail,
   type GraphNode,
   type KnowledgeDocument,
   type Operator,
 } from "./types";
-
-interface Neighborhood {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  truncated?: boolean;
-}
 
 function originLabel(kind: string) {
   return kind === "document_evidence"
@@ -100,6 +99,8 @@ export function KnowledgeGraph({
   const [showPassages, setShowPassages] = useState(false);
   const [pathStart, setPathStart] = useState<GraphNode | null>(null);
   const [trail, setTrail] = useState<EvidenceTrail | null>(null);
+  const trailRef = useRef(trail);
+  trailRef.current = trail;
   const [trailBusy, setTrailBusy] = useState(false);
   const [playingTrail, setPlayingTrail] = useState(false);
   const [trailStep, setTrailStep] = useState(0);
@@ -122,21 +123,7 @@ export function KnowledgeGraph({
       if (!result.not_modified) {
         graphRef.current = result;
         setGraph(result);
-        const allowed = new Set(result.datasets.map((item) => item.id));
-        const freshNodeIds = new Set(result.nodes.map((item) => item.id));
-        setExpansion((previous) => ({
-          nodes: previous.nodes
-            .filter((node) => !node.dataset_id || allowed.has(node.dataset_id))
-            .filter(
-              (node) =>
-                node.source_kind !== "semantic_knowledge" ||
-                freshNodeIds.has(node.id) ||
-                node.permission_dataset_ids?.some((id) => allowed.has(id)),
-            ),
-          edges: previous.edges.filter(
-            (edge) => !edge.dataset_id || allowed.has(edge.dataset_id),
-          ),
-        }));
+        setExpansion((previous) => reconcileExpansion(result, previous));
       }
       setChecked(result.updated_at);
       setFailure("");
@@ -191,19 +178,35 @@ export function KnowledgeGraph({
   }, [live, canSync, sync]);
 
   const view = useMemo(() => {
-    const nodes = new Map((graph?.nodes || []).map((node) => [node.id, node]));
-    const edges = new Map((graph?.edges || []).map((edge) => [edge.id, edge]));
-    for (const node of expansion.nodes) nodes.set(node.id, node);
-    for (const edge of expansion.edges)
-      if (nodes.has(edge.source) && nodes.has(edge.target))
-        edges.set(edge.id, edge);
-    return {
-      nodes: [...nodes.values()],
-      edges: [...edges.values()],
-      index: nodes,
-    };
+    return mergeGraphSnapshot(graph || { nodes: [], edges: [] }, expansion);
   }, [graph, expansion]);
   const node = selected ? view.index.get(selected) : null;
+
+  useEffect(() => {
+    if (!graph) return;
+    setTrail((previous) => {
+      if (!previous?.found) return previous;
+      const snapshot = mergeGraphSnapshot(
+        graph,
+        reconcileExpansion(graph, previous),
+      );
+      const edges = new Map(snapshot.edges.map((edge) => [edge.id, edge]));
+      if (
+        previous.nodes.some((item) => !snapshot.index.has(item.id)) ||
+        previous.edges.some((edge) => !edges.has(edge.id))
+      ) {
+        return null;
+      }
+      const updated = {
+        ...previous,
+        nodes: previous.nodes.map((item) => snapshot.index.get(item.id)!),
+        edges: previous.edges.map((edge) => edges.get(edge.id)!),
+      };
+      return JSON.stringify(updated) === JSON.stringify(previous)
+        ? previous
+        : updated;
+    });
+  }, [graph]);
 
   useEffect(() => {
     let current = true;
@@ -248,7 +251,8 @@ export function KnowledgeGraph({
         setExpansion({ nodes: [], edges: [] });
         return;
       }
-      if (results[1].status === "fulfilled") setExpansion(results[1].value);
+      if (results[1].status === "fulfilled")
+        setExpansion(retainTrail(results[1].value, trailRef.current?.found ? trailRef.current : null));
       else onError(errorMessage(results[1].reason));
     });
     return () => {
@@ -563,6 +567,7 @@ export function KnowledgeGraph({
       setTrailBusy(false);
     }
   }
+  const trailKey = JSON.stringify(trail?.nodes.map((item) => item.id) || []);
   useEffect(() => {
     if (!playingTrail || !trail?.found) return;
     let index = 0;
@@ -580,7 +585,7 @@ export function KnowledgeGraph({
     const timer = window.setInterval(show, 1800);
     show();
     return () => window.clearInterval(timer);
-  }, [playingTrail, trail]);
+  }, [playingTrail, trailKey]);
 
   return (
     <div className="graph-page network-page">
@@ -1331,7 +1336,10 @@ export function KnowledgeGraph({
               )}
               {expansion.truncated && (
                 <p className="fine-print">
-                  This neighborhood is limited to 500 source relationships.
+                  {expansion.total_edges
+                    ? `${expansion.total_edges.toLocaleString()} permitted relationships; `
+                    : ""}
+                  this neighborhood shows up to 500.
                   Search a neighboring entity to continue exploring.
                 </p>
               )}

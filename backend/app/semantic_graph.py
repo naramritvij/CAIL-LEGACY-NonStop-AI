@@ -328,6 +328,32 @@ def record_question(user, question, sources, request_id):
                     store.event(db, user, 'question_linked', document_id, {'concept_id': item['id'], 'private_activity': True})
 
 
+def evidence_edge(mention):
+    from .workspace_topology import entity_id
+    return {'id': 'evidence:' + mention['id'], 'source': mention['concept_id'],
+            'target': entity_id('document-' + mention['document_id'], '', 'passage:' + mention['citation_id']),
+            'kind': 'defined_in' if mention['method'].startswith('explicit_heading') else 'referenced_in',
+            'label': 'documented in', 'document_id': mention['document_id'],
+            'citation_id': mention['citation_id'], 'basis': mention['method']}
+
+
+def citation_edge(note_id, citation_id, source_document_id, relation, status):
+    from .workspace_topology import entity_id
+    return {'id': 'note-cites:' + note_id + citation_id, 'source': 'document:' + note_id,
+            'target': entity_id('document-' + source_document_id, '', 'passage:' + citation_id),
+            'kind': relation, 'label': {'supports': 'claims agreement with', 'contradicts': 'flags conflict with', 'cites': 'cites'}[relation],
+            'citation_id': citation_id, 'document_id': note_id, 'basis': 'author_declared_citation_relation',
+            'assertion_status': 'independently_reviewed' if status == 'approved' else 'awaiting_review'}
+
+
+def observation_edges(identifier, text, available, dataset):
+    return [{'id': 'observation-concept:' + identifier + match['id'],
+             'source': identifier, 'target': match['id'], 'kind': 'mentions_concept',
+             'label': 'mentions documentation term', 'dataset_id': dataset['id'],
+             'stale': dataset.get('stale', False), 'basis': 'literal_source_observation_text_not_causation'}
+            for match in extract(text) if match['id'] in available]
+
+
 def project(db, user):
     concepts = concept_rows(db, user)
     nodes, edges = [], []
@@ -343,7 +369,6 @@ def project(db, user):
                           'label': 'documented under', 'basis': 'documentation_scope'})
     mentions = db.execute('SELECT m.* FROM ws_concept_mentions m JOIN ws_documents d ON d.id=m.document_id '
                            f'WHERE {permitted()} ORDER BY m.document_id,m.citation_id,m.id LIMIT 24000', args(user)).fetchall()
-    from .workspace_topology import entity_id
     linked = set()
     for m in mentions:
         if m['concept_id'] not in available:
@@ -354,10 +379,7 @@ def project(db, user):
             edges.append({'id': 'documents-concept:' + digest(':'.join(pair)), 'source': 'document:' + m['document_id'],
                           'target': m['concept_id'], 'kind': 'documents_concept', 'label': 'documents',
                           'document_id': m['document_id'], 'citation_id': m['citation_id'], 'basis': m['method']})
-        edges.append({'id': 'evidence:' + m['id'], 'source': m['concept_id'],
-                      'target': entity_id('document-' + m['document_id'], '', 'passage:' + m['citation_id']),
-                      'kind': 'defined_in' if m['method'].startswith('explicit_heading') else 'referenced_in',
-                      'label': 'documented in', 'document_id': m['document_id'], 'citation_id': m['citation_id'], 'basis': m['method']})
+        edges.append(evidence_edge(m))
     notes = db.execute('SELECT d.*,n.category,n.signed_at FROM ws_expert_notes n JOIN ws_documents d ON d.id=n.document_id '
                         f'WHERE {permitted()} ORDER BY d.updated_at DESC LIMIT 200', args(user)).fetchall()
     note_status = {}
@@ -384,11 +406,7 @@ def project(db, user):
         for row in db.execute('SELECT n.*,c.document_id AS source_document_id FROM ws_note_citations n JOIN ws_chunks c ON c.id=n.citation_id '
                                'JOIN ws_documents d ON d.id=c.document_id '
                                f'WHERE n.document_id=? AND {permitted()}', (note['id'], *args(user))):
-            edges.append({'id': 'note-cites:' + note['id'] + row['citation_id'], 'source': did,
-                          'target': entity_id('document-' + row['source_document_id'], '', 'passage:' + row['citation_id']),
-                          'kind': row['relation'], 'label': {'supports': 'claims agreement with', 'contradicts': 'flags conflict with', 'cites': 'cites'}[row['relation']],
-                          'citation_id': row['citation_id'], 'document_id': note['id'], 'basis': 'author_declared_citation_relation',
-                          'assertion_status': 'independently_reviewed' if note['status'] == 'approved' else 'awaiting_review'})
+            edges.append(citation_edge(note['id'], row['citation_id'], row['source_document_id'], row['relation'], note['status']))
     # A private learner sees their activity; others see it only while sharing is enabled.
     activity = db.execute('SELECT a.person_id,a.document_id,a.concept_id,a.kind,p.name,MAX(a.created_at) AS created_at,COUNT(*) AS attempts FROM ws_learning_activity a JOIN ws_people p ON p.id=a.person_id '
                            'JOIN ws_documents d ON d.id=a.document_id LEFT JOIN ws_learning_profiles lp ON lp.person_id=a.person_id '
@@ -494,18 +512,32 @@ def neighborhood(db, user, identifier, limit=500):
 
 
 def trail(user, source, target):
-    from .workspace_topology import graph, require_node
+    from .workspace_topology import graph, require_node, neighborhood
     with store.database() as db:
         require_node(db, user, source)
         require_node(db, user, target)
     data = graph(user)
     index = {n['id']: n for n in data['nodes']}
+    edges_by_id = {edge['id']: edge for edge in data['edges']}
+    # Search can reach records outside the overview. Expand each missing endpoint
+    # through the same bounded, permission-checked route used by the inspector.
+    expanded = False
+    missing = [endpoint for endpoint in dict.fromkeys((source, target)) if endpoint not in index]
+    for endpoint in missing:
+        nearby = neighborhood(user, endpoint)
+        for node in nearby['nodes']:
+            index.setdefault(node['id'], node)
+        for edge in nearby['edges']:
+            edges_by_id.setdefault(edge['id'], edge)
+        expanded = True
     if source not in index or target not in index:
         return {'found': False, 'nodes': [], 'edges': [], 'bounded': True,
-                'meaning': 'A selected endpoint is outside this overview. Open its neighborhood first.'}
+                'meaning': 'A selected endpoint is outside the overview and its bounded neighborhood.'}
     adjacency = {}
     ranks = {'knows': 0, 'learned_from': 0, 'expert_in': 1, 'wrote': 2, 'supports': 3, 'contradicts': 3, 'cites': 3}
-    for edge in sorted(data['edges'], key=lambda e: (ranks.get(e['kind'], 5), e['id'])):
+    for edge in sorted(edges_by_id.values(), key=lambda e: (ranks.get(e['kind'], 5), e['id'])):
+        if edge['source'] not in index or edge['target'] not in index:
+            continue
         for a, b in [(edge['source'], edge['target']), (edge['target'], edge['source'])]:
             adjacency.setdefault(a, []).append((b, edge))
     pending, seen = deque([(source, [], [source])]), {source}
@@ -513,6 +545,7 @@ def trail(user, source, target):
         current, edges, ids = pending.popleft()
         if current == target:
             return {'found': True, 'nodes': [index[i] for i in ids], 'edges': edges,
+                    'expanded_endpoints': expanded,
                     'meaning': 'Stored relationships; traversing an arrow backwards does not change its meaning.'}
         if len(edges) >= 8:
             continue
@@ -520,4 +553,4 @@ def trail(user, source, target):
             if other not in seen:
                 seen.add(other)
                 pending.append((other, edges + [edge], ids + [other]))
-    return {'found': False, 'nodes': [], 'edges': [], 'bounded': True, 'meaning': 'No path within the loaded graph and eight-hop limit.'}
+    return {'found': False, 'nodes': [], 'edges': [], 'bounded': True, 'meaning': 'No path within the overview, endpoint neighborhoods and eight-hop limit.'}
