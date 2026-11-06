@@ -26,7 +26,9 @@ Document upload and extracted text, contributor/document/topic links, and a real
 
 **Semantic knowledge and transfer:** the graph now connects cited commands, messages, subsystems, objects, metrics and versions with contributors and signed guidance. Independent review enables expertise links; source-bound recall checks and reviewed explanations enable learning links. New editions flag dependent guidance. Five views, subsystem clustering, a change journal and playable 3D evidence trails expose the relationships. Existing owned manuals upgrade automatically in batches. See [the semantic graph guide](docs/SEMANTIC_KNOWLEDGE_GRAPH.md) for workflows, assessment meaning, permissions and verification limits.
 
-**Automated validation:** 303 backend tests, 26 existing frontend contracts and the production TypeScript/Vite build pass. Native source tests use controlled responses; the publisher import above used actual public PDFs. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the owner's earlier observed results. Customer monitoring access still requires the actual environment's configured read access.
+**Graph navigation:** passage and observation drill-downs retain their permitted document, concept, citation and guidance connections. Trails can expand searched endpoints beyond the overview. Live refresh replaces cached review/stale states and removes revoked learning links. Trail steps retain the rest of their path while loading details.
+
+**Automated validation:** 324 backend tests, 26 existing frontend contracts, graph navigation/readability regressions and the production TypeScript/Vite build pass. An isolated HTTP check also verifies actual multipart upload, contributor/citation links, attachments, private operator access and recovery after a backend process restart. Native source tests use controlled responses; the publisher import above used actual public PDFs. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the owner's earlier observed results. Customer monitoring access still requires the actual environment's configured read access.
 
 ## Run the update
 
@@ -108,6 +110,7 @@ The former public Tailscale demonstration does **not** enable this private persi
 
 ~~~bash
 PYTHONPATH=backend .venv/bin/python -m pytest -q backend/tests
+.venv/bin/python scripts/verify_graph_http.py
 npm --prefix frontend run test:contract
 npm --prefix frontend run test:graph
 npm --prefix frontend run build
@@ -125,6 +128,14 @@ docker compose exec backend python -m app.conversation_smoke
 ~~~
 
 This creates one test conversation with a fresh checklist name, asks an unrelated API question, checks recall, and reads back all six persisted turns. It reports PASS only after real model responses pass these checks. Ordinary conversation uses its own instructions without an empty monitoring-evidence packet. Explicitly requested notes are prioritized when older context is loaded; user-reported operational information still does not establish verified live health.
+
+To check document-to-graph behavior in your running Docker application:
+
+~~~powershell
+docker compose exec backend python -m app.graph_smoke
+~~~
+
+This adds **two labelled synthetic verification drafts** under the current operator: an uploaded Markdown file and a contextual attachment. It checks the actual HTTP upload, graph cursor change, contributor, exact citations, complete node connections and evidence trail. The drafts remain private and unapproved. With configured operators, supply `CAIL_SMOKE_ACCESS_KEY` through the process environment. `scripts/verify_graph_http.py` runs the same check in a temporary application, then verifies another operator's isolation and persistence through an actual process restart; CI runs it automatically. Neither check requires a model or monitoring access.
 
 ## Further detail
 

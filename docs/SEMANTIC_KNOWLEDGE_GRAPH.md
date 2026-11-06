@@ -95,8 +95,10 @@ citations while preserving the previous contribution and review history.
 
 Select a node and **Start evidence trail here**, select another node, then
 **Trace to selected node**. The server follows actual permitted relationships,
-preferring knowledge/learning edges on ties, up to eight hops in the loaded
-overview. No path within that bound does not prove global disconnection.
+preferring knowledge/learning edges on ties, up to eight hops. A searched
+endpoint outside the overview adds its permission-checked neighborhood to the
+search, bounded to 500 relationships per endpoint. No path within the overview
+and these neighborhoods does not prove global disconnection.
 
 **Play 3D trail** moves the camera through its nodes. The itinerary retains
 stored arrow direction and citations. Following an edge backwards does not
@@ -106,6 +108,18 @@ physical machine locations.
 Documents arrive from alternating sides; new links grow in, views fade and
 the camera eases between trail steps. Positions are cached across views.
 Reduced-motion preferences disable automatic layout and animated camera/entry.
+
+Node drill-downs include the stored document endpoint, canonical concept
+references, readable signed citations and contextual attachments. Observations
+retain literal documentation links and their stale state. The overview and
+drill-downs use the same relationship IDs, meanings and citation metadata.
+Entity detail counts include these permitted connections; truncated entity
+neighborhoods disclose the total alongside their bounded response.
+
+The latest overview replaces cached node/edge metadata during live refresh.
+Removed document permissions and revoked learning sharing remove cached
+relationships and invalidate affected trails. Moving through a trail retains
+the remaining path while each selected node loads its details.
 
 ## Provenance, migration and bounds
 
@@ -133,6 +147,7 @@ unauthorized concepts in the browser.
 | Guidance / learning projection | 200 notes / 2,000 aggregated learning records |
 | Concept detail | 20 exact excerpts; total supporting passage count disclosed |
 | Concept neighborhood | 500 relationships, up to 150 passage records / 100 scoped notes |
+| Passage / source-entity neighborhood | 500 relationships, exact permitted total disclosed |
 | Catalog search | 200 concepts and notes / 60 citations |
 | Selection / trail | 24 emphasized relationships / eight hops |
 
@@ -173,3 +188,25 @@ projections; writes and permission transitions are tested separately through
 FastAPI. Visual checks cover 3D views, provenance, guidance forms, bounded
 selection and trail playback. WebGL is unavailable in that browser, so 2D
 visual verification uses the canvas fallback.
+
+### Navigation verification — November 6, 2026
+
+All **324 backend tests**, **26 frontend contract checks**, graph display/cache
+regressions and the production build pass. New regressions reproduce incomplete
+passage endpoints, omitted observation/concept/guidance links, searched trail
+endpoints outside the overview, private citations, stale reads and bounded
+neighborhoods. Frontend checks cover current review metadata replacing a cached
+draft, revoked learning/evidence, stale expanded observations and retention of
+the remaining trail when another step loads.
+
+`python scripts/verify_graph_http.py` starts a real FastAPI HTTP process with an
+isolated temporary SQLite database and generated operator sessions. It uploads
+a clearly labelled synthetic Markdown document using multipart HTTP, verifies
+its contributor, citation, graph cursor and contextual attachment, follows the
+actual evidence trail and checks a second operator cannot see private drafts.
+It then stops and restarts the process and recovers the same **11 nodes and 16
+relationships** from SQLite. This check is included in CI. It does not exercise
+browser rendering, an LLM or customer monitoring.
+
+For the existing Docker workspace, `python -m app.graph_smoke` performs the
+upload/graph portion and leaves two labelled private verification drafts.

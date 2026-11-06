@@ -15,6 +15,7 @@ try {
     "CanvasNetwork",
     "syncGraphEdges",
     "semanticPresentation",
+    "graphSnapshot",
   ]) {
     const source = fs.readFileSync(
       path.join(__dirname, "../src/workspace", name + ".ts"),
@@ -37,6 +38,52 @@ try {
     MAX_GRAPH_LABELS,
   } = require(path.join(tmp, "graphReadability.js"));
   const graph = new MultiDirectedGraph();
+  const { mergeGraphSnapshot, reconcileExpansion, retainTrail } = require(path.join(tmp, "graphSnapshot.js"));
+  const current = {
+    nodes: [
+      { id: "document:source", entity_id: "source", kind: "document", status: "approved" },
+      { id: "document:note", entity_id: "note", kind: "document", status: "approved" },
+      { id: "concept:command", kind: "entity", source_kind: "semantic_knowledge" },
+    ],
+    edges: [{ id: "citation", source: "document:note", target: "document:source", kind: "supports", document_id: "note", assertion_status: "independently_reviewed" }],
+    datasets: [
+      { id: "document-source", document_id: "source" },
+      { id: "document-note", document_id: "note" },
+      { id: "live", document_id: null, source_kind: "live_topology", stale: true, observed_at: "new timestamp" },
+    ],
+  };
+  const cached = {
+    nodes: [
+      { ...current.nodes[0], status: "draft" },
+      { id: "document:private", entity_id: "private", kind: "document", status: "draft" },
+      { id: "concept:private", kind: "entity", source_kind: "semantic_knowledge", permission_dataset_ids: ["document-private"] },
+      { id: "person:learner", kind: "person" },
+      { id: "observation", kind: "entity", dataset_id: "live", status: "observed", stale: false },
+      { id: "concept:extra", kind: "entity", source_kind: "semantic_knowledge", permission_dataset_ids: ["document-source"] },
+    ],
+    edges: [
+      { ...current.edges[0], assertion_status: "awaiting_review" },
+      { id: "learning", source: "person:learner", target: "document:note", kind: "knows", document_id: "note" },
+      { id: "private-link", source: "document:private", target: "concept:command", kind: "about", document_id: "private" },
+      { id: "observed-term", source: "observation", target: "concept:command", dataset_id: "live", kind: "mentions_concept", stale: false },
+      { id: "extra-evidence", source: "document:source", target: "concept:extra", kind: "documents_concept", document_id: "source" },
+      { id: "dangling", source: "absent", target: "concept:command", kind: "about" },
+    ],
+  };
+  const merged = mergeGraphSnapshot(current, cached);
+  assert.equal(merged.index.get("document:source").status, "approved", "A cached draft cannot overwrite the latest review state");
+  assert.equal(merged.edges.find(e => e.id === "citation").assertion_status, "independently_reviewed");
+  assert(!merged.edges.some(e => e.id === "dangling"));
+  const reconciled = reconcileExpansion(current, cached);
+  assert(!reconciled.nodes.some(n => ["document:private", "concept:private", "person:learner"].includes(n.id)), "Revoked evidence and unshared learners leave the cache");
+  assert(!reconciled.edges.some(e => ["learning", "private-link", "dangling"].includes(e.id)));
+  assert(reconciled.nodes.some(n => n.id === "concept:extra"), "Permitted concepts outside the overview remain expandable");
+  assert.equal(reconciled.nodes.find(n => n.id === "observation").status, "stale");
+  assert.equal(reconciled.edges.find(e => e.id === "observed-term").stale, true);
+  const nextStep = { nodes: [current.nodes[0]], edges: [] };
+  const retained = retainTrail(nextStep, { nodes: [cached.nodes[5]], edges: [cached.edges[4]] });
+  assert(retained.nodes.some(n => n.id === "concept:extra"), "Loading a trail step cannot erase the remaining path");
+  assert(retained.edges.some(e => e.id === "extra-evidence"));
   function node(id, kind, entity_type, index = 0) {
     graph.addNode(id, {
       label: id === "manual" ? "Large reference manual" : id,
@@ -376,7 +423,7 @@ try {
     }
   }
   console.log(
-    "PASS: dense manual selection, ownership priority, complete source data, stable sampling, filtered visibility, passage navigation, label collisions, relationship updates, focus framing, arrival animation and 3D/2D renderer budgets at three zoom levels.",
+    "PASS: dense manual selection, ownership priority, complete source data, stable sampling, filtered visibility, passage navigation, label collisions, relationship updates, current review/stale metadata, cache permission revocation, trail retention, focus framing, arrival animation and 3D/2D renderer budgets at three zoom levels.",
   );
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

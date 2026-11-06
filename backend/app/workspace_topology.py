@@ -370,12 +370,14 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
     # is picked up on the very next poll rather than cached as already seen.
     current_cursor, revision = cursor(user)
     base = store.knowledge_graph(user)
+    base_sources = capabilities(user)
     nodes, edges = base['nodes'], base['edges']
     base_node_count = len(nodes)
     metadata = []
     with store.database() as db:
         db.execute('BEGIN')
         from . import semantic_graph as semantic
+        from .graph_navigation import attachment_edge, collection_edge
         semantic_nodes, semantic_edges, semantic_meta = semantic.project(db, user)
         # Merge note/person metadata without dropping existing contributor fields.
         merged = {n['id']: n for n in nodes}
@@ -429,33 +431,24 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
                               'subsystem': document_subsystem if dataset['source_kind'] == 'document_evidence' else ''})
                 if dataset['source_kind'] in ('live_topology', 'monitoring_export'):
                     text = row['label'] + ' ' + str(json.loads(row['properties']).get('message', ''))
-                    for match in semantic.extract(text):
-                        if match['id'] in concept_ids:
-                            edges.append({'id': 'observation-concept:' + row['id'] + match['id'],
-                                          'source': row['id'], 'target': match['id'], 'kind': 'mentions_concept',
-                                          'label': 'mentions documentation term', 'dataset_id': dataset['id'], 'stale': stale,
-                                          'basis': 'literal_source_observation_text_not_causation'})
-                if row['local_id'] == 'collection' and (dataset['source_kind'] == 'monitoring_export' or
-                        (dataset['source_kind'] == 'live_topology' and any(item['id'] == dataset['source_id'] and item.get('mode') != 'topology_gateway' for item in capabilities(user)))):
-                    edges.append({'id': 'provenance:' + dataset['id'], 'source': parent, 'target': row['id'],
-                                  'kind': 'provenance', 'label': 'supplied dataset', 'dataset_id': dataset['id'], 'stale': stale})
+                    edges.extend(semantic.observation_edges(row['id'], text, concept_ids, dataset))
+                provenance = collection_edge(row, dataset, base_sources)
+                if provenance:
+                    edges.append(provenance)
             for row in db.execute('SELECT id,source_node,target_node,kind,label FROM ws_topology_edges WHERE dataset_id=? LIMIT ?', (dataset['id'], max(0, edge_limit - len(edges)))):
                 edges.append({'id': row['id'], 'source': row['source_node'], 'target': row['target_node'], 'kind': row['kind'], 'label': row['label'], 'dataset_id': dataset['id'], 'stale': stale})
         allowed_ids = {node['id'] for node in nodes}
-        for row in db.execute('SELECT * FROM ws_graph_links ORDER BY created_at DESC'):
+        for row in db.execute('SELECT l.*,l.id AS link_id,EXISTS (SELECT 1 FROM ws_expert_notes n WHERE n.document_id=l.document_id) AS guidance FROM ws_graph_links l ORDER BY l.created_at DESC'):
             source = 'document:' + row['document_id']
             if source in allowed_ids and row['target_node'] in allowed_ids:
-                guidance = db.execute('SELECT 1 FROM ws_expert_notes WHERE document_id=?', (row['document_id'],)).fetchone()
-                edges.append({'id': 'attachment:' + row['id'], 'source': source, 'target': row['target_node'],
-                              'kind': 'applies_to' if guidance else 'documents', 'label': 'applies to' if guidance else 'documents',
-                              'created_at': row['created_at'], 'document_id': row['document_id'], 'basis': 'author_selected_source_entity'})
+                edges.append(attachment_edge(row))
     total_nodes = base_node_count + sum(item['node_count'] + int(item['source_kind'] == 'live_topology') for item in metadata)
     nodes = nodes[:node_limit]
     ids = {node['id'] for node in nodes}
     edges = [edge for edge in edges if edge['source'] in ids and edge['target'] in ids]
     total_edges = len(edges)
     edges = edges[:edge_limit]
-    return {**base, 'nodes': nodes, 'edges': edges, 'datasets': metadata, 'sources': capabilities(user), 'semantic': semantic_meta,
+    return {**base, 'nodes': nodes, 'edges': edges, 'datasets': metadata, 'sources': base_sources, 'semantic': semantic_meta,
             'cursor': current_cursor, 'revision': revision, 'total_nodes': total_nodes, 'total_edges': total_edges,
             'truncated': base['truncated'] or total_nodes > node_limit or total_edges > edge_limit,
             'node_limit': node_limit, 'edge_limit': edge_limit}
@@ -476,19 +469,24 @@ def detail(user, node_id):
                 chunk = db.execute('SELECT content FROM ws_chunks WHERE id=? AND document_id=?', (node['properties'].get('citation_id'), dataset['document_id'])).fetchone()
                 if chunk:
                     node['properties']['excerpt'] = chunk['content']
-            state = next(item for item in visible_datasets(db, user) if item['id'] == dataset['id'])
+            datasets = {item['id']: item for item in visible_datasets(db, user)}
+            state = datasets[dataset['id']]
             node['stale'] = state.get('stale', False)
             if node['stale']:
                 node['status'] = 'stale'
-            node['relationship_count'] = db.execute('SELECT COUNT(*) AS n FROM ws_topology_edges WHERE source_node=? OR target_node=?', (node_id, node_id)).fetchone()['n']
+            from .graph_navigation import entity_neighborhood
+            node['relationship_count'] = entity_neighborhood(db, user, node, datasets, capabilities(user))['total_edges']
         return node
 
 
 def project_node(row, dataset):
     stale = dataset.get('stale', False)
+    from .semantic_graph import extract
+    subjects = {match['subsystem'] for match in extract(dataset['title']) if match['kind'] == 'subsystem'} if dataset['source_kind'] == 'document_evidence' else set()
     return {'id': row['id'], 'entity_id': row['local_id'], 'kind': 'entity', 'label': row['label'],
             'entity_type': row['entity_type'], 'status': 'stale' if stale else row['status'],
-            'dataset_id': dataset['id'], 'source_kind': dataset['source_kind'], 'observed_at': dataset['observed_at'], 'stale': stale}
+            'dataset_id': dataset['id'], 'source_kind': dataset['source_kind'], 'observed_at': dataset['observed_at'], 'stale': stale,
+            'subsystem': next(iter(subjects)) if len(subjects) == 1 else ''}
 
 
 def search(user, query):
@@ -517,18 +515,6 @@ def neighborhood(user, node_id, limit=500):
             edges = [edge for edge in base['edges'] if edge['source'] == node_id or edge['target'] == node_id][:limit]
             ids = {node_id} | {edge['source'] for edge in edges} | {edge['target'] for edge in edges}
             return {'nodes': [row for row in base['nodes'] if row['id'] in ids], 'edges': edges, 'truncated': len(edges) == limit}
-        dataset = next(item for item in visible_datasets(db, user) if item['id'] == node['dataset_id'])
-        rows = db.execute('SELECT * FROM ws_topology_edges WHERE source_node=? OR target_node=? ORDER BY id LIMIT ?', (node_id, node_id, limit + 1)).fetchall()
-        edges = [{'id': row['id'], 'source': row['source_node'], 'target': row['target_node'], 'kind': row['kind'], 'label': row['label'], 'dataset_id': dataset['id']} for row in rows[:limit]]
-        ids = {node_id} | {edge['source'] for edge in edges} | {edge['target'] for edge in edges}
-        placeholders = ','.join('?' for _ in ids)
-        nodes = [project_node(row, dataset) for row in db.execute(f'SELECT * FROM ws_topology_nodes WHERE id IN ({placeholders})', tuple(sorted(ids)))]
-        # Attached documents follow their own review/ownership permissions.
-        remaining = max(0, limit - len(edges))
-        attachments = db.execute("SELECT l.id AS link_id,d.id,d.title,d.status FROM ws_graph_links l JOIN ws_documents d ON d.id=l.document_id WHERE l.target_node=? AND (d.status='approved' OR d.owner_id=? OR (?=1 AND d.status='submitted')) ORDER BY l.created_at DESC LIMIT ?",
-                                 (node_id, user['id'], int(user['can_review']), remaining + 1)).fetchall()
-        for row in attachments[:remaining]:
-            did = 'document:' + row['id']
-            nodes.append({'id': did, 'entity_id': row['id'], 'kind': 'document', 'label': row['title'], 'status': row['status']})
-            edges.append({'id': 'attachment:' + row['link_id'], 'source': did, 'target': node_id, 'kind': 'documents', 'label': 'documents'})
-        return {'nodes': nodes, 'edges': edges, 'truncated': len(rows) > limit or len(attachments) > remaining}
+        from .graph_navigation import entity_neighborhood
+        datasets = {item['id']: item for item in visible_datasets(db, user)}
+        return entity_neighborhood(db, user, node, datasets, capabilities(user), limit)
