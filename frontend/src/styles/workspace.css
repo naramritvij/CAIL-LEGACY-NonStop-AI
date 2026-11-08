@@ -645,6 +645,7 @@ form > label > textarea {
   background: #fdfefd;
   flex: 1;
 }
+.replay-context { padding: 8px 22px; border-bottom: 1px solid #dce8df; background: #edf5ef; color: #285d4f; font-size: .84rem; }
 .assistant-layout {
   height: 100%;
   display: grid;

@@ -10,6 +10,7 @@ export interface Operator {
   auth_method: string;
 }
 export interface Conversation {
+  rehearsal_label?: string | null;
   id: string;
   title: string;
   updated_at: string;

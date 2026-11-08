@@ -30,6 +30,15 @@ SCHEMA = (
         id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
         active_request TEXT, lease_until TEXT)""",
+    """CREATE TABLE IF NOT EXISTS ws_rehearsals (
+        id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES ws_people(id),
+        case_id TEXT NOT NULL, request_id TEXT NOT NULL, started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, definition TEXT NOT NULL, decisions TEXT NOT NULL,
+        UNIQUE(owner_id,request_id))""",
+    """CREATE TABLE IF NOT EXISTS ws_rehearsal_threads (
+        conversation_id TEXT PRIMARY KEY REFERENCES ws_conversations(id), run_id TEXT NOT NULL REFERENCES ws_rehearsals(id),
+        checkpoint INTEGER NOT NULL, label TEXT NOT NULL, snapshot TEXT NOT NULL, UNIQUE(run_id,checkpoint))""",
+    'CREATE INDEX IF NOT EXISTS ws_rehearsals_owner ON ws_rehearsals(owner_id,updated_at)',
     """CREATE TABLE IF NOT EXISTS ws_messages (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
         conversation_id TEXT NOT NULL REFERENCES ws_conversations(id),
@@ -162,24 +171,42 @@ def owned_thread(db, conversation_id, principal):
     return dict(row)
 
 
-def new_conversation(principal):
+def new_conversation(principal, *, rehearsal=None):
     identifier, timestamp = str(uuid4()), now()
+    title = rehearsal['title'] if rehearsal else 'New conversation'
+    label = f'Synthetic replay · checkpoint {rehearsal["checkpoint"]} · {rehearsal["as_of"]}' if rehearsal else None
     with database() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if rehearsal:
+            previous = db.execute(
+                'SELECT c.id,c.title,c.updated_at,r.label AS rehearsal_label FROM ws_rehearsal_threads r '
+                'JOIN ws_conversations c ON c.id=r.conversation_id WHERE r.run_id=? AND r.checkpoint=? AND c.owner_id=?',
+                (rehearsal['run_id'], rehearsal['checkpoint'], principal['id'])).fetchone()
+            if previous:
+                return dict(previous)
         db.execute('INSERT INTO ws_conversations(id,owner_id,title,created_at,updated_at) VALUES (?,?,?,?,?)',
-                   (identifier, principal['id'], 'New conversation', timestamp, timestamp))
-    return {'id': identifier, 'title': 'New conversation', 'updated_at': timestamp}
+                   (identifier, principal['id'], title, timestamp, timestamp))
+        if rehearsal:
+            db.execute('INSERT INTO ws_rehearsal_threads VALUES (?,?,?,?,?)',
+                       (identifier, rehearsal['run_id'], rehearsal['checkpoint'], label, json.dumps(rehearsal)))
+        db.execute('COMMIT')
+    return {'id': identifier, 'title': title, 'updated_at': timestamp, 'rehearsal_label': label}
 
 
 def conversations(principal):
     with database() as db:
         return [dict(row) for row in db.execute(
-            'SELECT id,title,updated_at FROM ws_conversations WHERE owner_id=? ORDER BY updated_at DESC LIMIT 100',
+            'SELECT c.id,c.title,c.updated_at,r.label AS rehearsal_label FROM ws_conversations c '
+            'LEFT JOIN ws_rehearsal_threads r ON r.conversation_id=c.id '
+            'WHERE c.owner_id=? ORDER BY c.updated_at DESC LIMIT 100',
             (principal['id'],))]
 
 
 def messages(principal, conversation_id):
     with database() as db:
         thread = owned_thread(db, conversation_id, principal)
+        replay = db.execute('SELECT label FROM ws_rehearsal_threads WHERE conversation_id=?', (conversation_id,)).fetchone()
+        thread['rehearsal_label'] = replay['label'] if replay else None
         # A crashed inference must be recoverable without losing the user's turn.
         if thread['active_request'] and (thread['lease_until'] or '') < now():
             db.execute("UPDATE ws_messages SET status='interrupted',content='This response was interrupted. Send a follow-up to continue; your earlier messages are saved.' WHERE conversation_id=? AND status='pending'",
@@ -211,6 +238,7 @@ def begin_turn(principal, conversation_id, request_id, question):
         if thread['active_request'] and (thread['lease_until'] or '') > now():
             raise HTTPException(409, 'This conversation is responding. Wait for the current response.')
         db.execute("UPDATE ws_messages SET status='interrupted',content='Response interrupted; your question is saved.' WHERE conversation_id=? AND status='pending'", (conversation_id,))
+        scoped = db.execute('SELECT snapshot FROM ws_rehearsal_threads WHERE conversation_id=?', (conversation_id,)).fetchone()
         history = [message(row) for row in db.execute("SELECT * FROM ws_messages WHERE conversation_id=? AND status='complete' ORDER BY sequence", (conversation_id,))]
         timestamp = now()
         lease = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
@@ -221,7 +249,7 @@ def begin_turn(principal, conversation_id, request_id, question):
             db.execute('INSERT INTO ws_messages(id,conversation_id,role,content,status,request_id,created_at) VALUES (?,?,?,?,?,?,?)',
                        (identifier, conversation_id, role, content, status, request_id, timestamp))
         db.execute('COMMIT')
-    return {'history': history, 'answer_id': answer_id, 'user_id': user_id}
+    return {'history': history, 'rehearsal': json.loads(scoped['snapshot']) if scoped else None, 'answer_id': answer_id, 'user_id': user_id}
 
 
 def finish_turn(conversation_id, request_id, answer_id, result):

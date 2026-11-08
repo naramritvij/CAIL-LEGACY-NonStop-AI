@@ -1,5 +1,7 @@
 # CAIL sponsor mission: integrated synthetic acceptance matrix
 
+For the current workspace, see the [reviewer walkthrough and validation commands](../README.md). The acceptance matrix below describes the October 18 implementation.
+
 **Status (18 Oct 2026):** code merged into `main` through PRs #14 and #15. Complete local automated verification passed; manual browser acceptance pending. All tooling remains synthetic or reference-only.
 
 The official CAIL brochure describes three inputs—CAIL Suite, HPE NonStop

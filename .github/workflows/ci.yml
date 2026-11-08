@@ -36,6 +36,15 @@ jobs:
         run: python scripts/verify_knowledge_transfer.py
       - name: Verify source transport and scope using synthetic TLS and MOMI fixtures
         run: python scripts/verify_source_transport.py
+      - name: Score 120 offline answers and verify incident rehearsals
+        run: python scripts/evaluate_workspace.py --report "${{ runner.temp }}/cail-offline-evaluation.json"
+      - name: Retain the answer evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cail-offline-answer-evaluation
+          path: ${{ runner.temp }}/cail-offline-evaluation.json
+          if-no-files-found: ignore
 
   frontend:
     runs-on: ubuntu-latest

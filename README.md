@@ -1,197 +1,199 @@
-# CAIL / Nonstop AI Operations Assistant
+# CAIL / NonStop AI Operations Assistant
 
-A focused, light workspace for operational questions, persistent conversation memory, reviewed expertise and authorized read-only observations.
+CAIL helps an operator investigate a NonStop incident, keep the supporting evidence with the decision, and pass reviewed guidance to the next operator. The application has one assistant, a staged incident lab, an interactive knowledge graph, and a page for authorized read-only source connections.
 
-The application now has **three screens**:
+**Start with the reviewer demo.** It includes four fictional incidents and separate expert, learner, and reviewer accounts. The incident lab, graph, and handoff work without an Ollama model or a customer account.
 
-- **Assistant:** one conversational interface. User messages, assistant answers, evidence and agent activity are saved in SQLite. Follow-ups receive relevant earlier user **and** assistant turns; new topics are routed independently.
-- **Knowledge graph:** a 3D orbit view with a 2D option, contributor/document/passage networks, actual access events and imported or authorized source data. Explore thousands of small nodes, inspect source text and citations, and attach knowledge to a specific entity. The 3D view rotates while idle, and new documents fly in from the side and draw their contributor and attachment links. Committed knowledge refreshes every three seconds while visible; uploads retain their contributor.
-- **Connections:** direct read-only Prognosis REST datasets, read-only MOMI alarm exports, and the existing Prognosis/ASAP/MOMI gateways. Timestamped observations, source scope and real numeric histories are shown when supplied; missing values are not invented.
+![CAIL incident lab showing three TMF audit samples, a conditional threshold estimate and the verified rehearsal debrief](docs/assets/incident-lab.jpg)
 
-The orchestrator delegates to memory, knowledge, telemetry and evidence-evaluation workers, then synthesizes an answer with the existing local Ollama model. The evaluator can reject irrelevant excerpts and request another query, with at most five retrieval attempts. Access control and document approval remain outside the model.
+*Completed TMF rehearsal captured from the app. The readings and 80% threshold belong to this training case.*
 
-**Real data paths:** the fixed publisher catalog downloads actual HPE PDFs into private knowledge networks. Direct Prognosis reads use an administrator's configured HTTPS dataset URL, Basic credentials and field mapping. MOMI reads an authorized export folder without changing its files. ASAP and normalized gateways remain available. Customer endpoints/credentials are supplied locally; public documentation is not customer telemetry. Missing or stale observations remain unknown.
+## Run the reviewer demo
 
-## Verified locally — November 4, 2026
-
-The owner has now built and started the application on Windows, opened the new light workspace, and passed the **real Qwen conversation test**: acknowledge a fresh checklist name, answer an unrelated API question, recall the name, and read back all six saved turns.
-
-Document upload and extracted text, contributor/document/topic links, and a real document-access edge were also observed in the browser. The uploaded contribution moved from **Draft** to **Submitted / Awaiting Review**. Independent approval and another employee's access remain to be checked with separate configured accounts. The three-second graph refresh is implemented; a timed cross-session refresh test has not yet been reported.
-
-**Large graph update:** JSON/CSV/Graphology topology imports, stable source identities, linked knowledge, dataset filters and search beyond the overview are implemented. The bounded overview loads up to 12,000 nodes and 50,000 relationships; individual imports support 25,000 nodes / 100,000 relationships within 16 MiB. The 3D perspective view and 2D Sigma/canvas options replace the small fixed-column SVG. Browser renderer checks covered explicit synthetic networks up to 12,000 nodes; these are never seeded into the app. See the [large graph guide](docs/SCALABLE_GRAPH.md) for source formats, bounds and verification limits.
-
-**Real publisher import:** actual HPE HTTPS downloads of the 93-page Security Hardening Guide and 674-page TACL Reference Manual passed through CAIL's import API. They produced **1,524 nodes / 2,607 relationships**, including 1,498 cited text passages. The shared 3D renderer displayed that backend projection in an isolated verification workspace. No fictional experts, customer telemetry or PDF copies are seeded into the app/repository. See the [technical source review](docs/TEAM31_TECHNICAL_REVIEW.md).
-
-**Dense manual readability:** selecting a document highlights at most 24 relationships, with contributor/topic/attachment links first and passage sampling after that. The canvas discloses the highlighted count, avoids overlapping labels and frames selected connections. All source records remain available through the inspector, search and passage selection. Run `npm --prefix frontend run test:graph` for the dense-manual regression.
-
-**Semantic knowledge and transfer:** the graph now connects cited commands, messages, subsystems, objects, metrics and versions with contributors and signed guidance. Independent review enables expertise links; source-bound recall checks and reviewed explanations enable learning links. New editions flag dependent guidance. Five views, subsystem clustering, a change journal and playable 3D evidence trails expose the relationships. Existing owned manuals upgrade automatically in batches. See [the semantic graph guide](docs/SEMANTIC_KNOWLEDGE_GRAPH.md) for workflows, assessment meaning, permissions and verification limits.
-
-**Graph navigation:** passage and observation drill-downs retain their permitted document, concept, citation and guidance connections. Trails can expand searched endpoints beyond the overview. Live refresh replaces cached review/stale states and removes revoked learning links. Trail steps retain the rest of their path while loading details.
-
-**Automated validation:** 324 backend tests, 26 existing frontend contracts, graph navigation/readability regressions and the production TypeScript/Vite build pass. An isolated HTTP check also verifies actual multipart upload, contributor/citation links, attachments, private operator access and recovery after a backend process restart. Native source tests use controlled responses; the publisher import above used actual public PDFs. See the [local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md) for the owner's earlier observed results. Customer monitoring access still requires the actual environment's configured read access.
-
-## Run the update
-
-In an existing checkout, preserve local edits before switching branches or pulling updates.
+Install Git, Python 3.12 or later, and Docker with Compose v2. On Windows, start Docker Desktop with the Linux engine before running the commands. Run the following from PowerShell on Windows or a terminal on macOS or Linux. Use `python3` where that is your Python executable.
 
 ~~~powershell
-git fetch origin
-git switch main
-git pull --ff-only origin main
-docker compose up -d --build
-~~~
-
-Open [CAIL](http://localhost:5173). Existing knowledge remains in the existing Docker volume. The update adds separate workspace tables. Do not remove the volume if you want to retain records.
-
-Ollama must run on the host with the configured model:
-
-~~~text
-ollama pull qwen3:4b-instruct
-ollama serve
-~~~
-
-If Ollama is already running, do not start another copy. Without it, CAIL still saves conversations and supports contribution, review and the graph, while explicitly reporting that language generation is unavailable.
-
-### Local development
-
-Python 3.12+ and Node 22+ are required.
-
-~~~bash
-python3 -m venv .venv
-.venv/bin/pip install -r backend/requirements-dev.txt
-npm --prefix frontend ci
-npm run dev
-~~~
-
-On Windows, create the environment with "python -m venv .venv" and install using ".venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt". The launcher detects the environment on both platforms and supports --host and --port.
-
-## Operators and document review
-
-The loopback Docker setup defaults to a **single local demonstration identity**, named Local operator. Its uploads belong to that identity; it cannot independently approve its own documents or read live connectors.
-
-For multiple operators, configure CAIL_WORKSPACE_USERS in the ignored local .env. Every operator needs a stable ID, display name and distinct high-entropy key of at least 32 characters. Assign independent reviewer and live-read permissions on the server. Setting this list disables anonymous local fallback.
-
-~~~dotenv
-CAIL_WORKSPACE_LOCAL_DEMO=false
-CAIL_WORKSPACE_USERS='[{"id":"engineer-1","name":"Engineer Name","key":"REPLACE_WITH_A_FRESH_PRIVATE_32_PLUS_CHARACTER_KEY","can_review":false,"can_read_live":false},{"id":"reviewer-1","name":"Reviewer Name","key":"REPLACE_WITH_A_DIFFERENT_FRESH_PRIVATE_32_PLUS_CHARACTER_KEY","can_review":true,"can_read_live":true}]'
-~~~
-
-Replace the example keys; do not use them. Recreate the backend after configuration changes. Sign in from **Connections → Operator sign-in / Switch operator**. HttpOnly, SameSite Strict sessions scope conversations to the authenticated identity. These configured-key sessions are not enterprise SSO.
-
-Upload PDF, DOCX, UTF-8 TXT/Markdown/CSV/LOG, or write a note. Extracted text is retained with its filename, owner, topic, digest and review state. Limits: 4 MB per file, 200,000 extracted characters and 100 PDF pages. Scans require OCR first.
-
-Use **Knowledge graph → Import dataset** for a topology JSON/CSV export. This is separate from knowledge-document upload: an arbitrary PDF does not contain a verified operational network. Imported topology starts as a private draft and follows the same independent review policy. Select a source entity, then **Attach knowledge** to connect a new document or note without changing its contributor.
-
-To load real NonStop reference content immediately, choose **Add knowledge → HPE references → Import publisher PDF**. To ingest another large manual, enable **Reference manual** in the upload dialog (32 MiB, 1,000 pages, 2,000,000 extracted characters). Ordinary notes keep their existing limits. New uploads build cited passage/reference networks automatically; **Index existing documents** expands older owned contributions. These contains/mentions links describe the actual text, not inferred physical dependencies.
-
-The owner submits a contribution. A different reviewer approves or requests revision. **Only approved content enters assistant retrieval.** Owners see their drafts; reviewers see submitted material; team members see approved material. Existing approved Decision DNA and release-filtered corpus records remain searchable.
-
-## Demonstrate knowledge transfer
-
-From a checkout with Docker Desktop running, start the isolated local demo.
-
-~~~powershell
+git clone https://github.com/naramritvij/CAIL-LEGACY-NonStop-AI.git
+cd CAIL-LEGACY-NonStop-AI
+docker version
+docker compose version
 python scripts/start_transfer_demo.py
 ~~~
 
-Open [the demo graph](http://localhost:5180/#/graph). **People & handoffs** opens with a completed example and a practice request. Use **Switch demo role** in the sidebar to move among the synthetic learner, expert and independent reviewer. The demo uses its own Compose project and SQLite volume. It runs without an Ollama model or customer monitoring access.
+Wait for the seed command to report a completed cited guidance handoff. Open [the reviewer demo](http://localhost:5180/#/rehearsals) and check that **Incident lab** and **Switch demo role** appear. The launcher creates its own loopback Compose project and database volume. It seeds a completed handoff and a practice request on the first launch.
 
-1. As the learner, open the expert’s contributions and request guidance. You can link an approved document you already read.
-2. As the expert, open the request, select a documented concept and exact passage, then sign and submit the response. If a current approved note already answers the request, choose **Reuse approved guidance**.
-3. As the independent reviewer, open **Review queue**, inspect the cited passage and record the reason for approval or return.
-4. As the learner, read the approved response and explain the evidence, reasoning, limits and safe next check or escalation.
-5. As the reviewer, assess those four criteria. The learner can then open the **Learning receipt** with the assessor, date, guidance version and source citations. A superseded source edition sends the handoff back for source review.
-6. Upload a document on the graph. The new node enters from a side, grows its links and shows its contributor in the document details. The graph resumes its idle orbit when you clear selection and move off the canvas. **Pause orbit** and the system reduced-motion preference control the movement.
+| Address | Use it for | Storage |
+| --- | --- | --- |
+| [localhost:5180](http://localhost:5180/#/rehearsals) | Incident rehearsals, demo-role switching, verified receipt, and synthetic uploads | `cail-transfer-demo` project and dedicated volume |
+| [localhost:5173](http://localhost:5173/#/assistant) | The regular workspace, your saved conversations and documents, local Ollama, and authorized source access | Main Compose project and `legacy_knowledge` volume |
 
-Stop the demo with `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. The demo volume retains its records.
+### Reproduce the financial incident
 
-In the regular workspace, a configured operator with `"can_manage_members":true` can add a contributor in **People & handoffs**, assign reviewer access, and rotate or revoke a key. Copy the one-time key and share it privately with that contributor. The directory shows per-contributor visible document counts, approved guidance and documents you accessed. Guidance requests and their graph links are scoped to their participants. See the [knowledge transfer and graph guide](docs/SEMANTIC_KNOWLEDGE_GRAPH.md#tracked-knowledge-handoffs).
+1. Open **Incident lab → Financial payments — hardware capacity reduction → Start rehearsal**. Verify the first checkpoint shows the **01:08** hardware warning on the training system.
+2. Click **Ask CAIL at this checkpoint**. Ask `Show the observed timeline.` The reply cites **SIM-EVT-301**. Then ask `Quote the payment result from SIM-EVT-304.` The reply says the requested observation is outside the checkpoint.
+3. Return to **Incident lab** and reopen the financial case under **Saved rehearsals**. Try **Restart the affected service immediately** with the first record selected. **Assess decision** blocks the action and keeps you at the same checkpoint.
+4. Complete the three decisions using the table below. Select each evidence record in the timeline and choose the action before clicking **Assess decision**.
+5. Confirm **Verified rehearsal debrief** lists all three decisions and their evidence IDs. Click **Download debrief** to get the JSON record. It contains the observed timeline, unresolved questions, the next authorized check, and the case version hash.
+6. Reopen the original checkpoint chat from **Recent conversations**. Asking for **SIM-EVT-304** there still withholds the record. A new chat opened at the final checkpoint can cite it.
+
+| Checkpoint | Supporting records | Decision to assess |
+| --- | --- | --- |
+| Scope the capacity warning | `SIM-EVT-301` | Confirm the affected node and compare available capacity with other nodes. |
+| Correlate without assuming cause | `SIM-EVT-301`, `SIM-EVT-303` | Record the order of the hardware, CPU and service symptoms and check for shared dependencies. |
+| Hand off payment impact | `SIM-EVT-304`, `SIM-EVT-305` | Escalate payment impact and the worker exit with timestamps and request an authorized dependency check. |
+
+The final records show a fictional 980 ms payment response and 89% success rate, followed by a worker exit. The debrief preserves that order and keeps root cause and recovery unresolved.
+
+### Try the other cases
+
+| Case | What to verify |
+| --- | --- |
+| **$DATA03 capacity increasing** | Use the baseline and later threshold observation for the handoff. Cleanup depends on verified ownership, retention policy, and dependencies. |
+| **Pathway service degradation** | Follow the first latency symptom through an unresponsive service instance and a later downstream delay. Separate observed symptoms from an inferred dependency cause. |
+| **TMF audit utilization trend** | At checkpoint two, choose to collect a third comparable sample. At checkpoint three, 60%, 65%, and 70% produce a **20-minute conditional estimate** to the fictional 80% threshold at 0.5 percentage points per minute. |
+| **Financial payments** | Demonstrate cross-source chronology, a blocked restart, an evidence cutoff, and a handoff with the service impact and unanswered questions. |
+
+Each rehearsal is saved under its operator. The final debrief records what the operator selected and the evidence accepted at each checkpoint. **Synthetic · Read only** stays visible throughout. Scoped rehearsal answers use the saved evidence directly. General conversations use the configured local model.
+
+## Demonstrate knowledge transfer
+
+Open [the demo graph](http://localhost:5180/#/graph). In **People & handoffs**, the completed request has a **Learning verified** badge. **View learning receipt** shows the assessor, four criteria, citations and guidance version. To create a second receipt, use the practice request about an unclear TMF observation.
+
+| Who | What to click | What to verify |
+| --- | --- | --- |
+| **Demo expert** | **Switch demo role → Demo expert → Write guidance** on the practice request | Enter a title such as `Evidence before TMF escalation`. In **Find concepts and source citations**, search `TMFCOM STATUS TMF`, select that command, and cite the approved **Synthetic TMF training source** passage. Choose **Sign and add guidance → Submit for review**. |
+| **Demo independent reviewer** | **People & handoffs → Independent review → Evidence before TMF escalation** | Open the cited passage. Enter **Review reasoning** after checking the excerpt and click **Approve**. |
+| **Demo learner** | Open the same practice request and click **Explain the guidance** | Explain the decision, exact supporting evidence, limitations, and the next authorized read or escalation. Click **Submit explanation for review**. |
+| **Demo independent reviewer** | **People & handoffs → Independent review → Open explanation reviews** | Check the explanation against the guidance, confirm all four criteria, record reasoning, and approve. |
+| **Demo learner** | **View learning receipt** on the practice request | The new receipt names `Evidence before TMF escalation`. It contains the reviewer, date, four criteria, citations, and the guidance hash. |
+
+For this fictional TMF exercise, the guidance can describe confirming the system identity and observation time, comparing a fresh authorized reading, and escalating conflicting or stale evidence. The learner should explain why those checks matter and why one observation leaves the cause uncertain.
+
+The **Contributors** directory shows visible documents, approved guidance, and your recorded document access. Use **Add a contributor** as **Demo expert** to exercise manager enrollment. In a regular workspace, the configured manager can issue, rotate, or revoke a member key. The handoff is visible to its participants, and the reviewer sees the submitted guidance and explanation through the review queues. Approval of a superseding source sends dependent guidance back for review.
+
+## Explore the knowledge graph
+
+1. Open **Knowledge graph → Knowledge map → 3D**. Select a person, document, concept, or observation. The inspector shows its stored relationships and source details.
+2. Choose **Add knowledge**, give a small Markdown or PDF file a title, and upload it. Watch the new node enter from the side and connect to its contributor. The document appears as **Draft** in the inspector. Reload to verify the node and link persisted.
+3. Select a document or concept and use **Start evidence trail here**. Select a connected node and trace the path. **Play 3D trail** follows the stored edges. Clear the selection and move your pointer off the canvas to see the idle orbit. The circular-arrow control pauses it.
+4. To build a larger graph with public evidence, use **Add knowledge → HPE references** and import the **HPE NonStop TACL Reference Manual**. It downloads from HPE, extracts passages and literal references, and records source metadata. Select **Manual passages** to expose those passage nodes. The import needs outbound access to the publisher.
+5. To connect a new document to an existing source entity, select it and use **Attach knowledge**. **Import dataset** accepts a separate topology JSON or CSV export. The link types distinguish text references from source-provided topology.
+
+Standard files are up to 4 MB and include PDF, DOCX, TXT, Markdown, CSV and LOG. **Reference manual** supports larger manuals up to 32 MiB and 1,000 PDF pages. Scanned documents need extracted text or OCR. Drafts are private to their owner, submitted items are visible to independent reviewers, and current approved knowledge is eligible for assistant retrieval. [Graph formats and bounds](docs/SCALABLE_GRAPH.md)
+
+## Run the regular workspace
+
+In the same checkout, run:
+
+~~~powershell
+docker compose up -d --build
+docker compose ps
+~~~
+
+Open [the regular workspace](http://localhost:5173/#/assistant). The backend health endpoint is [localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) and should return `"status":"ok"`. To rebuild an existing checkout, use `git switch main`, `git pull --ff-only origin main`, then the same Compose command. Normal workspace records live in its Docker volume.
+
+### Test conversation memory with Ollama
+
+Start Ollama on your computer and install the configured model. With the desktop service already running, use:
+
+~~~powershell
+ollama pull qwen3:4b-instruct
+ollama list
+docker compose exec backend python -m app.conversation_smoke
+~~~
+
+The smoke test creates a conversation, saves a fresh checklist name, asks an unrelated API question, then verifies recall and all six saved messages. To repeat in the browser, ask CAIL to remember a unique checklist name, ask what an API is, reload the conversation, and ask for the checklist name. Check **Conversation memory** for six saved turns and earlier context supplied to the answer.
+
+On Docker Desktop, the main backend uses `http://host.docker.internal:11434`. If Docker cannot reach the host model, check that Ollama is running and the configured model appears in `ollama list`. The [local development route](#local-development) runs the backend beside Ollama on the host.
+
+### Configure separate operators
+
+The regular workspace initially has one **Local operator** identity. To run actual team handoffs there, set `CAIL_WORKSPACE_LOCAL_DEMO=false` and configure `CAIL_WORKSPACE_USERS` in a private local `.env` using the format in [`.env.example`](.env.example). Give each operator a stable ID, display name and unique key of at least 32 characters. Set `can_review` for an independent reviewer and `can_manage_members` for the manager. Grant `can_read_live` only to authorized readers.
+
+Recreate the backend with `docker compose up -d --build backend`, then sign in from **Connections → Operator sign-in / Switch operator**. The contribution counts and document visibility follow the signed-in identity. Workspace access keys provide local account separation. Deployment-wide identity integration remains a pilot decision.
 
 ## Real source access
 
-See [the workspace and integration guide](docs/AGENT_WORKSPACE.md) for the contract and permission model.
+The app has read-only source paths for **IR Prognosis**, **HPE ASAP** and **MOMI**. The browser receives scoped observations through the backend. Set the authorized connection and expected system ID in the local server configuration.
 
-For direct Prognosis datasets or a read-only MOMI export folder, follow [the native source setup](docs/NATIVE_SOURCE_SETUP.md). It provides the exact settings, field mappings, Docker mount and verification steps. **Import dataset → Export format** can also ingest an existing Prognosis JSON or MOMI TXT/TSV/LOG snapshot without live credentials.
+| Source | Supported paths | Scope setting |
+| --- | --- | --- |
+| **IR Prognosis** | Admin-provisioned HTTPS dataset and Basic authentication with mapped fields, or an approved normalized gateway | `CAIL_PROGNOSIS_SYSTEM_ID` |
+| **HPE ASAP** | Authorized Consumer/query bridge through the normalized HTTPS gateway | `CAIL_ASAP_SYSTEM_ID` |
+| **MOMI** | Read-only alarm-export folder, explicit export import, or an approved gateway | `CAIL_MOMI_SYSTEM_ID` |
 
-| Source | Endpoint setting | Credential setting | Upstream integration |
-| --- | --- | --- | --- |
-| IR Prognosis | CAIL_LIVE_PROGNOSIS_URL | CAIL_LIVE_PROGNOSIS_TOKEN | Installed API/data access normalized by an authorized gateway |
-| HPE ASAP | CAIL_LIVE_ASAP_URL | CAIL_LIVE_ASAP_TOKEN | Consumer API, published query interface or approved monitoring bridge |
-| MOMI | CAIL_LIVE_MOMI_URL | CAIL_LIVE_MOMI_TOKEN | Vendor-approved client/server collector exposed through the read-only gateway |
-
-Set `CAIL_LIVE_ENABLED=true`, `CAIL_LIVE_ALLOWED_HOSTS`, and the expected system IDs `CAIL_PROGNOSIS_SYSTEM_ID`, `CAIL_ASAP_SYSTEM_ID` and `CAIL_MOMI_SYSTEM_ID` for the sources being used. The separate CAIL_OPERATOR_READ_KEY applies to older integration endpoints; the new workspace uses per-operator can_read_live authorization.
-
-For source networks, configure `CAIL_LIVE_PROGNOSIS_TOPOLOGY_URL`, `CAIL_LIVE_ASAP_TOPOLOGY_URL` and/or `CAIL_LIVE_MOMI_TOPOLOGY_URL` with the corresponding server-only token above. These optional read-only gateway endpoints return source/system identity, observation time, nodes and relationships. They are not guessed native product API paths. The graph can refresh configured sources every 15 seconds while open. See the [topology contract and activation steps](docs/SCALABLE_GRAPH.md#connect-actual-prognosis-asap-and-momi-topology).
-
-Only fixed, allowlisted HTTPS GET requests are issued. TLS is verified. Redirects, stale snapshots, wrong identities and malformed responses are rejected. A failed read invalidates the connected state even when older snapshots exist. No API executes a NonStop command.
-
-The former public Tailscale demonstration does **not** enable this private persistent workspace. Deploy privately with authenticated identities rather than exposing the local demonstration identity.
-
-With sponsor-authorized read access configured in the running backend, verify the pilot from the same environment.
+1. Get the authorized endpoint or export, the expected system ID, and read permission from the environment owner. Follow the [native source setup](docs/NATIVE_SOURCE_SETUP.md) and [gateway contract](docs/LIVE_SOURCE_GATEWAY.md).
+2. Set `CAIL_LIVE_ENABLED=true`, configure the allowed host list for HTTPS, and grant `can_read_live` to the intended operator. Add any optional topology URLs using the [topology setup](docs/SCALABLE_GRAPH.md#connect-actual-prognosis-asap-and-momi-topology).
+3. Recreate the backend. Sign in as the authorized operator. In **Connections**, run the source check and inspect the system ID, last observation time, and health. Refresh authorized topology in **Knowledge graph** when a topology path is configured.
+4. Run the receipt command below. It checks the configured observation and topology paths, system identity, freshness, and hashes. Use `--source prognosis`, `--source asap` or `--source momi` for a single source. Add `--operator <id>` when more than one configured account can read live data.
 
 ~~~powershell
 docker compose exec backend python -m app.source_acceptance
 ~~~
 
-Use `--operator <id>` when more than one configured operator can read live sources, and `--source prognosis`, `--source asap` or `--source momi` for a single-source check. The command checks every configured observation and topology path for each selected source, validates the returned system against the expected scope, and reports metadata including timestamps, record counts and snapshot hashes. It exits unsuccessfully if a selected source lacks configuration or fails validation. Controlled HTTPS and export tests have passed. A private CAIL pilot receipt requires the sponsor’s endpoint or export and authorized account.
+Controlled TLS and MOMI export checks have passed. The private CAIL pilot requires a receipt from its authorized environment. Missing, stale, malformed and wrong-system data remain unknown. Source reads do not execute NonStop commands.
 
-## Validation
+## Reproduce the evaluation
+
+From the repo root on Windows:
+
+~~~powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
+.\.venv\Scripts\python.exe scripts/evaluate_workspace.py --report eval/results.local.json
+~~~
+
+On macOS or Linux:
 
 ~~~bash
-PYTHONPATH=backend .venv/bin/python -m pytest -q backend/tests
-.venv/bin/python scripts/verify_graph_http.py
-.venv/bin/python scripts/verify_knowledge_transfer.py
-.venv/bin/python scripts/verify_source_transport.py
-npm --prefix frontend run test:contract
-npm --prefix frontend run test:graph
-npm --prefix frontend run build
-node --check scripts/dev-workspace.mjs
+python3 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements-dev.txt
+.venv/bin/python scripts/evaluate_workspace.py --report eval/results.local.json
 ~~~
 
-Regressions cover persisted two-role history, topic changes, older relevant memory, private conversations, session revocation, independent approval, cited document graphs, large topology imports, bounded search/expansion, atomic document attachments, publisher allowlisting/deduplication, direct Prognosis field/scope validation, read-only MOMI export parsing/freshness, stable source IDs, revocation/staleness, all three topology gateways, idempotency, response leases, failure recovery, citation IDs and bounded evaluation retries.
+Expect **120/120 offline answer cases passed** and four debriefs recovered after an API restart. The runner starts an isolated HTTP backend and temporary database. It seeds synthetic reviewed sources, checks all 12 rehearsal decisions and their evidence boundaries, and scores each answer against expected behavior, required facts, allowed citations and read-only flags. GitHub Actions runs the same suite and retains the per-case report.
 
-Automated model and connector tests use controlled doubles. They verify contracts and workflows, not actual Qwen answer quality or licensed vendor compatibility. The frontend is typechecked and production-built. The owner has separately passed the real-model smoke test and verified the browser flows listed above; broader model and browser coverage remains incomplete.
-
-To check the real model in your running Docker application, run:
+The separate **100-question model suite** exercises the normal local Ollama assistant. It covers reviewed guidance, saved user and assistant turns, general questions, observation reading, chronology, and operator judgment. Start Ollama with `qwen3:4b-instruct`, then run:
 
 ~~~powershell
-docker compose exec backend python -m app.conversation_smoke
+.\.venv\Scripts\python.exe scripts/evaluate_workspace.py --suite model --case qwen-01 --case qwen-09 --case qwen-17 --report eval/model-smoke.local.json
+.\.venv\Scripts\python.exe scripts/evaluate_workspace.py --suite model --report eval/model-results.local.json
 ~~~
 
-This creates one test conversation with a fresh checklist name, asks an unrelated API question, checks recall, and reads back all six persisted turns. It reports PASS only after real model responses pass these checks. Ordinary conversation uses its own instructions without an empty monitoring-evidence packet. Explicitly requested notes are prioritized when older context is loaded; user-reported operational information still does not establish verified live health.
+On macOS or Linux, use `.venv/bin/python` for the same commands. The full run makes multiple requests per multi-turn case. The report records the model digest, per-case answers, citations, and latency so a reviewer can inspect the output. For the hosted CPU run, open **Actions → CAIL local model evaluation**. Each runner starts its own loopback Ollama service. The workflow publishes the measured score and reports for the exact commit it evaluated. [Question sets and scoring](eval/README.md)
 
-To check document-to-graph behavior in your running Docker application:
+| Check | Verified evidence |
+| --- | --- |
+| Offline answer evaluation | **120/120** on an isolated local HTTP run. Answer request p50 **4.0 ms**, p95 **7.4 ms** in that run. The timing covers bounded replay and reviewed answer handling. |
+| Incident walkthrough | Financial and TMF walkthroughs exercised in the browser. HTTP acceptance covers all four cases, access isolation, action blocking, evidence cutoff, retries, and restart persistence. |
+| Knowledge transfer | Separate expert, reviewer, and learner sessions completed the browser workflow and produced a version-bound receipt. |
+| Conversation memory | Owner's Windows run recalled the checklist name after an unrelated question and saved all six messages. |
+| Source transport | Controlled Prognosis and ASAP HTTPS reads and read-only MOMI export with scope, freshness, and blocked redirect checks. |
+| Code regression | Backend suite, frontend contracts, dense graph readability and production frontend build. See the repository's **Actions → CAIL integration quality gates** run for the commit you are reviewing. |
 
-~~~powershell
-docker compose exec backend python -m app.graph_smoke
+## Shut down or troubleshoot
+
+- Stop the isolated demo with `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. Stop the regular workspace with `docker compose down`. These commands retain the respective volumes.
+- If Docker reports a missing Linux engine pipe on Windows, start Docker Desktop and wait for `docker version` to show a **Server** section. Repeat the launch command.
+- If port **5180** is in use, run `python scripts/start_transfer_demo.py --port 5181` and open the URL printed by the launcher.
+- If **Guidance requests** is empty on **5173**, check the signed-in account. The completed example and role switcher are in the isolated **5180** workspace.
+- If the normal frontend opens before the API is ready, run `docker compose ps`, check `docker compose logs --tail=60 backend frontend`, and refresh when the health endpoint responds.
+- If the graph shows few nodes, select **Knowledge map** or **All relationships**, check the source and review filters, and enable **Manual passages** when inspecting imported evidence.
+
+### Local development
+
+Install Python 3.12+ and Node 22+. Use the virtual environment and backend dependencies above, then run:
+
+~~~bash
+npm --prefix frontend ci
+npm run dev
 ~~~
 
-This adds **two labelled synthetic verification drafts** under the current operator: an uploaded Markdown file and a contextual attachment. It checks the actual HTTP upload, graph cursor change, contributor, exact citations, complete node connections and evidence trail. The drafts remain private and unapproved. With configured operators, supply `CAIL_SMOKE_ACCESS_KEY` through the process environment. `scripts/verify_graph_http.py` runs the same check in a temporary application, then verifies another operator's isolation and persistence through an actual process restart; CI runs it automatically. Neither check requires a model or monitoring access.
+The launcher starts Vite and FastAPI locally. It uses Ollama at `http://localhost:11434` by default. Pass `--host` or `--port` to the launcher as needed. Keep the default loopback setup for local review. The older public funnel demonstration is a separate deployment.
 
-### Local knowledge transfer measurements
+## Technical references
 
-The authenticated walkthrough covered all three roles, receipt persistence after restart, contributor enrollment and access revocation. A browser walkthrough also completed the practice handoff, added a real test file, and verified that the orbit moves when enabled and stops when paused.
-
-The same synthetic 1,234-passage fixture was used for both local benchmark runs. Times are p95 across 25 runs.
-
-| Local measurement | Previous main (`0eece32`) | Knowledge transfer update |
-| --- | ---: | ---: |
-| Approved passage retrieval | 61.0 ms | 10.2 ms |
-| Full graph build (1,243 nodes, 7,409 relationships) | 193.4 ms | 189.0 ms |
-| Graph cursor refresh | 5.2 ms | 3.4 ms |
-| Initial compressed assistant JavaScript | 145.26 kB | about 82 kB |
-
-Run `.venv/bin/python scripts/benchmark_workspace.py` for a local measurement, or add `--baseline <checkout>` for a comparison. The answer checks cover exact approved guidance with citations, private draft exclusion, relevance, missing live evidence and source supersession. The new checks use the direct reviewed-guidance path. Peer performance and broad generative answer quality remain unmeasured.
-
-## Further detail
-
-- [As-built workspace and integration guide](docs/AGENT_WORKSPACE.md)
-- [Large graph, topology contract and source activation](docs/SCALABLE_GRAPH.md)
-- [Direct Prognosis, MOMI and public HPE reference setup](docs/NATIVE_SOURCE_SETUP.md)
-- [Team 31 source review and CAIL's independent implementation](docs/TEAM31_TECHNICAL_REVIEW.md)
-- [Local verification record](docs/LOCAL_VERIFICATION_2026-11-04.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Existing source gateway contract](docs/LIVE_SOURCE_GATEWAY.md)
-- [Existing backend contracts](docs/BACKEND_API_CONTRACT.md)
-
-Earlier APIs and tests remain for compatibility. The former Home, ATM chat, Operations Lab, Investigate, Library, Mentor and Apprentice screens are removed from application navigation. Old knowledge-related hashes open Knowledge Graph; other old screen hashes open the single Assistant.
+- [Workspace architecture and agent contracts](docs/AGENT_WORKSPACE.md)
+- [Semantic graph, learning receipts and evidence trails](docs/SEMANTIC_KNOWLEDGE_GRAPH.md)
+- [HPE references, direct Prognosis and MOMI export setup](docs/NATIVE_SOURCE_SETUP.md)
+- [Historical sponsor acceptance and earlier endpoints](docs/SPONSOR_MISSION_ACCEPTANCE.md)
