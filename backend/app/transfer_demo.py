@@ -33,8 +33,9 @@ CRITERIA = ['decision', 'evidence', 'limits', 'safe_next_step']
 
 
 class OperatorSession:
-    def __init__(self, root, key, *, demo_only=True):
+    def __init__(self, root, key, *, demo_only=True, timeout=30):
         self.root = root.rstrip('/') + '/api/v1/workspace'
+        self.timeout = timeout
         self.opener = build_opener(HTTPCookieProcessor(CookieJar()))
         self.identity = self.call('/session', {'access_key': key})
         if demo_only:
@@ -44,7 +45,7 @@ class OperatorSession:
         data = json.dumps(payload).encode() if payload is not None else None
         request = Request(self.root + path, data=data, headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
         try:
-            with self.opener.open(request, timeout=30) as response:
+            with self.opener.open(request, timeout=self.timeout) as response:
                 actual, result = response.status, json.load(response)
         except HTTPError as error:
             actual, result = error.code, json.load(error)

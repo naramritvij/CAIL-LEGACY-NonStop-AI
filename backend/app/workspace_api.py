@@ -129,7 +129,11 @@ def conversation_turn(conversation_id: str, body: TurnBody, user=Depends(princip
         return turn['existing']
     from .agent_orchestrator import run
     try:
-        result = run(user, question, turn['history'])
+        if turn['rehearsal']:
+            from .rehearsal_answers import answer
+            result = answer(turn['rehearsal'], question, turn['history'])
+        else:
+            result = run(user, question, turn['history'])
     except Exception:
         # Preserve both turns even if a tool or model fails unexpectedly. Never leak an exception/secret.
         import logging
@@ -381,3 +385,6 @@ router.include_router(semantic_router)
 
 from .transfer_api import router as transfer_router
 router.include_router(transfer_router)
+
+from .rehearsal_api import router as rehearsal_router
+router.include_router(rehearsal_router)

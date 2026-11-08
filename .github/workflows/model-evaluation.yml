@@ -1,0 +1,97 @@
+name: CAIL local model evaluation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - eval/model.jsonl
+      - .github/workflows/model-evaluation.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cail-model-evaluation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  score:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Score model shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install workspace and local Ollama runtime
+        run: |
+          python -m pip install -r backend/requirements-dev.txt
+          curl --fail --silent --show-error --location --retry 2 https://ollama.com/install.sh -o "$RUNNER_TEMP/ollama-install.sh"
+          sh "$RUNNER_TEMP/ollama-install.sh"
+      - name: Start Ollama and pull the local model
+        run: |
+          if ! curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then
+            ollama serve >"$RUNNER_TEMP/ollama.log" 2>&1 &
+          fi
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:11434/api/version; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:11434/api/version
+          ollama pull qwen3:4b-instruct
+      - name: Run and record model answers
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          report="$RUNNER_TEMP/model-shard-$SHARD.json"
+          result=0
+          python scripts/evaluate_workspace.py --suite model --shard "$SHARD/10" --report "$report" || result=$?
+          # A complete scored report remains evidence even when some answers fail.
+          if [ ! -s "$report" ]; then exit 1; fi
+          if [ "$result" -ne 0 ]; then echo "This shard recorded answer failures. Inspect the report."; fi
+      - name: Retain this shard's evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cail-model-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/model-shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  summarize:
+    needs: score
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install scoring dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cail-model-shard-*
+          path: ${{ runner.temp }}/cail-model-results
+      - name: Verify coverage and publish the measured score
+        run: |
+          python scripts/summarize_model_eval.py "$RUNNER_TEMP/cail-model-results" > "$RUNNER_TEMP/cail-model-summary.md"
+          cat "$RUNNER_TEMP/cail-model-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/cail-model-summary.md"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cail-model-summary
+          path: ${{ runner.temp }}/cail-model-summary.md
+          retention-days: 14

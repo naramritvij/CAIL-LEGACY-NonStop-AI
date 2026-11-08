@@ -49,7 +49,9 @@ import {
   type Operator,
 } from "./types";
 
-type View = "assistant" | "graph" | "connections";
+const IncidentLab = lazy(() => import("./IncidentLab").then((module) => ({ default: module.IncidentLab })));
+
+type View = "assistant" | "graph" | "connections" | "rehearsals";
 const AGENTS = [
   {
     name: "Memory",
@@ -203,16 +205,14 @@ function RichText({ text }: { text: string }) {
   const parts = text.split(/(```[\s\S]*?```)/g);
   function inline(line: string): ReactNode {
     return line
-      .split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
-      .map((part, index) =>
-        part.startsWith("**") ? (
-          <strong key={index}>{part.slice(2, -2)}</strong>
-        ) : part.startsWith("`") ? (
-          <code key={index}>{part.slice(1, -1)}</code>
-        ) : (
-          part
-        ),
-      );
+      .split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https:\/\/support\.hpe\.com\/[^)\s]+\))/g)
+      .map((part, index) => {
+        const reference = part.match(/^\[([^\]]+)\]\((https:\/\/support\.hpe\.com\/[^)\s]+)\)$/);
+        if (reference) return <a key={index} href={reference[2]} target="_blank" rel="noreferrer">{reference[1]}</a>;
+        if (part.startsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+        if (part.startsWith("`")) return <code key={index}>{part.slice(1, -1)}</code>;
+        return part;
+      });
   }
   return (
     <div className="rich-text">
@@ -432,6 +432,7 @@ function Assistant({
   onDetails: (open: boolean) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loadedConversation, setLoadedConversation] = useState<Conversation | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -457,9 +458,12 @@ function Assistant({
     if (!activeId) return;
     let live = true;
     setLoading(true);
-    request<{ messages: Message[] }>(`/conversations/${activeId}`)
+    request<{ messages: Message[]; conversation: Conversation }>(`/conversations/${activeId}`)
       .then((data) => {
-        if (live) setMessages(data.messages);
+        if (live) {
+          setMessages(data.messages);
+          setLoadedConversation(data.conversation);
+        }
       })
       .catch((error) => {
         if (live) onError(errorMessage(error));
@@ -557,7 +561,14 @@ function Assistant({
       );
     }
   }
-  const suggestions = [
+  const activeConversation = conversations.find((item) => item.id === activeId) ||
+    (loadedConversation?.id === activeId ? loadedConversation : null);
+  const rehearsalLabel = activeConversation?.rehearsal_label;
+  const suggestions = rehearsalLabel ? [
+    { icon: Activity, title: "Read the timeline", question: "Show the observed timeline." },
+    { icon: ShieldCheck, title: "Check the limits", question: "What can I conclude about the cause?" },
+    { icon: FileText, title: "Prepare a handoff", question: "Draft a handoff for this checkpoint." },
+  ] : [
     {
       icon: Activity,
       title: "Investigate an observation",
@@ -585,8 +596,7 @@ function Assistant({
               <MessageSquare size={17} />
             </span>
             <span>
-              {conversations.find((item) => item.id === activeId)?.title ||
-                "New conversation"}
+              {activeConversation?.title || "New conversation"}
             </span>
           </div>
           <div className="conversation-heading-right">
@@ -605,6 +615,7 @@ function Assistant({
             )}
           </div>
         </div>
+        {rehearsalLabel && <div className="replay-context">{rehearsalLabel}</div>}
         <div className="conversation-scroll">
           {loading ? (
             <div className="loading-panel">
@@ -732,7 +743,7 @@ function Assistant({
             <textarea
               ref={textarea}
               aria-label="Message CAIL"
-              placeholder="Ask CAIL anything about your operations…"
+              placeholder={rehearsalLabel ? "Ask about this saved checkpoint…" : "Ask CAIL anything about your operations…"}
               maxLength={6000}
               rows={2}
               value={draft}
@@ -788,6 +799,7 @@ function Assistant({
 
 function initialView(): View {
   const hash = window.location.hash.toLowerCase();
+  if (hash === "#/rehearsals") return "rehearsals";
   return /graph|tree|library|mentor/.test(hash)
     ? "graph"
     : /connections/.test(hash)
@@ -912,6 +924,7 @@ export function OperationsWorkspace() {
   const nav = [
     { id: "assistant" as const, label: "Assistant", icon: MessageSquare },
     { id: "graph" as const, label: "Knowledge graph", icon: Network },
+    { id: "rehearsals" as const, label: "Incident lab", icon: Activity },
     { id: "connections" as const, label: "Connections", icon: Database },
   ];
   return (
@@ -1080,6 +1093,13 @@ export function OperationsWorkspace() {
           ) : view === "graph" ? (
             <Suspense fallback={<div className="loading-panel">Loading the knowledge graph…</div>}>
               <KnowledgeGraph key={operator.id} operator={operator} onError={notify} />
+            </Suspense>
+          ) : view === "rehearsals" ? (
+            <Suspense fallback={<div className="loading-panel">Loading incident lab…</div>}>
+              <IncidentLab key={operator.id} onError={notify} onConversation={(conversation) => {
+                setConversations((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
+                chooseConversation(conversation.id);
+              }} />
             </Suspense>
           ) : (
             <Connections
