@@ -32,6 +32,10 @@ jobs:
         run: python -m pytest -q
       - name: Verify HTTP graph upload, private access and restart retention
         run: python scripts/verify_graph_http.py
+      - name: Verify the complete knowledge transfer journey
+        run: python scripts/verify_knowledge_transfer.py
+      - name: Verify source transport and scope using synthetic TLS and MOMI fixtures
+        run: python scripts/verify_source_transport.py
 
   frontend:
     runs-on: ubuntu-latest

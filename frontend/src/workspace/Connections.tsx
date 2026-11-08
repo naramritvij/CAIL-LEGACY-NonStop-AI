@@ -161,6 +161,8 @@ export function Connections({
   }, []);
   useEffect(() => {
     void refresh();
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
+    return () => window.clearInterval(timer);
   }, [refresh]);
   const check = useCallback(
     async (id: string) => {
@@ -168,16 +170,21 @@ export function Connections({
       setFailures((values) => ({ ...values, [id]: "" }));
       try {
         const source = sources.find((item) => item.id === id);
-        if (source?.topology_configured && !source.metrics_configured) {
-          const result = await request<{
+        const checks: Promise<unknown>[] = [];
+        if (source?.topology_configured) {
+          checks.push(request<{
             sources: { id: string; status: string; reason?: string }[];
-          }>(`/graph/sync?source_id=${id}`, { method: "POST" });
-          const status = result.sources.find((item) => item.id === id);
-          if (status?.status !== "connected")
-            throw new Error(
-              status?.reason || "Topology source is unavailable.",
-            );
-        } else await request(`/connections/${id}/check`, { method: "POST" });
+          }>(`/graph/sync?source_id=${id}`, { method: "POST" }).then((result) => {
+            const status = result.sources.find((item) => item.id === id);
+            if (status?.status !== "connected")
+              throw new Error(status?.reason || "Topology source is unavailable.");
+          }));
+        }
+        if (source?.metrics_configured || !checks.length)
+          checks.push(request(`/connections/${id}/check`, { method: "POST" }));
+        const results = await Promise.allSettled(checks);
+        const failures = results.filter((result) => result.status === "rejected");
+        if (failures.length) throw new Error(failures.map((result) => errorMessage(result.reason)).join(" "));
         await refresh();
       } catch (error) {
         setFailures((values) => ({ ...values, [id]: errorMessage(error) }));
@@ -310,6 +317,8 @@ export function Connections({
                     : "No observations received"}
                 </strong>
               </div>
+              {source.last_checked_at && <p className="fine-print">Checked at {new Date(source.last_checked_at).toLocaleString()}</p>}
+              {source.snapshot?.system_id && <p className="fine-print">System {source.snapshot.system_id}</p>}
               {failures[source.id] && (
                 <div className="inline-error">{failures[source.id]}</div>
               )}

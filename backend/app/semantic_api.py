@@ -22,6 +22,7 @@ class ExpertNote(BaseModel):
     citations: list[CitationLink] = Field(min_length=1, max_length=12)
     target_node_id: str | None = Field(default=None, max_length=300)
     supersedes_document_id: str | None = Field(default=None, max_length=100)
+    handoff_id: str | None = Field(default=None, max_length=100)
     sign_as_current_user: Literal[True]
 
 
@@ -33,6 +34,7 @@ class LearningProfile(BaseModel):
 class StartCheck(BaseModel):
     document_id: str = Field(min_length=1, max_length=100)
     mode: Literal['reference_recall', 'explanation'] = 'reference_recall'
+    handoff_id: str | None = Field(default=None, max_length=100)
 
 
 class CheckAnswer(BaseModel):
@@ -47,11 +49,19 @@ class EditionLink(BaseModel):
 class CheckReview(BaseModel):
     decision: Literal['approved', 'rejected']
     notes: str = Field(min_length=10, max_length=2000)
+    criteria: list[Literal['decision', 'evidence', 'limits', 'safe_next_step']] = Field(default_factory=list, max_length=4)
 
 
 @router.get('/knowledge/catalog')
 def catalog(q: str = Query(default='', max_length=160), user=Depends(principal)):
     return knowledge.catalog(user, q)
+
+
+@router.get('/knowledge/citations/{citation_id}')
+def citation_detail(citation_id: str, user=Depends(principal)):
+    with store.database() as db:
+        source = knowledge.citation(db, user, citation_id)
+    return {key: source[key] for key in ('id', 'document_id', 'title', 'content', 'status')}
 
 
 @router.post('/knowledge/notes', status_code=201)
@@ -66,7 +76,7 @@ def update_profile(body: LearningProfile, user=Depends(principal)):
 
 @router.post('/knowledge/checks', status_code=201)
 def start_check(body: StartCheck, user=Depends(principal)):
-    return knowledge.start_check(user, body.document_id, body.mode)
+    return knowledge.start_check(user, body.document_id, body.mode, body.handoff_id)
 
 
 @router.get('/knowledge/check-reviews')
@@ -78,7 +88,7 @@ def check_reviews(user=Depends(principal)):
 @router.post('/knowledge/checks/{check_id}/review')
 def review_check(check_id: str, body: CheckReview, user=Depends(principal)):
     from .knowledge_assessment import review
-    return review(user, check_id, body.decision, body.notes)
+    return review(user, check_id, body.decision, body.notes, body.criteria)
 
 
 @router.post('/knowledge/checks/{check_id}/answer')

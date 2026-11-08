@@ -8,7 +8,7 @@ import { Force3DLayout } from "./Force3DLayout";
 import { graphLabelPriority, graphSelection } from "./graphReadability";
 import { syncGraphEdges } from "./syncGraphEdges";
 import { clusterTarget, CONCEPT_COLORS } from "./semanticPresentation";
-import { Focus, Maximize2, Minus, Pause, Play, Plus } from "lucide-react";
+import { Focus, Maximize2, Minus, Pause, Play, Plus, RotateCw } from "lucide-react";
 import type { GraphEdge, GraphNode } from "./types";
 
 interface Props {
@@ -22,6 +22,7 @@ interface Props {
   trailEdges?: string[];
   spotlight?: string | null;
   viewKey?: string;
+  newDocumentIds?: string[];
 }
 const COLORS: Record<GraphNode["kind"], string> = {
   person: "#72a269",
@@ -50,6 +51,7 @@ export function GraphCanvas({
   trailEdges = EMPTY_TRAIL,
   spotlight = null,
   viewKey = "",
+  newDocumentIds = EMPTY_TRAIL,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<MultiDirectedGraph | null>(null);
@@ -57,7 +59,7 @@ export function GraphCanvas({
   const fallback = useRef<CanvasNetwork | PerspectiveNetwork | null>(null);
   const layout = useRef<FA2Layout | Force3DLayout | null>(null);
   const onSelectRef = useRef(onSelect);
-  const positionCache = useRef(new Map<string, { x: number; y: number }>());
+  const positionCache = useRef(new Map<string, { x: number; y: number; z: number }>());
   const animation = useRef<number>(0);
   const layoutTimer = useRef<number>(0);
   const [failure, setFailure] = useState("");
@@ -71,6 +73,17 @@ export function GraphCanvas({
   const reduced = useRef(
     window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
+  const [autoOrbit, setAutoOrbit] = useState(!reduced.current);
+  const [reduceMotion, setReduceMotion] = useState(reduced.current);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => {
+      reduced.current = media.matches;
+      setReduceMotion(media.matches);
+    };
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   onSelectRef.current = onSelect;
 
   function settle(milliseconds = 2200) {
@@ -194,6 +207,7 @@ export function GraphCanvas({
         positionCache.current.set(id, {
           x: Number(attributes.x),
           y: Number(attributes.y),
+          z: Number(attributes.z || 0),
         }),
       );
       window.clearTimeout(layoutTimer.current);
@@ -219,6 +233,7 @@ export function GraphCanvas({
         positionCache.current.set(id, {
           x: attributes.x as number,
           y: attributes.y as number,
+          z: Number(attributes.z || 0),
         });
         data.dropNode(id);
         changed = true;
@@ -294,7 +309,7 @@ export function GraphCanvas({
               : node.kind === "topic"
                 ? -150
                 : depth * Math.max(150, Math.sqrt(nodes.length) * 8);
-        data.addNode(node.id, { ...values, ...position, z });
+        data.addNode(node.id, { ...values, ...position, z: saved?.z ?? z });
         additions.push(node.id);
         changed = true;
       } else {
@@ -323,9 +338,7 @@ export function GraphCanvas({
     if (existing && fallback.current instanceof PerspectiveNetwork) {
       fallback.current.arriveEdges(addedEdges);
       fallback.current.arrive(
-        additions.filter(
-          (id) => data.getNodeAttribute(id, "kind") === "document",
-        ),
+        additions.filter((id) => newDocumentIds.includes(id)),
       );
     }
     if (changed && data.order > 1) settle();
@@ -351,7 +364,14 @@ export function GraphCanvas({
       };
       animation.current = requestAnimationFrame(animate);
     }
-  }, [nodes, edges, dimension]);
+  }, [nodes, edges, dimension, newDocumentIds]);
+
+  useEffect(() => {
+    if (fallback.current instanceof PerspectiveNetwork) {
+      fallback.current.setReducedMotion(reduceMotion);
+      fallback.current.setAutoOrbit(autoOrbit);
+    }
+  }, [dimension, autoOrbit, reduceMotion]);
 
   useEffect(() => {
     graph.current?.setAttribute("trailEdges", trailEdges);
@@ -487,7 +507,7 @@ export function GraphCanvas({
       );
   }
   return (
-    <div className="network-stage" data-dimension={dimension}>
+    <div className="network-stage" id="graph-network" data-dimension={dimension}>
       <div
         ref={container}
         className="network-webgl"
@@ -561,6 +581,18 @@ export function GraphCanvas({
         >
           {running ? <Pause size={15} /> : <Play size={15} />}
         </button>
+        {dimension === "3d" && (
+          <button
+            className={"icon-button orbit-toggle" + (autoOrbit && !reduceMotion ? " active" : "")}
+            aria-label={autoOrbit && !reduceMotion ? "Pause auto orbit" : "Start auto orbit"}
+            aria-pressed={autoOrbit && !reduceMotion}
+            title={reduceMotion ? "Reduced motion is enabled" : "Auto orbit pauses while you interact with the graph"}
+            disabled={reduceMotion}
+            onClick={() => setAutoOrbit((enabled) => !enabled)}
+          >
+            <RotateCw size={16} />
+          </button>
+        )}
       </div>
       <div className="network-legend">
         {(Object.keys(COLORS) as GraphNode["kind"][]).map((kind) => (

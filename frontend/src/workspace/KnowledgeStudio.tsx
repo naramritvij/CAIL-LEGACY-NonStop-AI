@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { Handoff, TransferAction } from "./TransferDesk";
 import { ArrowRight, Check, GraduationCap, PenLine, X } from "lucide-react";
 import {
   request,
@@ -40,6 +41,8 @@ type Draft = {
   citations: { citation_id: string; relation: string }[];
   previous?: string;
   target?: string;
+  handoff_id?: string;
+  handoff_question?: string;
 };
 type CheckSession = {
   id: string;
@@ -47,6 +50,7 @@ type CheckSession = {
   prompt: string;
   meaning: string;
   assessment: string;
+  guidance_excerpt?: string;
 };
 type ExplanationReview = {
   check_id: string;
@@ -58,6 +62,7 @@ type ExplanationReview = {
   feedback: string;
   status: string;
   review_notes?: string;
+  handoff_id?: string;
 };
 export interface EvidenceTrail {
   found: boolean;
@@ -75,6 +80,8 @@ export function KnowledgeStudio({
   onRefresh,
   onError,
   initialCitation,
+  transferAction,
+  onTransferHandled,
 }: {
   graph: GraphData | null;
   selected: GraphNode | null | undefined;
@@ -84,6 +91,8 @@ export function KnowledgeStudio({
   onRefresh: () => Promise<void>;
   onError: (message: string) => void;
   initialCitation?: string;
+  transferAction?: TransferAction | null;
+  onTransferHandled?: () => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [query, setQuery] = useState("");
@@ -99,14 +108,20 @@ export function KnowledgeStudio({
   const [checkMode, setCheckMode] = useState("reference_recall");
   const [reviews, setReviews] = useState<ExplanationReview[]>([]);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [reviewCriteria, setReviewCriteria] = useState<Record<string, string[]>>({});
+  const [rubric, setRubric] = useState<Record<string, string>>({});
+  const [showReviews, setShowReviews] = useState(false);
   const [pinnedCitations, setPinnedCitations] = useState<Catalog["citations"]>(
     [],
   );
   useEffect(() => {
     let current = true;
-    request<{ checks: ExplanationReview[] }>("/knowledge/check-reviews")
+    request<{ checks: ExplanationReview[]; rubric: Record<string, string> }>("/knowledge/check-reviews")
       .then((result) => {
-        if (current) setReviews(result.checks);
+        if (current) {
+          setReviews(result.checks);
+          setRubric(result.rubric);
+        }
       })
       .catch((error) => {
         if (current) onError(errorMessage(error));
@@ -141,12 +156,12 @@ export function KnowledgeStudio({
     };
   }, [query, graph?.cursor, onError, profileLoaded]);
 
-  function editGuidance(revise = false) {
+  function editGuidance(revise = false, handoff?: Handoff) {
     setPinnedCitations([]);
     const original = revise && document?.expert_note ? document : null;
     setQuery(selected?.id.startsWith("concept:") ? selected.label : "");
     setDraft({
-      title: original ? original.title + " · updated" : "",
+      title: handoff ? ("Guidance for " + handoff.requester_name).slice(0, 160) : original ? original.title + " · updated" : "",
       content: original?.content || "",
       category: original?.expert_note?.category || "guidance",
       concept_ids:
@@ -155,7 +170,9 @@ export function KnowledgeStudio({
       citations: original?.expert_note?.citations || [
         { citation_id: initialCitation || "", relation: "cites" },
       ],
-      previous: original?.id,
+      previous: handoff?.guidance?.id || original?.id,
+      handoff_id: handoff?.id,
+      handoff_question: handoff?.question,
       target:
         selected?.id.startsWith("entity:") || selected?.id.startsWith("source:")
           ? selected.id
@@ -230,7 +247,24 @@ export function KnowledgeStudio({
       setBusy(false);
     }
   }
-  async function startCheck(id: string) {
+  async function reuseGuidance(documentId: string) {
+    if (!draft?.handoff_id || !documentId) return;
+    setBusy(true);
+    try {
+      await request("/knowledge/handoffs/" + draft.handoff_id + "/guidance", {
+        method: "POST",
+        body: JSON.stringify({ document_id: documentId }),
+      });
+      setDraft(null);
+      await onRefresh();
+      onChoose("document:" + documentId);
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function startCheck(id: string, handoffId?: string) {
     setBusy(true);
     setFeedback("");
     setAnswer("");
@@ -238,7 +272,11 @@ export function KnowledgeStudio({
       setCheck(
         await request<CheckSession>("/knowledge/checks", {
           method: "POST",
-          body: JSON.stringify({ document_id: id, mode: checkMode }),
+          body: JSON.stringify({
+            document_id: id,
+            mode: handoffId ? "explanation" : checkMode,
+            handoff_id: handoffId,
+          }),
         }),
       );
     } catch (error) {
@@ -293,7 +331,7 @@ export function KnowledgeStudio({
     try {
       await request("/knowledge/checks/" + id + "/review", {
         method: "POST",
-        body: JSON.stringify({ decision, notes: reviewNotes[id] || "" }),
+        body: JSON.stringify({ decision, notes: reviewNotes[id] || "", criteria: reviewCriteria[id] || [] }),
       });
       setFeedback(
         decision === "approved"
@@ -307,6 +345,17 @@ export function KnowledgeStudio({
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!transferAction) return;
+    if (transferAction.kind === "respond") editGuidance(false, transferAction.handoff);
+    if (transferAction.kind === "explain" && transferAction.handoff.guidance)
+      void startCheck(transferAction.handoff.guidance.id, transferAction.handoff.id);
+    if (transferAction.kind === "reviews") {
+      setShowReviews(true);
+      window.requestAnimationFrame(() => window.document.getElementById("explanation-review-queue")?.scrollIntoView({ block: "start" }));
+    }
+    onTransferHandled?.();
+  }, [transferAction]);
   async function linkEdition() {
     if (!document || !previousEdition) return;
     setBusy(true);
@@ -329,6 +378,10 @@ export function KnowledgeStudio({
       setBusy(false);
     }
   }
+  const reusableNotes = draft?.handoff_id
+    ? (catalog?.notes || []).filter((note) =>
+      note.owner_id === operator.id && note.status === "approved" && !note.needs_review && !note.superseded)
+    : [];
   const eligibleNotes = (catalog?.notes || []).filter(
     (n) =>
       n.status === "approved" &&
@@ -525,9 +578,10 @@ export function KnowledgeStudio({
               Save profile
             </button>
           </details>
-          {!!reviews.length && (
-            <details className="explanation-reviews">
+          {(!!reviews.length || operator.can_review) && (
+            <details className="explanation-reviews" id="explanation-review-queue" open={showReviews} onToggle={(event) => setShowReviews(event.currentTarget.open)}>
               <summary>Explanation reviews · {reviews.length}</summary>
+              {!reviews.length && <p className="muted">No explanations available for review.</p>}
               {reviews.map((item) => (
                 <article key={item.check_id}>
                   <strong>{item.title}</strong>
@@ -536,7 +590,7 @@ export function KnowledgeStudio({
                   </small>
                   <blockquote>{item.answer}</blockquote>
                   <details>
-                    <summary>Provisional automated feedback</summary>
+                    <summary>{item.handoff_id ? "Assessment notes" : "Provisional automated feedback"}</summary>
                     <p>{item.feedback}</p>
                   </details>
                   {item.review_notes && <p>{item.review_notes}</p>}
@@ -550,6 +604,26 @@ export function KnowledgeStudio({
                     item.person_id !== operator.id &&
                     item.status === "awaiting_review" && (
                       <>
+                        {item.handoff_id && (
+                          <fieldset className="transfer-rubric">
+                            <legend>Confirm the evidence and safety criteria</legend>
+                            {Object.entries(rubric).map(([key, label]) => (
+                              <label className="studio-check" key={key}>
+                                <input
+                                  type="checkbox"
+                                  checked={(reviewCriteria[item.check_id] || []).includes(key)}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked;
+                                    setReviewCriteria((previous) => {
+                                      const selected = previous[item.check_id] || [];
+                                      return { ...previous, [item.check_id]: checked ? [...selected, key] : selected.filter((value) => value !== key) };
+                                    });
+                                  }}
+                                />{label}
+                              </label>
+                            ))}
+                          </fieldset>
+                        )}
                         <label className="studio-field">
                           Review reasoning
                           <textarea
@@ -571,7 +645,8 @@ export function KnowledgeStudio({
                           className="primary"
                           disabled={
                             busy ||
-                            (reviewNotes[item.check_id] || "").length < 10
+                            (reviewNotes[item.check_id] || "").trim().length < 10 ||
+                            (!!item.handoff_id && (reviewCriteria[item.check_id] || []).length !== Object.keys(rubric).length)
                           }
                           onClick={() =>
                             void reviewExplanation(item.check_id, "approved")
@@ -639,6 +714,25 @@ export function KnowledgeStudio({
               under your name; independent approval enables shared guidance and
               expertise links.
             </p>
+            {draft.handoff_question && <blockquote className="transfer-notice">{draft.handoff_question}</blockquote>}
+            {reusableNotes.length > 0 && (
+              <details className="learning-preferences">
+                <summary>Reuse approved guidance</summary>
+                <form onSubmit={(event) => {
+                  event.preventDefault();
+                  void reuseGuidance(String(new FormData(event.currentTarget).get("guidance") || ""));
+                }}>
+                  <label>
+                    Your current approved guidance
+                    <select name="guidance" required defaultValue="">
+                      <option value="">Choose guidance that answers the request</option>
+                      {reusableNotes.map((note) => <option key={note.id} value={note.id}>{note.title}</option>)}
+                    </select>
+                  </label>
+                  <button className="secondary" disabled={busy}>Use this guidance</button>
+                </form>
+              </details>
+            )}
             {draft.target && (
               <p className="fine-print">
                 Applies to selected source entity:{" "}
@@ -861,6 +955,12 @@ export function KnowledgeStudio({
             </header>
             <p className="check-prompt">{check.prompt}</p>
             <p className="muted">{check.meaning}</p>
+            {check.guidance_excerpt && (
+              <details className="learning-preferences">
+                <summary>Read the approved guidance</summary>
+                <p className="guidance-excerpt">{check.guidance_excerpt}</p>
+              </details>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();

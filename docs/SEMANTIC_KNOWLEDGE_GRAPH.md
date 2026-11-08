@@ -79,7 +79,42 @@ authorized independent reviewers.
 
 The single local-demo identity can contribute drafts. Independent approval
 and another person's learning require separate configured operators, using
-the README's identity setup. No fictional mentors or approvals are seeded.
+the README's identity setup. The optional isolated demo seeds explicitly labelled synthetic contributors and assessments.
+
+## Tracked knowledge handoffs
+
+**People & handoffs** lists workspace contributors, their visible documents
+and your recorded access to those documents. A configured member manager can
+create an operator or reviewer key, rotate it or revoke the member’s sessions.
+Directory roles describe how people contribute. Review permission is assigned
+on the server.
+
+A learner can request guidance from an active contributor, with optional
+context from one of that person’s approved documents. The graph records a
+private **requested guidance** link between them. The assigned contributor
+signs a scoped note with exact citations and submits it for review. An
+independent reviewer inspects the source excerpt and records a decision.
+The contributor can also reuse their current approved guidance for a new
+request. The learner then explains the operational decision using the approved note.
+
+The reviewer must be distinct from both the guidance author and the learner.
+A pass requires confirmation of all four criteria.
+
+- Identify the supporting command, observation or excerpt.
+- Explain the operational decision in the learner’s own words.
+- State its documented scope and limitations.
+- Describe an authorized read-only next check or escalation.
+
+The receipt identifies the exact guidance hash, cited sources and reviewer
+decision. Source supersession withholds current guidance and the current
+receipt until review and learning are completed for the new version.
+Historical guidance, citations and assessment records remain stored.
+A receipt demonstrates the reviewed explanation for that edition.
+
+Ask the assistant **Show approved guidance about TMFCOM** to retrieve a
+current signed excerpt and its citation when there is relevant approved
+guidance. This lookup works with the local model offline. General questions
+and follow-ups use the configured model and conversation memory.
 
 ## Editions and evidence trails
 
@@ -105,9 +140,11 @@ stored arrow direction and citations. Following an edge backwards does not
 reverse its meaning. Layout coordinates are presentation positions, not
 physical machine locations.
 
-Documents arrive from alternating sides; new links grow in, views fade and
-the camera eases between trail steps. Positions are cached across views.
-Reduced-motion preferences disable automatic layout and animated camera/entry.
+Documents arrive from alternating sides as their stored links grow in. The
+camera eases between trail steps and preserves depth positions across views.
+The idle orbit pauses on hover, selection or trail playback, while the graph
+is offscreen, and in a hidden tab. The operator can pause orbit explicitly.
+Reduced-motion preferences disable automatic layout and animated camera entry.
 
 Node drill-downs include the stored document endpoint, canonical concept
 references, readable signed citations and contextual attachments. Observations

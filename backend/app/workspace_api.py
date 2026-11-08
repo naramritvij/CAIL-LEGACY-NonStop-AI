@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from pydantic import BaseModel, Field
 
 from . import workspace_store as store
-from .workspace_identity import COOKIE, login, principal
+from .workspace_identity import COOKIE, configured_users, demo_roles, login, principal
 from . import live_sources
 
 router = APIRouter(prefix='/api/v1/workspace', tags=['Conversational workspace'])
@@ -31,6 +31,10 @@ VENDOR_SOURCES = {
 
 class LoginBody(BaseModel):
     access_key: str = Field(min_length=1, max_length=512)
+
+
+class DemoRoleBody(BaseModel):
+    person_id: Literal['transfer-learner', 'transfer-expert', 'transfer-reviewer']
 
 
 class TurnBody(BaseModel):
@@ -72,8 +76,22 @@ def session(user=Depends(principal)):
 @router.post('/session')
 def sign_in(body: LoginBody, response: Response, request: Request):
     user, token = login(body.access_key)
+    set_session_cookie(response, request, token)
+    return user
+
+
+def set_session_cookie(response, request, token):
     response.set_cookie(COOKIE, token, httponly=True, samesite='strict', max_age=43200,
                         secure=request.url.scheme == 'https' or os.getenv('CAIL_COOKIE_SECURE', '').lower() == 'true', path='/api/v1/workspace')
+
+
+@router.post('/session/demo-role')
+def switch_demo_role(body: DemoRoleBody, response: Response, request: Request):
+    member = demo_roles(configured_users()).get(body.person_id)
+    if not member:
+        raise HTTPException(404, 'Role switching is available only in the isolated transfer demo.')
+    user, token = login(member['key'])
+    set_session_cookie(response, request, token)
     return user
 
 
@@ -260,8 +278,8 @@ async def document_upload(file: UploadFile = File(...), topic: str = Form('Gener
 
 
 @router.get('/documents/{document_id}')
-def document_detail(document_id: str, user=Depends(principal)):
-    return store.document(user, document_id)
+def document_detail(document_id: str, record_access: bool = True, user=Depends(principal)):
+    return store.document(user, document_id, record_access=record_access)
 
 
 @router.post('/documents/manual', status_code=201)
@@ -334,8 +352,8 @@ def connections(user=Depends(principal)):
     from datetime import datetime, timezone
     for key, metadata in VENDOR_SOURCES.items():
         history = store.snapshot_history(key) if user['can_read_live'] else []
-        if vendor_datasets.mode(key):
-            scope = vendor_datasets.canonical_system(os.getenv(f'CAIL_{key.upper()}_SYSTEM_ID', ''))
+        scope = vendor_datasets.canonical_system(os.getenv(f'CAIL_{key.upper()}_SYSTEM_ID', ''))
+        if scope:
             history = [item for item in history if vendor_datasets.canonical_system(item.get('system_id', '')) == scope]
         latest = history[-1] if history else None
         current = store.source_state(key)
@@ -347,6 +365,7 @@ def connections(user=Depends(principal)):
                      'configured': capabilities.get(key, {}).get('configured', False) or topology['topology_configured'],
                      'connected': connected, 'metrics_connected': fresh, 'status': 'connected' if connected else 'not_connected',
                      'last_observed_at': latest['observed_at'] if fresh else topology['topology_observed_at'],
+                     'last_checked_at': current['checked_at'] if current and user['can_read_live'] else None,
                      'snapshot': latest if fresh else None, 'history': history,
                      'execution_allowed': False})
     return {'sources': rows, 'can_read_live': user['can_read_live'], 'model': os.getenv('OLLAMA_MODEL', 'qwen3:4b-instruct')}
@@ -359,3 +378,6 @@ def connection_check(source_id: str, user=Depends(principal)):
 
 from .semantic_api import router as semantic_router
 router.include_router(semantic_router)
+
+from .transfer_api import router as transfer_router
+router.include_router(transfer_router)

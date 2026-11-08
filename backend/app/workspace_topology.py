@@ -253,6 +253,9 @@ def read_live(source_id):
         if not isinstance(data, dict) or data.get('source_id') != source_id:
             raise ValueError()
         system = bounded(data.get('system_id'), 'System ID', 120)
+        expected = os.getenv(f'CAIL_{source_id.upper()}_SYSTEM_ID', '').strip()
+        if expected and vendor_datasets.canonical_system(system) != vendor_datasets.canonical_system(expected):
+            raise ValueError('Unexpected system scope')
         observed = live_sources._timestamp(data.get('observed_at'))
         age = (datetime.now(timezone.utc) - observed).total_seconds()
         if not -60 <= age <= live_sources.MAX_AGE_SECONDS:
@@ -282,7 +285,9 @@ def sync(user, source_ids=None):
                 db.execute('INSERT INTO ws_topology_sync VALUES (?,?,?) ON CONFLICT(source_id) DO UPDATE SET status=excluded.status,attempted_at=excluded.attempted_at', (source_id, 'connected', store.now()))
                 store.event(db, user, 'topology_synced', detail={'source_id': source_id, 'nodes': len(payload['nodes'])})
                 db.execute('COMMIT')
-            return {'id': source_id, 'status': 'connected', 'node_count': len(payload['nodes']), 'edge_count': len(payload['edges']), 'observed_at': data['observed_at']}
+            return {'id': source_id, 'status': 'connected', 'node_count': len(payload['nodes']),
+                    'edge_count': len(payload['edges']), 'observed_at': data['observed_at'],
+                    'system_id': data['system_id'], 'snapshot_sha256': data['sha256']}
         except HTTPException as exc:
             with store.database() as db:
                 db.execute('INSERT INTO ws_topology_sync VALUES (?,?,?) ON CONFLICT(source_id) DO UPDATE SET status=excluded.status,attempted_at=excluded.attempted_at', (source_id, 'unavailable', store.now()))
@@ -296,11 +301,11 @@ def sync(user, source_ids=None):
 def visible_datasets(db, user):
     from . import vendor_datasets
     allowed_live = {item['id'] for item in capabilities(user) if item['can_sync']}
-    native_scopes = {source: vendor_datasets.canonical_system(os.getenv(f'CAIL_{source.upper()}_SYSTEM_ID', '')) for source in allowed_live if vendor_datasets.mode(source)}
+    scopes = {source: vendor_datasets.canonical_system(os.getenv(f'CAIL_{source.upper()}_SYSTEM_ID', '')) for source in allowed_live}
     rows = db.execute('SELECT t.*,d.owner_id,d.status AS review_status FROM ws_topology_datasets t LEFT JOIN ws_documents d ON d.id=t.document_id').fetchall()
     visible = [dict(row) for row in rows if
             (row['source_kind'] == 'live_topology' and row['source_id'] in allowed_live and
-             (row['source_id'] not in native_scopes or vendor_datasets.canonical_system(row['system_id']) == native_scopes[row['source_id']])) or
+             (not scopes.get(row['source_id']) or vendor_datasets.canonical_system(row['system_id']) == scopes[row['source_id']])) or
             (row['source_kind'] in ('imported_export', 'document_evidence', 'monitoring_export') and store.can_see({'status': row['review_status'], 'owner_id': row['owner_id']}, user))]
     for dataset in visible:
         if dataset['source_kind'] == 'live_topology':
@@ -334,7 +339,10 @@ def require_node(db, user, node_id):
                 'SELECT 1 FROM ws_learning_activity a JOIN ws_documents d ON d.id=a.document_id '
                 'JOIN ws_learning_profiles p ON p.person_id=a.person_id '
                 f'WHERE a.person_id=? AND a.shared=1 AND p.share_activity=1 AND {permitted()} LIMIT 1',
-                (pid, *args(user))).fetchone()
+            (pid, *args(user))).fetchone() or (not user.get('local_demo') and db.execute(
+                'SELECT 1 FROM ws_handoffs WHERE closed_by IS NULL AND '
+                '((requester_id=? AND contributor_id=?) OR (requester_id=? AND contributor_id=?)) LIMIT 1',
+                (user['id'], pid, pid, user['id'])).fetchone())
         person = db.execute('SELECT * FROM ws_people WHERE id=?', (pid,)).fetchone()
         if allowed and person:
             return {'id': node_id, 'label': person['name']}
@@ -359,7 +367,7 @@ def link_document(user, document_id, target_node_id):
 def cursor(user):
     with store.database() as db:
         revision = db.execute('SELECT COALESCE(MAX(sequence),0) AS n FROM ws_events').fetchone()['n']
-    scopes = [os.getenv('CAIL_PROGNOSIS_SYSTEM_ID', ''), os.getenv('CAIL_MOMI_SYSTEM_ID', '')]
+    scopes = [os.getenv(f'CAIL_{source.upper()}_SYSTEM_ID', '') for source in VENDORS]
     from .semantic_graph import VERSION
     view = [revision, VERSION, user['id'], user['can_review'], user['can_read_live'], capabilities(user), scopes, int(datetime.now(timezone.utc).timestamp() / 30)]
     return hashlib.sha256(json.dumps(view, sort_keys=True).encode()).hexdigest()[:24], revision
@@ -378,7 +386,11 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
         db.execute('BEGIN')
         from . import semantic_graph as semantic
         from .graph_navigation import attachment_edge, collection_edge
+        from .knowledge_transfer import graph_connections
         semantic_nodes, semantic_edges, semantic_meta = semantic.project(db, user)
+        people, requests = graph_connections(db, user)
+        semantic_nodes.extend(people)
+        semantic_edges.extend(requests)
         # Merge note/person metadata without dropping existing contributor fields.
         merged = {n['id']: n for n in nodes}
         for node in semantic_nodes:

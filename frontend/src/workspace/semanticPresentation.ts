@@ -19,6 +19,7 @@ export function relationshipColor(kind: string) {
         knows: "#329a79",
         learned_from: "#329a79",
         asked_about: "#b59b5f",
+        guidance_requested: "#9b5ac0",
         contradicts: "#cb7070",
         supports: "#5698af",
         supersedes: "#9982ad",

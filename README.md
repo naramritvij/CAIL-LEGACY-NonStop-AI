@@ -5,7 +5,7 @@ A focused, light workspace for operational questions, persistent conversation me
 The application now has **three screens**:
 
 - **Assistant:** one conversational interface. User messages, assistant answers, evidence and agent activity are saved in SQLite. Follow-ups receive relevant earlier user **and** assistant turns; new topics are routed independently.
-- **Knowledge graph:** a 3D orbit view with a 2D option, contributor/document/passage networks, actual access events and imported or authorized source data. Explore thousands of small nodes, inspect source text and citations, and attach knowledge to a specific entity. New documents enter with an animated connection. Committed knowledge refreshes every three seconds while visible; uploads retain their contributor.
+- **Knowledge graph:** a 3D orbit view with a 2D option, contributor/document/passage networks, actual access events and imported or authorized source data. Explore thousands of small nodes, inspect source text and citations, and attach knowledge to a specific entity. The 3D view rotates while idle, and new documents fly in from the side and draw their contributor and attachment links. Committed knowledge refreshes every three seconds while visible; uploads retain their contributor.
 - **Connections:** direct read-only Prognosis REST datasets, read-only MOMI alarm exports, and the existing Prognosis/ASAP/MOMI gateways. Timestamped observations, source scope and real numeric histories are shown when supplied; missing values are not invented.
 
 The orchestrator delegates to memory, knowledge, telemetry and evidence-evaluation workers, then synthesizes an answer with the existing local Ollama model. The evaluator can reject irrelevant excerpts and request another query, with at most five retrieval attempts. Access control and document approval remain outside the model.
@@ -86,6 +86,27 @@ To load real NonStop reference content immediately, choose **Add knowledge → H
 
 The owner submits a contribution. A different reviewer approves or requests revision. **Only approved content enters assistant retrieval.** Owners see their drafts; reviewers see submitted material; team members see approved material. Existing approved Decision DNA and release-filtered corpus records remain searchable.
 
+## Demonstrate knowledge transfer
+
+From a checkout with Docker Desktop running, start the isolated local demo.
+
+~~~powershell
+python scripts/start_transfer_demo.py
+~~~
+
+Open [the demo graph](http://localhost:5180/#/graph). **People & handoffs** opens with a completed example and a practice request. Use **Switch demo role** in the sidebar to move among the synthetic learner, expert and independent reviewer. The demo uses its own Compose project and SQLite volume. It runs without an Ollama model or customer monitoring access.
+
+1. As the learner, open the expert’s contributions and request guidance. You can link an approved document you already read.
+2. As the expert, open the request, select a documented concept and exact passage, then sign and submit the response. If a current approved note already answers the request, choose **Reuse approved guidance**.
+3. As the independent reviewer, open **Review queue**, inspect the cited passage and record the reason for approval or return.
+4. As the learner, read the approved response and explain the evidence, reasoning, limits and safe next check or escalation.
+5. As the reviewer, assess those four criteria. The learner can then open the **Learning receipt** with the assessor, date, guidance version and source citations. A superseded source edition sends the handoff back for source review.
+6. Upload a document on the graph. The new node enters from a side, grows its links and shows its contributor in the document details. The graph resumes its idle orbit when you clear selection and move off the canvas. **Pause orbit** and the system reduced-motion preference control the movement.
+
+Stop the demo with `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. The demo volume retains its records.
+
+In the regular workspace, a configured operator with `"can_manage_members":true` can add a contributor in **People & handoffs**, assign reviewer access, and rotate or revoke a key. Copy the one-time key and share it privately with that contributor. The directory shows per-contributor visible document counts, approved guidance and documents you accessed. Guidance requests and their graph links are scoped to their participants. See the [knowledge transfer and graph guide](docs/SEMANTIC_KNOWLEDGE_GRAPH.md#tracked-knowledge-handoffs).
+
 ## Real source access
 
 See [the workspace and integration guide](docs/AGENT_WORKSPACE.md) for the contract and permission model.
@@ -98,7 +119,7 @@ For direct Prognosis datasets or a read-only MOMI export folder, follow [the nat
 | HPE ASAP | CAIL_LIVE_ASAP_URL | CAIL_LIVE_ASAP_TOKEN | Consumer API, published query interface or approved monitoring bridge |
 | MOMI | CAIL_LIVE_MOMI_URL | CAIL_LIVE_MOMI_TOKEN | Vendor-approved client/server collector exposed through the read-only gateway |
 
-Also set CAIL_LIVE_ENABLED=true and CAIL_LIVE_ALLOWED_HOSTS. The separate CAIL_OPERATOR_READ_KEY applies to older integration endpoints; the new workspace uses per-operator can_read_live authorization.
+Set `CAIL_LIVE_ENABLED=true`, `CAIL_LIVE_ALLOWED_HOSTS`, and the expected system IDs `CAIL_PROGNOSIS_SYSTEM_ID`, `CAIL_ASAP_SYSTEM_ID` and `CAIL_MOMI_SYSTEM_ID` for the sources being used. The separate CAIL_OPERATOR_READ_KEY applies to older integration endpoints; the new workspace uses per-operator can_read_live authorization.
 
 For source networks, configure `CAIL_LIVE_PROGNOSIS_TOPOLOGY_URL`, `CAIL_LIVE_ASAP_TOPOLOGY_URL` and/or `CAIL_LIVE_MOMI_TOPOLOGY_URL` with the corresponding server-only token above. These optional read-only gateway endpoints return source/system identity, observation time, nodes and relationships. They are not guessed native product API paths. The graph can refresh configured sources every 15 seconds while open. See the [topology contract and activation steps](docs/SCALABLE_GRAPH.md#connect-actual-prognosis-asap-and-momi-topology).
 
@@ -106,11 +127,21 @@ Only fixed, allowlisted HTTPS GET requests are issued. TLS is verified. Redirect
 
 The former public Tailscale demonstration does **not** enable this private persistent workspace. Deploy privately with authenticated identities rather than exposing the local demonstration identity.
 
+With sponsor-authorized read access configured in the running backend, verify the pilot from the same environment.
+
+~~~powershell
+docker compose exec backend python -m app.source_acceptance
+~~~
+
+Use `--operator <id>` when more than one configured operator can read live sources, and `--source prognosis`, `--source asap` or `--source momi` for a single-source check. The command checks every configured observation and topology path for each selected source, validates the returned system against the expected scope, and reports metadata including timestamps, record counts and snapshot hashes. It exits unsuccessfully if a selected source lacks configuration or fails validation. Controlled HTTPS and export tests have passed. A private CAIL pilot receipt requires the sponsor’s endpoint or export and authorized account.
+
 ## Validation
 
 ~~~bash
 PYTHONPATH=backend .venv/bin/python -m pytest -q backend/tests
 .venv/bin/python scripts/verify_graph_http.py
+.venv/bin/python scripts/verify_knowledge_transfer.py
+.venv/bin/python scripts/verify_source_transport.py
 npm --prefix frontend run test:contract
 npm --prefix frontend run test:graph
 npm --prefix frontend run build
@@ -136,6 +167,21 @@ docker compose exec backend python -m app.graph_smoke
 ~~~
 
 This adds **two labelled synthetic verification drafts** under the current operator: an uploaded Markdown file and a contextual attachment. It checks the actual HTTP upload, graph cursor change, contributor, exact citations, complete node connections and evidence trail. The drafts remain private and unapproved. With configured operators, supply `CAIL_SMOKE_ACCESS_KEY` through the process environment. `scripts/verify_graph_http.py` runs the same check in a temporary application, then verifies another operator's isolation and persistence through an actual process restart; CI runs it automatically. Neither check requires a model or monitoring access.
+
+### Local knowledge transfer measurements
+
+The authenticated walkthrough covered all three roles, receipt persistence after restart, contributor enrollment and access revocation. A browser walkthrough also completed the practice handoff, added a real test file, and verified that the orbit moves when enabled and stops when paused.
+
+The same synthetic 1,234-passage fixture was used for both local benchmark runs. Times are p95 across 25 runs.
+
+| Local measurement | Previous main (`0eece32`) | Knowledge transfer update |
+| --- | ---: | ---: |
+| Approved passage retrieval | 61.0 ms | 10.2 ms |
+| Full graph build (1,243 nodes, 7,409 relationships) | 193.4 ms | 189.0 ms |
+| Graph cursor refresh | 5.2 ms | 3.4 ms |
+| Initial compressed assistant JavaScript | 145.26 kB | about 82 kB |
+
+Run `.venv/bin/python scripts/benchmark_workspace.py` for a local measurement, or add `--baseline <checkout>` for a comparison. The answer checks cover exact approved guidance with citations, private draft exclusion, relevance, missing live evidence and source supersession. The new checks use the direct reviewed-guidance path. Peer performance and broad generative answer quality remain unmeasured.
 
 ## Further detail
 
