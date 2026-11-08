@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 import hashlib
 import json
 import re
@@ -21,6 +22,10 @@ SCHEMA = (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, updated_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS ws_sessions (
         token_hash TEXT PRIMARY KEY, person_id TEXT NOT NULL, expires_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS ws_members (
+        person_id TEXT PRIMARY KEY REFERENCES ws_people(id), key_hash TEXT UNIQUE NOT NULL,
+        can_review INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT NOT NULL, created_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS ws_conversations (
         id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -97,6 +102,15 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS ws_check_reviews (
         check_id TEXT PRIMARY KEY, answer TEXT NOT NULL, feedback TEXT NOT NULL,
         status TEXT NOT NULL, reviewer_id TEXT, review_notes TEXT, reviewed_at TEXT)""",
+    """CREATE TABLE IF NOT EXISTS ws_handoffs (
+        id TEXT PRIMARY KEY, requester_id TEXT NOT NULL REFERENCES ws_people(id),
+        contributor_id TEXT NOT NULL REFERENCES ws_people(id), question TEXT NOT NULL,
+        context_id TEXT REFERENCES ws_documents(id), guidance_id TEXT REFERENCES ws_documents(id),
+        request_key TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        closed_by TEXT, UNIQUE(requester_id,request_key))""",
+    """CREATE TABLE IF NOT EXISTS ws_handoff_checks (
+        check_id TEXT PRIMARY KEY REFERENCES ws_knowledge_checks(id),
+        handoff_id TEXT NOT NULL REFERENCES ws_handoffs(id), criteria TEXT NOT NULL DEFAULT '[]')""",
     'CREATE INDEX IF NOT EXISTS ws_conversations_owner ON ws_conversations(owner_id,updated_at)',
     'CREATE INDEX IF NOT EXISTS ws_messages_thread ON ws_messages(conversation_id,sequence)',
     'CREATE INDEX IF NOT EXISTS ws_documents_status ON ws_documents(status,owner_id)',
@@ -110,6 +124,10 @@ SCHEMA = (
     'CREATE INDEX IF NOT EXISTS ws_mentions_document ON ws_concept_mentions(document_id,citation_id)',
     'CREATE INDEX IF NOT EXISTS ws_mentions_concept ON ws_concept_mentions(concept_id)',
     'CREATE INDEX IF NOT EXISTS ws_activity_document ON ws_learning_activity(document_id,person_id)',
+    'CREATE INDEX IF NOT EXISTS ws_documents_owner ON ws_documents(owner_id,status)',
+    'CREATE INDEX IF NOT EXISTS ws_handoff_inbox ON ws_handoffs(contributor_id,updated_at)',
+    'CREATE INDEX IF NOT EXISTS ws_handoff_outbox ON ws_handoffs(requester_id,updated_at)',
+    'CREATE INDEX IF NOT EXISTS ws_handoff_checks_request ON ws_handoff_checks(handoff_id)',
 )
 
 
@@ -121,10 +139,14 @@ def database():
         yield db
 
 
+def record_person(db, principal):
+    db.execute('INSERT INTO ws_people VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at '
+               'WHERE ws_people.name!=excluded.name', (principal['id'], principal['name'], now()))
+
+
 def person(principal):
     with database() as db:
-        db.execute('INSERT INTO ws_people VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at',
-                   (principal['id'], principal['name'], now()))
+        record_person(db, principal)
 
 
 def event(db, principal, kind, document_id=None, detail=None):
@@ -280,11 +302,15 @@ def transition_document(principal, identifier, decision, notes=''):
             allowed = principal['can_review'] and doc['owner_id'] != principal['id'] and doc['status'] == 'submitted'
         if not allowed:
             raise HTTPException(403, 'This transition requires the owner or an independent reviewer.')
+        if decision != 'submitted' and db.execute('SELECT 1 FROM ws_handoffs WHERE guidance_id=? LIMIT 1', (identifier,)).fetchone():
+            if len(notes.strip()) < 10:
+                raise HTTPException(422, 'Explain the review decision in at least 10 characters.')
         if decision == 'approved':
             from .semantic_graph import validate_approval
             validate_approval(db, doc)
         db.execute('UPDATE ws_documents SET status=?,reviewer_id=?,review_notes=?,updated_at=? WHERE id=?',
                    (decision, None if decision == 'submitted' else principal['id'], notes, now(), identifier))
+        db.execute('UPDATE ws_handoffs SET updated_at=? WHERE guidance_id=?', (now(), identifier))
         event(db, principal, decision, identifier)
         db.execute('COMMIT')
     return document(principal, identifier, record_access=False)
@@ -297,28 +323,44 @@ def tokens(text):
     return set(re.findall(r'[\w$-]{2,}', text.lower())) - STOP_WORDS
 
 
-def retrieve_documents(principal, query, limit=6):
+@lru_cache(maxsize=4096)
+def passage_tokens(content):
+    return frozenset(tokens(content))
+
+
+def retrieve_documents(principal, query, limit=6, *, guidance_only=False):
     words = tokens(query)
     if not words:
         return []
     with database() as db:
-        rows = db.execute("SELECT c.*,d.title,d.owner_id,d.status,d.topic,p.name AS owner_name,s.source_url,s.edition FROM ws_chunks c JOIN ws_documents d ON d.id=c.document_id JOIN ws_people p ON p.id=d.owner_id LEFT JOIN ws_document_sources s ON s.document_id=d.id WHERE d.status='approved'").fetchall()
+        from .semantic_graph import note_state
+        rows = db.execute(
+            'SELECT c.*,d.title,d.owner_id,d.status,d.topic,p.name AS owner_name,s.source_url,s.edition,n.document_id AS guidance '
+            'FROM ws_chunks c JOIN ws_documents d ON d.id=c.document_id JOIN ws_people p ON p.id=d.owner_id '
+            'LEFT JOIN ws_document_sources s ON s.document_id=d.id LEFT JOIN ws_expert_notes n ON n.document_id=d.id '
+            "WHERE d.status='approved' AND (?=0 OR n.document_id IS NOT NULL)", (int(guidance_only),))
         ranked = []
+        current = {}
         for row in rows:
-            from .semantic_graph import note_metadata
-            guidance = note_metadata(db, row['document_id'])
-            if guidance and (guidance['needs_review'] or guidance['superseded']):
+            text_words = passage_tokens(row['content'])
+            title_words = passage_tokens(row['title'] + ' ' + row['topic'])
+            if guidance_only and not words <= text_words | title_words:
                 continue
-            text_words = tokens(row['content'])
-            score = len(words & text_words) + 2 * len(words & tokens(row['title'] + ' ' + row['topic']))
-            if score:
-                ranked.append((score, dict(row)))
+            score = len(words & text_words) + 2 * len(words & title_words)
+            if not score:
+                continue
+            if row['guidance']:
+                if row['document_id'] not in current:
+                    current[row['document_id']] = not any(note_state(db, row['document_id']).values())
+                if not current[row['document_id']]:
+                    continue
+            ranked.append((score, dict(row)))
         matches = sorted(ranked, key=lambda pair: (-pair[0], pair[1]['id']))[:limit]
         result = []
         for score, row in matches:
             result.append({'id': row['id'], 'document_id': row['document_id'], 'title': row['title'],
                            'owner_id': row['owner_id'], 'owner_name': row['owner_name'], 'text': row['content'],
-                           'type': 'approved_document', 'score': score, 'synthetic': False,
+                           'type': 'approved_document', 'score': score, 'synthetic': bool(principal.get('transfer_demo')),
                            'source_url': row['source_url'], 'edition': row['edition'], 'release_applicability': 'not_inferred'})
         return result
 

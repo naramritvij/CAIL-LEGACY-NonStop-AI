@@ -144,6 +144,9 @@ def read_source(tool: str) -> dict:
         system_id = payload.get("system_id")
         if not isinstance(system_id, str) or not (1 <= len(system_id) <= 120):
             raise ValueError("Missing system identity")
+        expected = os.getenv(f"CAIL_{tool.upper()}_SYSTEM_ID", "").strip()
+        if expected and vendor_datasets.canonical_system(system_id) != vendor_datasets.canonical_system(expected):
+            raise ValueError("Unexpected system scope")
         observed = _timestamp(payload.get("observed_at"))
         age = (datetime.now(timezone.utc) - observed).total_seconds()
         if age < -60 or age > MAX_AGE_SECONDS:

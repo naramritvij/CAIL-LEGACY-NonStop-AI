@@ -35,6 +35,8 @@ import {
   type GraphNeighborhood as Neighborhood,
 } from "./graphSnapshot";
 import type { EvidenceTrail } from "./KnowledgeStudio";
+import type { TransferAction } from "./TransferDesk";
+const TransferDesk = lazy(() => import("./TransferDesk").then((module) => ({ default: module.TransferDesk })));
 const KnowledgeStudio = lazy(() =>
   import("./KnowledgeStudio").then((module) => ({
     default: module.KnowledgeStudio,
@@ -91,6 +93,14 @@ export function KnowledgeGraph({
   const [attach, setAttach] = useState<GraphNode | null>(null);
   const [importing, setImporting] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewReason, setReviewReason] = useState("");
+  const [citationPreview, setCitationPreview] = useState<{
+    id: string; title: string; content: string; document_id: string; guidance_id: string;
+  } | null>(null);
+  const [transferOpen, setTransferOpen] = useState(Boolean(operator.transfer_demo));
+  const [transferPerson, setTransferPerson] = useState<string | null>(null);
+  const [transferAction, setTransferAction] = useState<TransferAction | null>(null);
+  const [newDocumentIds, setNewDocumentIds] = useState<string[]>([]);
   const [listLimit, setListLimit] = useState(80);
   const [connectionLimit, setConnectionLimit] = useState(40);
   const [dimension, setDimension] = useState<"2d" | "3d">("3d");
@@ -121,6 +131,12 @@ export function KnowledgeGraph({
       );
       if (sequence !== refreshSequence.current) return;
       if (!result.not_modified) {
+        const previous = graphRef.current;
+        if (previous && previous.revision !== result.revision) {
+          setNewDocumentIds(result.events.filter((event) =>
+            event.sequence > previous.revision && event.kind === "uploaded" && event.document_id
+          ).map((event) => "document:" + event.document_id));
+        }
         graphRef.current = result;
         setGraph(result);
         setExpansion((previous) => reconcileExpansion(result, previous));
@@ -180,7 +196,10 @@ export function KnowledgeGraph({
   const view = useMemo(() => {
     return mergeGraphSnapshot(graph || { nodes: [], edges: [] }, expansion);
   }, [graph, expansion]);
-  const node = selected ? view.index.get(selected) : null;
+  const node = selected ? view.index.get(selected) || (doc && selected === "document:" + doc.id ? {
+    id: selected, entity_id: doc.id, kind: "document" as const, label: doc.title,
+    status: doc.status, owner_name: doc.owner_name,
+  } as GraphNode : null) : null;
 
   useEffect(() => {
     if (!graph) return;
@@ -213,6 +232,8 @@ export function KnowledgeGraph({
     setDoc(null);
     setEntity(null);
     setConnectionLimit(40);
+    setReviewReason("");
+    setCitationPreview(null);
     if (selected?.startsWith("document:")) {
       request<KnowledgeDocument>(
         "/documents/" + selected.slice("document:".length),
@@ -231,6 +252,20 @@ export function KnowledgeGraph({
       current = false;
     };
   }, [selected, onError, refresh]);
+  useEffect(() => {
+    if (!selected?.startsWith("document:") || !graph?.revision) return;
+    const controller = new AbortController();
+    void request<KnowledgeDocument>(
+      "/documents/" + selected.slice("document:".length) + "?record_access=false",
+      { signal: controller.signal },
+    ).then(setDoc).catch((error) => {
+      if (!controller.signal.aborted) {
+        setDoc(null);
+        onError(errorMessage(error));
+      }
+    });
+    return () => controller.abort();
+  }, [graph?.revision, selected, onError]);
   useEffect(() => {
     if (!selected?.startsWith("entity:") && !selected?.startsWith("concept:"))
       return;
@@ -317,6 +352,17 @@ export function KnowledgeGraph({
     }
   }
 
+  function openTransfer(personId: string | null = null) {
+    setTransferPerson(personId);
+    setTransferOpen(true);
+    window.requestAnimationFrame(() => window.document.getElementById("knowledge-transfer")?.scrollIntoView({ block: "start" }));
+  }
+
+  function openTransferDocument(id: string) {
+    choose(id);
+    window.requestAnimationFrame(() => window.document.getElementById("graph-inspector")?.scrollIntoView({ block: "start" }));
+  }
+
   const visible = useMemo(() => {
     const datasets = new Map(
       (graph?.datasets || []).map((dataset) => [dataset.id, dataset]),
@@ -392,6 +438,7 @@ export function KnowledgeGraph({
               "asked_about",
               "knows",
               "learned_from",
+              "guidance_requested",
               "wrote",
               "applies_to",
             ].includes(edge.kind) ||
@@ -486,8 +533,7 @@ export function KnowledgeGraph({
           method: "POST",
           body: JSON.stringify({
             decision,
-            notes:
-              decision === "submitted" ? "" : "Reviewed by " + operator.name,
+            notes: decision === "submitted" ? "" : reviewReason.trim(),
           }),
         }),
       );
@@ -599,6 +645,9 @@ export function KnowledgeGraph({
           </p>
         </div>
         <div className="network-actions">
+          <button className="secondary" aria-expanded={transferOpen} onClick={() => transferOpen ? setTransferOpen(false) : openTransfer()}>
+            <Users size={16} /> People &amp; handoffs
+          </button>
           <button
             className="secondary"
             disabled={indexBusy}
@@ -623,6 +672,20 @@ export function KnowledgeGraph({
           </button>
         </div>
       </div>
+      {transferOpen && (
+        <Suspense fallback={<p className="muted">Loading contributor directory…</p>}>
+          <TransferDesk
+            operator={operator}
+            revision={graph?.revision}
+            personId={transferPerson}
+            onPerson={setTransferPerson}
+            onOpenNode={openTransferDocument}
+            onAction={setTransferAction}
+            onRefresh={() => refresh(true)}
+            onError={onError}
+          />
+        </Suspense>
+      )}
       <div className="network-sourcebar">
         <Database size={16} />
         <div>
@@ -679,6 +742,7 @@ export function KnowledgeGraph({
         <span>
           <strong>{graph?.semantic?.expert_notes || 0}</strong> signed guidance
         </span>
+        <span><Users size={16} /><strong>{view.nodes.filter((item) => item.kind === "person").length}</strong> people in graph</span>
         <span>
           <strong>{renderNodes.length.toLocaleString()}</strong> visible in this
           view
@@ -829,6 +893,7 @@ export function KnowledgeGraph({
           ) : (
             <>
               <GraphCanvas
+            newDocumentIds={newDocumentIds}
                 dimension={dimension}
                 nodes={renderNodes}
                 edges={renderEdges}
@@ -978,7 +1043,7 @@ export function KnowledgeGraph({
             )}
           </details>
         </section>
-        <aside className="graph-inspector network-inspector">
+        <aside className="graph-inspector network-inspector" id="graph-inspector">
           <div className="panel-heading">
             <span>NODE + CONNECTIONS</span>
             {selected && (
@@ -1054,6 +1119,11 @@ export function KnowledgeGraph({
                 <p className="fine-print">
                   {node.person_role} · self-described contribution role
                 </p>
+              )}
+              {node.kind === "person" && (
+                <button className="secondary full" onClick={() => openTransfer(node.entity_id)}>
+                  <Users size={15} /> View contributions and request guidance
+                </button>
               )}
               {(node.needs_review || node.superseded) && (
                 <p className="studio-review-alert">
@@ -1221,10 +1291,20 @@ export function KnowledgeGraph({
                           scoped concepts
                         </span>
                         {doc.expert_note.citations.map((c) => (
-                          <span key={c.citation_id}>
-                            {c.relation} · {c.citation_id}
-                          </span>
+                          <button key={c.citation_id} className="text-button" onClick={() => {
+                            void request<Omit<NonNullable<typeof citationPreview>, "guidance_id">>(
+                              "/knowledge/citations/" + encodeURIComponent(c.citation_id),
+                            ).then((preview) => setCitationPreview({ ...preview, guidance_id: doc.id }))
+                              .catch((error) => onError(errorMessage(error)));
+                          }}>{c.relation} · {c.citation_id}</button>
                         ))}
+                        {citationPreview?.guidance_id === doc.id && (
+                          <div className="citation-preview">
+                            <strong>{citationPreview.title}</strong>
+                            <blockquote>{citationPreview.content}</blockquote>
+                            <button className="text-button" onClick={() => choose("document:" + citationPreview.document_id)}>Open cited document</button>
+                          </div>
+                        )}
                       </div>
                     )}
                     <details className="source-text-details">
@@ -1245,10 +1325,15 @@ export function KnowledgeGraph({
                       </button>
                     )}
                     {doc.can_review && (
+                      <>
+                      <label className="studio-field">
+                        Review reasoning
+                        <textarea maxLength={2000} value={reviewReason} onChange={(event) => setReviewReason(event.target.value)} placeholder="Explain how the source supports your decision." />
+                      </label>
                       <div className="review-buttons">
                         <button
                           className="primary"
-                          disabled={reviewBusy}
+                          disabled={reviewBusy || reviewReason.trim().length < 10}
                           onClick={() => void review("approved")}
                         >
                           <Check size={14} />
@@ -1256,12 +1341,13 @@ export function KnowledgeGraph({
                         </button>
                         <button
                           className="secondary"
-                          disabled={reviewBusy}
+                          disabled={reviewBusy || reviewReason.trim().length < 10}
                           onClick={() => void review("rejected")}
                         >
                           Request revision
                         </button>
                       </div>
+                      </>
                     )}
                     {doc.status !== "approved" && (
                       <p className="fine-print">
@@ -1398,9 +1484,11 @@ export function KnowledgeGraph({
           selected={node}
           document={doc}
           operator={operator}
-          onChoose={choose}
+          onChoose={openTransferDocument}
           onRefresh={() => refresh(true)}
           onError={onError}
+          transferAction={transferAction}
+          onTransferHandled={() => setTransferAction(null)}
           initialCitation={
             entity?.evidence?.[0]?.citation_id ||
             (typeof entity?.properties.citation_id === "string"
@@ -1418,6 +1506,8 @@ export function KnowledgeGraph({
             setUpload(false);
             setSelected("document:" + id);
             setScope("all");
+            setReviewFilter("all");
+            window.requestAnimationFrame(() => window.document.getElementById("graph-network")?.scrollIntoView({ block: "nearest" }));
             void refresh(true);
           }}
         />

@@ -254,6 +254,20 @@ def run(user, question, history):
 
     context, count = context_messages(question, history)
     record('Memory', 'complete', f'{len(history)} earlier saved turns; {count} supplied as context. Your current message is already saved.')
+    direct = re.fullmatch(r'(?:show|find|quote)\s+(?:me\s+)?(?:current\s+)?approved guidance\s+(?:on|about|for)\s+(.+)', question.strip(), re.I)
+    if direct:
+        matches = store.retrieve_documents(user, direct.group(1), limit=3, guidance_only=True)
+        store.record_retrieval(user, matches)
+        record('Knowledge', 'complete' if matches else 'insufficient', f'{len(matches)} current signed guidance excerpts matched.')
+        if matches:
+            source = matches[0]
+            answer = f'**{source["title"]}** by {source["owner_name"]} [{source["id"]}]\n\n' + source['text']
+        else:
+            answer = 'No current, independently approved guidance matches those terms.'
+        return {'answer': answer, 'status': 'cited_guidance' if matches else 'guidance_unavailable',
+                'route': 'knowledge', 'sources': matches, 'citations': [matches[0]['id']] if matches else [],
+                'trace': trace, 'model': None, 'execution_allowed': False, 'state_change_executed': False,
+                'memory': {'saved_turns_before': len(history), 'context_turns': count}}
     routing, used_model = plan(question, history, context)
     record('Orchestrator', 'complete' if used_model else 'degraded', f'Route: {routing["intent"]}. Tools have read access only.')
     knowledge, telemetry, connections = [], [], []

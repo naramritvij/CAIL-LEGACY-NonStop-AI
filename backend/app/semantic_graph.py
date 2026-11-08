@@ -208,6 +208,9 @@ def create_note(user, body):
                        (identifier, source['id'], item['relation'], source['sha256']))
         if body.get('supersedes_document_id'):
             link_edition(db, user, identifier, body['supersedes_document_id'])
+        if body.get('handoff_id'):
+            from .knowledge_transfer import link_guidance
+            link_guidance(db, user, body['handoff_id'], identifier)
         store.event(db, user, 'guidance_signed', identifier, {'concept_ids': body['concept_ids'], 'category': body['category']})
         db.execute('COMMIT')
     return store.document(user, identifier, record_access=False)
@@ -241,7 +244,9 @@ def catalog(user, query=''):
     return {'concepts': concepts, 'notes': notes, 'citations': citations, 'documents': documents, 'profile': profile(user)}
 
 
-def start_check(user, document_id, mode='reference_recall'):
+def start_check(user, document_id, mode='reference_recall', handoff_id=None):
+    if handoff_id and mode != 'explanation':
+        raise HTTPException(422, 'A handoff requires an independently reviewed explanation.')
     doc = store.document(user, document_id, record_access=False)
     if doc['status'] != 'approved' or doc['owner_id'] == user['id'] or not doc.get('expert_note'):
         raise HTTPException(409, 'Choose current approved guidance written by another contributor.')
@@ -249,13 +254,30 @@ def start_check(user, document_id, mode='reference_recall'):
         raise HTTPException(409, 'This guidance needs updated source review before it can be checked.')
     with store.database() as db:
         if mode == 'explanation':
+            db.execute('BEGIN IMMEDIATE')
+            previous = None
+            if handoff_id:
+                from .knowledge_transfer import check_handoff
+                previous = check_handoff(db, user, handoff_id, document_id)
             identifier = str(uuid4())
             prompt = ('Explain the operational decision in this guidance in your own words. Identify the supporting command or observation, '
                       'the reason for the decision, and the limits stated in the note. Your answer is shared with independent reviewers for this check.\n\n' + doc['title'])
-            db.execute('INSERT INTO ws_knowledge_checks VALUES (?,?,?,?,?,?,?,?,?)',
-                       (identifier, user['id'], document_id, 'EXPLANATION', prompt, 'pending', store.now(), None, doc['sha256']))
-            return {'id': identifier, 'document_id': document_id, 'prompt': prompt, 'assessment': 'source_based_explanation',
-                    'meaning': 'The existing model provides source-checked feedback when available. An independent reviewer decides whether this explanation demonstrates the cited knowledge.'}
+            if handoff_id:
+                prompt += '\n\nInclude the next authorized read-only check or escalation and explain when it is appropriate.'
+            if previous:
+                identifier, prompt = previous['id'], previous['prompt']
+            else:
+                db.execute('INSERT INTO ws_knowledge_checks VALUES (?,?,?,?,?,?,?,?,?)',
+                           (identifier, user['id'], document_id, 'EXPLANATION', prompt, 'pending', store.now(), None, doc['sha256']))
+                if handoff_id:
+                    db.execute('INSERT INTO ws_handoff_checks(check_id,handoff_id) VALUES (?,?)', (identifier, handoff_id))
+            db.execute('COMMIT')
+            result = {'id': identifier, 'document_id': document_id, 'prompt': prompt, 'assessment': 'source_based_explanation'}
+            if handoff_id:
+                return {**result, 'guidance_excerpt': doc['content'][:6000],
+                        'meaning': 'Use the cited guidance to explain your decision. An independent reviewer checks your reasoning and the safe next step.'}
+            return {**result, 'meaning': 'The existing model provides source-checked feedback when available. '
+                                         'An independent reviewer decides whether this explanation demonstrates the cited knowledge.'}
         concepts = db.execute("SELECT c.* FROM ws_concepts c JOIN ws_note_concepts n ON n.concept_id=c.id "
                               "WHERE n.document_id=? AND c.kind='command' ORDER BY c.label", (document_id,)).fetchall()
         chosen = next((c for c in concepts if re.search(re.escape(c['label']), doc['content'], re.I)), None)

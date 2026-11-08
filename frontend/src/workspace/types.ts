@@ -4,6 +4,9 @@ export interface Operator {
   local_demo: boolean;
   can_review: boolean;
   can_read_live: boolean;
+  can_manage_members?: boolean;
+  transfer_demo?: boolean;
+  demo_roles?: { id: string; name: string }[];
   auth_method: string;
 }
 export interface Conversation {
@@ -210,6 +213,7 @@ export interface Snapshot {
   snapshot_sha256: string;
 }
 export interface Connection {
+  last_checked_at?: string | null;
   id: string;
   name: string;
   interface: string;

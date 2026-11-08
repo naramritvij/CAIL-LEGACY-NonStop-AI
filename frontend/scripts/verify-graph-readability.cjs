@@ -411,15 +411,29 @@ try {
         Renderer.name + " focus must frame connection height",
       );
     }
-    if (renderer.arrive) {
-      renderer.arrive(["manual"]);
+    if (renderer instanceof PerspectiveNetwork) {
       renderer.setView(null, visible, false);
+      renderer.draw(performance.now());
+      const settled = renderer.screen.get("manual");
+      renderer.arrive(["manual"]);
+      const start = renderer.arrivals.get("manual").at;
+      renderer.draw(start);
+      assert(renderer.screen.get("manual").x < 0, "The first document enters from the left");
       strokes = 0;
-      renderer.draw(performance.now() + 500);
+      renderer.draw(start + 800);
+      assert(renderer.screen.get("manual").x > 0, "The document moves into the graph");
       assert(
-        strokes <= MAX_HIGHLIGHTED_CONNECTIONS + 1,
+        strokes <= MAX_HIGHLIGHTED_CONNECTIONS + 2,
         "Manual arrival must not animate every passage link",
       );
+      renderer.draw(start + 1400);
+      assert.deepEqual(renderer.screen.get("manual"), settled, "Arrival settles at the actual node position");
+      renderer.arrive(["manual"]);
+      renderer.draw(renderer.arrivals.get("manual").at);
+      assert(renderer.screen.get("manual").x > viewport.width, "The next arrival enters from the right");
+      renderer.setReducedMotion(true);
+      renderer.draw(performance.now());
+      assert.deepEqual(renderer.screen.get("manual"), settled, "Reduced motion settles the node immediately");
     }
   }
   console.log(

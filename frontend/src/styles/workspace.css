@@ -365,10 +365,10 @@ form > label > textarea {
   gap: 3px;
   width: 36px;
   height: 36px;
-  background: #267b64;
+  background: linear-gradient(145deg, #1b9b77, #155746);
   border-radius: 10px;
   flex-shrink: 0;
-  box-shadow: inset 0 0 0 1px #ffffff0f;
+  box-shadow: inset 0 1px 0 #ffffff52, 0 2px 5px #15574624;
 }
 .brand-mark i {
   width: 3px;
@@ -3046,3 +3046,4 @@ form > label > textarea {
     transition-duration: 0.01ms !important;
   }
 }
+.demo-role-options { display: grid; gap: 9px; margin: 16px 0; }

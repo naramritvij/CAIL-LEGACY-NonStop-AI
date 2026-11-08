@@ -49,7 +49,7 @@ export function reconcileExpansion(
         (!edge.dataset_id || datasets.has(edge.dataset_id)) &&
         (!edge.document_id || documents.has(edge.document_id)) &&
         // Shared learning can be revoked independently of document visibility.
-        !["knows", "learned_from", "asked_about"].includes(edge.kind) &&
+        !["knows", "learned_from", "asked_about", "guidance_requested"].includes(edge.kind) &&
         allowed.has(edge.source) &&
         allowed.has(edge.target),
     )

@@ -2,6 +2,7 @@ import type { MultiDirectedGraph } from "graphology";
 import {
   drawGraphLabels,
   graphSelection,
+  MAX_HIGHLIGHTED_CONNECTIONS,
   type GraphSelection,
 } from "./graphReadability";
 import { relationshipColor } from "./semanticPresentation";
@@ -14,6 +15,10 @@ type ScreenPoint = {
   size: number;
   alpha: number;
 };
+type EdgePath = { id: string; source: string; target: string };
+const ENTRY_MS = 1350;
+const ORBIT_EDGE_LIMIT = 1800;
+const EMPHASIZED = new Set(["wrote", "expert_in", "knows", "learned_from", "guidance_requested", "supports", "contradicts", "supersedes"]);
 
 /** A perspective camera over actual 3D layout coordinates. Software projection
  * keeps orbit, depth and transitions available without WebGL or a GPU. Layout
@@ -41,6 +46,14 @@ export class PerspectiveNetwork {
   private arrivalEdges = new Set<string>();
   private edgeArrivals = new Map<string, number>();
   private arrivalSequence = 0;
+  private autoOrbit = false;
+  private inView = true;
+  private hovering = false;
+  private orbitTimer = 0;
+  private lastOrbit = 0;
+  private idleUntil = 0;
+  private intersection?: IntersectionObserver;
+  private edgeIndex: { all: EdgePath[]; overview: EdgePath[]; emphasized: string[] } | null = null;
   private pointer: {
     x: number;
     y: number;
@@ -90,6 +103,19 @@ export class PerspectiveNetwork {
     });
     this.observer.observe(container);
     for (const event of this.events) graph.on(event, this.refresh);
+    for (const event of ["edgeAdded", "edgeDropped", "edgeAttributesUpdated"] as const) graph.on(event, this.invalidateEdges);
+    if (typeof IntersectionObserver !== "undefined") {
+      this.intersection = new IntersectionObserver(([entry]) => {
+        this.inView = entry.isIntersecting;
+        this.lastOrbit = 0;
+        if (this.inView) this.refresh();
+        else this.stopOrbitTimer();
+      });
+      this.intersection.observe(container);
+    }
+    document.addEventListener?.("visibilitychange", this.visibility);
+    this.canvas.addEventListener("pointerenter", this.enter);
+    this.canvas.addEventListener("pointerleave", this.leave);
     this.canvas.addEventListener("pointerdown", this.down);
     this.canvas.addEventListener("pointermove", this.move);
     this.canvas.addEventListener("pointerup", this.up);
@@ -102,6 +128,67 @@ export class PerspectiveNetwork {
   refresh = () => {
     if (!this.frame) this.frame = requestAnimationFrame(this.draw);
   };
+  setReducedMotion(reduced: boolean) {
+    this.reduced = reduced;
+    if (reduced) {
+      this.arrivals.clear();
+      this.arrivalEdges.clear();
+      this.edgeArrivals.clear();
+    }
+  }
+  setAutoOrbit(enabled: boolean) {
+    this.autoOrbit = enabled && !this.reduced;
+    this.lastOrbit = 0;
+    if (!this.autoOrbit) this.stopOrbitTimer();
+    this.refresh();
+  }
+  private invalidateEdges = () => { this.edgeIndex = null; };
+  private stopOrbitTimer() {
+    if (this.orbitTimer) window.clearTimeout(this.orbitTimer);
+    this.orbitTimer = 0;
+  }
+  private visibility = () => {
+    this.lastOrbit = 0;
+    if (document.hidden) this.stopOrbitTimer();
+    else this.refresh();
+  };
+  private enter = () => {
+    this.hovering = true;
+    this.lastOrbit = 0;
+    this.stopOrbitTimer();
+    this.refresh();
+  };
+  private leave = () => {
+    this.hovering = false;
+    this.refresh();
+  };
+  private canOrbit() {
+    return this.autoOrbit && this.visible.size > 1 && this.inView && !document.hidden &&
+      !this.hovering && !this.pointer && !this.selection && !this.arrivals.size && !this.edgeArrivals.size;
+  }
+  private scheduleOrbit(now: number) {
+    if (!this.canOrbit() || this.orbitTimer) return;
+    this.orbitTimer = window.setTimeout(() => {
+      this.orbitTimer = 0;
+      this.refresh();
+    }, Math.max(this.graph.order > 5000 ? 42 : 25, this.idleUntil - now));
+  }
+  private edgesToPaint() {
+    if (this.edgeIndex) return this.edgeIndex;
+    const all: EdgePath[] = [];
+    const emphasized: string[] = [];
+    this.graph.forEachEdge((id, attributes, source, target) => {
+      all.push({ id, source, target });
+      if (emphasized.length < 120 && EMPHASIZED.has(String(attributes.kind))) emphasized.push(id);
+    });
+    const stride = Math.max(1, Math.ceil(all.length / ORBIT_EDGE_LIMIT));
+    this.edgeIndex = {
+      all,
+      overview: stride === 1 ? all : all.filter((_, index) => index % stride === 0),
+      emphasized,
+    };
+    return this.edgeIndex;
+  }
   setView(selected: string | null, visible: Set<string>, focusOnly: boolean) {
     this.selected = selected;
     this.visible = visible;
@@ -113,25 +200,34 @@ export class PerspectiveNetwork {
   arrive(ids: string[]) {
     if (this.reduced) return;
     const at = performance.now();
-    for (const [index, id] of ids.slice(0, 20).entries())
-      this.arrivals.set(id, {
-        at: at + index * 45,
-        side: this.arrivalSequence++ % 2 ? 1 : -1,
-      });
+    for (const [index, id] of ids.slice(0, 20).entries()) {
+      if (this.arrivals.size >= 20) break;
+      this.arrivals.set(id, { at: at + index * 45, side: this.arrivalSequence++ % 2 ? 1 : -1 });
+    }
     this.updateArrivalEdges();
     this.refresh();
   }
   arriveEdges(ids: string[]) {
     if (this.reduced) return;
     const at = performance.now();
-    for (const id of ids.slice(0, 24)) this.edgeArrivals.set(id, at);
+    for (const id of ids.slice(0, MAX_HIGHLIGHTED_CONNECTIONS)) {
+      if (this.edgeArrivals.size >= MAX_HIGHLIGHTED_CONNECTIONS) break;
+      this.edgeArrivals.set(id, at);
+    }
     this.refresh();
   }
   private updateArrivalEdges() {
     this.arrivalEdges.clear();
-    for (const id of this.arrivals.keys()) {
-      const selection = graphSelection(this.graph, id, this.visible);
-      for (const edge of selection?.edges ?? []) this.arrivalEdges.add(edge);
+    // Keep one primary connection per arriving document before filling the budget.
+    const groups = [...this.arrivals.keys()].map((id) => [
+      ...(graphSelection(this.graph, id, this.visible)?.edges ?? []),
+    ]);
+    for (const [primary] of groups) if (primary) this.arrivalEdges.add(primary);
+    for (const group of groups) {
+      for (const edge of group) {
+        if (this.arrivalEdges.size >= MAX_HIGHLIGHTED_CONNECTIONS) return;
+        this.arrivalEdges.add(edge);
+      }
     }
   }
   freezeFit() {
@@ -178,6 +274,7 @@ export class PerspectiveNetwork {
     this.refresh();
   }
   zoom(factor: number) {
+    this.idleUntil = performance.now() + 1200;
     this.animate(
       this.center,
       Math.min(8, Math.max(0.025, this.ratio * factor)),
@@ -243,21 +340,12 @@ export class PerspectiveNetwork {
     };
     this.tween = requestAnimationFrame(tick);
   }
-  private rotate(point: Point): Point {
-    const x = point.x - this.center.x,
-      y = point.y - this.center.y,
-      z = point.z - this.center.z;
-    const rx = x * Math.cos(this.yaw) - z * Math.sin(this.yaw),
-      rz = x * Math.sin(this.yaw) + z * Math.cos(this.yaw);
-    return {
-      x: rx,
-      y: y * Math.cos(this.pitch) - rz * Math.sin(this.pitch),
-      z: y * Math.sin(this.pitch) + rz * Math.cos(this.pitch),
-    };
-  }
   private draw = (now: number) => {
     this.frame = 0;
     if (this.autoFit) this.bounds();
+    const orbiting = this.canOrbit() && now >= this.idleUntil;
+    if (orbiting && this.lastOrbit) this.yaw += Math.min(80, now - this.lastOrbit) * 0.00018;
+    this.lastOrbit = orbiting ? now : 0;
     const ctx = this.ctx,
       data = this.graph,
       selected = this.selected;
@@ -268,22 +356,24 @@ export class PerspectiveNetwork {
     this.screen.clear();
     ctx.clearRect(0, 0, this.width, this.height);
     for (const [id, arrival] of this.arrivals) {
-      if (!data.hasNode(id) || now - arrival.at >= 850)
+      if (!data.hasNode(id) || now - arrival.at >= ENTRY_MS)
         this.arrivals.delete(id);
     }
+    if (this.arrivalEdges.size && !this.arrivals.size) this.arrivalEdges.clear();
     for (const [id, at] of this.edgeArrivals)
       if (!data.hasEdge(id) || now - at > 900) this.edgeArrivals.delete(id);
+    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw),
+      cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     data.forEachNode((id, a) => {
       if (
         !this.visible.has(id) ||
         (this.focusOnly && neighbors && !neighbors.has(id))
       )
         return;
-      const point = this.rotate({
-        x: Number(a.x),
-        y: Number(a.y),
-        z: Number(a.z || 0),
-      });
+      const x0 = Number(a.x) - this.center.x, y0 = Number(a.y) - this.center.y,
+        z0 = Number(a.z || 0) - this.center.z;
+      const rz = x0 * sy + z0 * cy;
+      const point = { x: x0 * cy - z0 * sy, y: y0 * cp - rz * sp, z: y0 * sp + rz * cp };
       const depth = distance - point.z;
       if (depth < 20) return;
       const size =
@@ -296,23 +386,24 @@ export class PerspectiveNetwork {
         alpha = 1;
       const arrival = this.arrivals.get(id);
       if (arrival) {
-        const t = Math.max(0, Math.min(1, (now - arrival.at) / 850)),
+        const t = Math.max(0, Math.min(1, (now - arrival.at) / ENTRY_MS)),
           p = 1 - Math.pow(1 - t, 3);
         x = (arrival.side < 0 ? -40 : this.width + 40) * (1 - p) + x * p;
-        y = this.height * 0.45 * (1 - p) + y * p;
-        alpha = Math.min(1, t * 3);
+        y = this.height * (arrival.side < 0 ? 0.36 : 0.62) * (1 - p) + y * p;
+        alpha = Math.min(1, t * 5);
         if (t === 1) this.arrivals.delete(id);
       }
       this.screen.set(id, { x, y, depth, size, alpha });
     });
     const panned = Boolean(this.pointer?.moved),
       hideBulkEdges = panned && data.order > 5000;
+    const paint = this.edgesToPaint();
     if (!hideBulkEdges) {
       ctx.beginPath();
       ctx.strokeStyle = selected ? "#e4ebe6" : "#bdd0c4";
       ctx.lineWidth = 0.5;
-      ctx.globalAlpha = selected ? 0.3 : 0.32;
-      data.forEachEdge((id, _a, source, target) => {
+      ctx.globalAlpha = selected ? 0.3 : 0.43;
+      for (const { id, source, target } of orbiting ? paint.overview : paint.all) {
         const a = this.screen.get(source),
           b = this.screen.get(target);
         if (
@@ -322,14 +413,21 @@ export class PerspectiveNetwork {
           (this.arrivalEdges.has(id) &&
             (this.arrivals.has(source) || this.arrivals.has(target)))
         )
-          return;
+          continue;
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
-      });
+      }
       ctx.stroke();
     }
-    let semanticEmphasis = 0;
-    data.forEachEdge((id, attributes, source, target) => {
+    const foreground = new Set([
+      ...(selection?.edges || paint.emphasized),
+      ...this.arrivalEdges,
+      ...this.edgeArrivals.keys(),
+    ]);
+    for (const id of foreground) {
+      if (!data.hasEdge(id)) continue;
+      const [source, target] = data.extremities(id);
+      const attributes = data.getEdgeAttributes(id);
       const a = this.screen.get(source),
         b = this.screen.get(target),
         incident = selection?.edges.has(id);
@@ -337,27 +435,10 @@ export class PerspectiveNetwork {
         ? this.arrivals.get(source) || this.arrivals.get(target)
         : undefined;
       const introduced = this.edgeArrivals.get(id);
-      const meaningful =
-        !selection &&
-        semanticEmphasis < 120 &&
-        [
-          "wrote",
-          "expert_in",
-          "knows",
-          "learned_from",
-          "supports",
-          "contradicts",
-          "supersedes",
-        ].includes(String(attributes.kind));
-      if (
-        !a ||
-        !b ||
-        (!incident && !arrival && introduced === undefined && !meaningful)
-      )
-        return;
-      if (meaningful) semanticEmphasis++;
+      const meaningful = !selection && EMPHASIZED.has(String(attributes.kind));
+      if (!a || !b || (!incident && !arrival && introduced === undefined && !meaningful)) continue;
       const progress = arrival
-        ? Math.min(1, Math.max(0, (now - arrival.at - 350) / 500))
+        ? Math.min(1, Math.max(0, (now - arrival.at - 480) / 850))
         : introduced !== undefined
           ? Math.min(1, Math.max(0, (now - introduced) / 850))
           : 1;
@@ -367,7 +448,7 @@ export class PerspectiveNetwork {
         incident && selection?.trail
           ? "#9073b1"
           : relationshipColor(String(attributes.kind));
-      ctx.globalAlpha = incident ? 0.9 : 0.65;
+      ctx.globalAlpha = incident || arrival ? 0.94 : 0.7;
       ctx.strokeStyle = edgeColor;
       ctx.lineWidth = incident && selection?.trail ? 2.4 : incident ? 1.6 : 1.1;
       ctx.beginPath();
@@ -395,7 +476,7 @@ export class PerspectiveNetwork {
         ctx.closePath();
         ctx.fill();
       }
-    });
+    }
     const sorted = [...this.screen.entries()].sort(
       (a, b) => b[1].depth - a[1].depth,
     );
@@ -423,8 +504,8 @@ export class PerspectiveNetwork {
           point.y,
           point.size,
         );
-        gradient.addColorStop(0, "#f2faf4");
-        gradient.addColorStop(0.35, color);
+        gradient.addColorStop(0, "#ffffff");
+        gradient.addColorStop(0.48, color);
         gradient.addColorStop(1, color);
         ctx.fillStyle = gradient;
       } else ctx.fillStyle = color;
@@ -451,9 +532,9 @@ export class PerspectiveNetwork {
         ctx.closePath();
       } else ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
       ctx.fill();
-      if (id === selected) {
-        ctx.strokeStyle = "#26765b";
-        ctx.lineWidth = 1.5;
+      if (id === selected || this.arrivals.has(id)) {
+        ctx.strokeStyle = this.arrivals.has(id) ? "#28a680" : "#126c50";
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(point.x, point.y, point.size + 4, 0, Math.PI * 2);
         ctx.stroke();
@@ -465,6 +546,7 @@ export class PerspectiveNetwork {
     });
     ctx.globalAlpha = 1;
     if (this.arrivals.size || this.edgeArrivals.size) this.refresh();
+    this.scheduleOrbit(now);
   };
   private point(event: MouseEvent) {
     const rect = this.canvas.getBoundingClientRect();
@@ -554,6 +636,7 @@ export class PerspectiveNetwork {
   private wheel = (event: WheelEvent) => {
     event.preventDefault();
     this.autoFit = false;
+    this.idleUntil = performance.now() + 1200;
     cancelAnimationFrame(this.tween);
     this.ratio = Math.max(
       0.025,
@@ -580,6 +663,7 @@ export class PerspectiveNetwork {
     ) {
       event.preventDefault();
       this.autoFit = false;
+      this.idleUntil = performance.now() + 1200;
       if (event.key === "ArrowLeft") this.yaw -= 0.12;
       if (event.key === "ArrowRight") this.yaw += 0.12;
       if (event.key === "ArrowUp")
@@ -593,10 +677,16 @@ export class PerspectiveNetwork {
   };
   private menu = (event: Event) => event.preventDefault();
   kill() {
+    this.stopOrbitTimer();
+    this.intersection?.disconnect();
+    document.removeEventListener?.("visibilitychange", this.visibility);
     cancelAnimationFrame(this.frame);
     cancelAnimationFrame(this.tween);
     this.observer.disconnect();
     for (const event of this.events) this.graph.off(event, this.refresh);
+    for (const event of ["edgeAdded", "edgeDropped", "edgeAttributesUpdated"] as const) this.graph.off(event, this.invalidateEdges);
+    this.canvas.removeEventListener("pointerenter", this.enter);
+    this.canvas.removeEventListener("pointerleave", this.leave);
     this.canvas.removeEventListener("pointerdown", this.down);
     this.canvas.removeEventListener("pointermove", this.move);
     this.canvas.removeEventListener("pointerup", this.up);

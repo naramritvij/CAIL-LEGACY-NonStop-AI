@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -35,7 +37,7 @@ import {
   X,
 } from "lucide-react";
 import { Connections } from "./Connections";
-import { KnowledgeGraph } from "./KnowledgeGraph";
+const KnowledgeGraph = lazy(() => import("./KnowledgeGraph").then((module) => ({ default: module.KnowledgeGraph })));
 import {
   errorMessage,
   request,
@@ -85,26 +87,31 @@ function Login({
   onSignedIn,
   onClose,
   error,
+  demoRoles = [],
 }: {
   onSignedIn: (operator: Operator) => void;
   onClose?: () => void;
   error?: string;
+  demoRoles?: Operator["demo_roles"];
 }) {
   const [key, setKey] = useState("");
   const [failure, setFailure] = useState(error || "");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault();
+    await openSession("/session", { access_key: key });
+    setKey("");
+  }
+  async function openSession(path: string, payload: object) {
     setBusy(true);
     setFailure("");
     try {
       onSignedIn(
-        await request<Operator>("/session", {
+        await request<Operator>(path, {
           method: "POST",
-          body: JSON.stringify({ access_key: key }),
+          body: JSON.stringify(payload),
         }),
       );
-      setKey("");
     } catch (error) {
       setFailure(errorMessage(error));
     } finally {
@@ -136,10 +143,22 @@ function Login({
         </header>
         <div className="eyebrow">NONSTOP AI OPERATIONS ASSISTANT</div>
         <h1 id="login-title">
+          {demoRoles.length ? "Switch demo role" : <>
           Your operations.
           <br />
           Your context.
+          </>}
         </h1>
+        {demoRoles.length ? (
+          <div className="demo-role-options">
+            <p className="muted">Choose a role in this isolated synthetic walkthrough.</p>
+            {demoRoles.map((role) => (
+              <button className="secondary full" key={role.id} disabled={busy}
+                onClick={() => void openSession("/session/demo-role", { person_id: role.id })}>{role.name}</button>
+            ))}
+            {failure && <p className="inline-error">{failure}</p>}
+          </div>
+        ) : <>
         <p className="muted">
           Sign in with the operator access key supplied by your administrator.
         </p>
@@ -170,6 +189,7 @@ function Login({
             Open workspace
           </button>
         </form>
+        </>}
         <p className="fine-print">
           Your conversations are private to your operator identity. Team
           knowledge follows its review and access permissions.
@@ -986,7 +1006,8 @@ export function OperationsWorkspace() {
           </div>
           <button
             className="operator-profile"
-            onClick={() => navigate("connections")}
+            aria-label={operator.demo_roles?.length ? "Switch demo role" : "Operator settings"}
+            onClick={() => operator.demo_roles?.length ? setSwitchLogin(true) : navigate("connections")}
           >
             <span className="operator-avatar">
               {operator.name
@@ -998,7 +1019,7 @@ export function OperationsWorkspace() {
             <span>
               <strong>{operator.name}</strong>
               <small>
-                {operator.local_demo ? "Local workspace" : "Operator workspace"}
+                {operator.transfer_demo ? "Switch demo role" : operator.local_demo ? "Local workspace" : "Operator workspace"}
               </small>
             </span>
             <ChevronDown size={14} />
@@ -1057,13 +1078,12 @@ export function OperationsWorkspace() {
               onDetails={setDetailsOpen}
             />
           ) : view === "graph" ? (
-            <KnowledgeGraph
-              key={operator.id}
-              operator={operator}
-              onError={notify}
-            />
+            <Suspense fallback={<div className="loading-panel">Loading the knowledge graph…</div>}>
+              <KnowledgeGraph key={operator.id} operator={operator} onError={notify} />
+            </Suspense>
           ) : (
             <Connections
+              key={operator.id}
               operator={operator}
               onSwitch={() => setSwitchLogin(true)}
             />
@@ -1083,7 +1103,7 @@ export function OperationsWorkspace() {
         </div>
       )}
       {switchLogin && (
-        <Login onSignedIn={signedIn} onClose={() => setSwitchLogin(false)} />
+        <Login onSignedIn={signedIn} onClose={() => setSwitchLogin(false)} demoRoles={operator.demo_roles} />
       )}
       {allThreads && (
         <div className="modal-backdrop" onClick={() => setAllThreads(false)}>

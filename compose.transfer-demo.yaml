@@ -1,0 +1,31 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      LEGACY_DATABASE_PATH: /data/knowledge-transfer-demo.sqlite3
+      CAIL_WORKSPACE_USERS: ${CAIL_TRANSFER_DEMO_USERS:-[]}
+      CAIL_WORKSPACE_LOCAL_DEMO: "false"
+      CAIL_TRANSFER_DEMO: "true"
+      CAIL_TRANSFER_DEMO_ROLES: "true"
+      CAIL_LIVE_ENABLED: "false"
+      OLLAMA_URL: http://127.0.0.1:9
+    volumes:
+      - transfer_demo:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/v1/health', timeout=2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_LEGACY_DATA_MODE: http
+      VITE_API_BASE: /api/v1
+      LEGACY_API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CAIL_TRANSFER_DEMO_PORT:-5180}:5173"
+volumes:
+  transfer_demo:

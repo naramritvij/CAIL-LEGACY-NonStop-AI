@@ -1295,3 +1295,17 @@
   line-height: 1.8;
   color: #9a8ba6;
 }
+.network-controls .orbit-toggle.active {
+  color: #126a53;
+  background: #e0f5ec;
+}
+#graph-network { scroll-margin-top: 16px; }
+
+.guidance-excerpt {
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px;
+  background: #f4f8f3;
+  color: #314c3e;
+  white-space: pre-wrap;
+}
