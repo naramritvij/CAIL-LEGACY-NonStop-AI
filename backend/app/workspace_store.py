@@ -356,7 +356,7 @@ def passage_tokens(content):
     return frozenset(tokens(content))
 
 
-def retrieve_documents(principal, query, limit=6, *, guidance_only=False):
+def retrieve_documents(principal, query, limit=6, *, guidance_only=False, named_guidance=False):
     words = tokens(query)
     if not words:
         return []
@@ -366,15 +366,22 @@ def retrieve_documents(principal, query, limit=6, *, guidance_only=False):
             'SELECT c.*,d.title,d.owner_id,d.status,d.topic,p.name AS owner_name,s.source_url,s.edition,n.document_id AS guidance '
             'FROM ws_chunks c JOIN ws_documents d ON d.id=c.document_id JOIN ws_people p ON p.id=d.owner_id '
             'LEFT JOIN ws_document_sources s ON s.document_id=d.id LEFT JOIN ws_expert_notes n ON n.document_id=d.id '
-            "WHERE d.status='approved' AND (?=0 OR n.document_id IS NOT NULL)", (int(guidance_only),))
+            "WHERE d.status='approved' AND (?=0 OR n.document_id IS NOT NULL)", (int(guidance_only or named_guidance),))
         ranked = []
         current = {}
+        normalized_query = ' '.join(query.casefold().split()) if named_guidance else ''
         for row in rows:
+            title_score = 0
+            if named_guidance:
+                title = ' '.join(row['title'].casefold().split())
+                if not title or not re.search(r'(?<![\w-])' + re.escape(title) + r'(?![\w-])', normalized_query):
+                    continue
+                title_score = len(title) * 4
             text_words = passage_tokens(row['content'])
             title_words = passage_tokens(row['title'] + ' ' + row['topic'])
             if guidance_only and not words <= text_words | title_words:
                 continue
-            score = len(words & text_words) + 2 * len(words & title_words)
+            score = len(words & text_words) + 2 * len(words & title_words) + title_score
             if not score:
                 continue
             if row['guidance']:

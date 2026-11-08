@@ -61,7 +61,7 @@ def test_private_durable_conversations_and_revoked_sessions(clients, monkeypatch
 def test_history_contains_both_roles_after_topic_changes(clients, monkeypatch):
     alice, _, _ = clients
     calls = []
-    def model(system, messages, timeout=0):
+    def model(system, messages, timeout=0, **kwargs):
         calls.append((system, messages))
         if system == agents.PLANNER:
             return {'intent': 'general', 'query': messages[-1]['content'], 'queries': [], 'sources': []}
@@ -139,7 +139,7 @@ def test_reviewed_retrieval_has_citations_and_access_provenance(clients, monkeyp
     principal = bob.get(BASE + '/session').json()
     assert store.retrieve_documents(principal, 'ASAP availability') == []
     approve(alice, reviewer, did)
-    def model(system, messages, timeout=0):
+    def model(system, messages, timeout=0, **kwargs):
         if system == agents.PLANNER:
             return {'intent': 'knowledge', 'query': 'ASAP availability', 'queries': []}
         evidence = store.retrieve_documents(principal, 'ASAP availability')[0]
@@ -224,7 +224,7 @@ def test_evaluator_rewrites_irrelevant_retrieval_with_a_hard_limit(clients, monk
     calls = []
     monkeypatch.setattr(agents, 'plan', lambda *args: ({'intent': 'knowledge', 'query': 'first query', 'queries': ['first query'], 'sources': []}, True))
     monkeypatch.setattr(agents, 'knowledge_agent', lambda user, query: calls.append(query) or [])
-    def model(system, messages, timeout=0):
+    def model(system, messages, timeout=0, **kwargs):
         if system == agents.EVALUATOR:
             return {'relevant_ids': [], 'sufficient': False, 'next_query': 'variant ' + str(len(calls))}
         return {'answer': 'No reviewed procedure was found. Please add an authorized source for review.', 'citations': []}
@@ -270,7 +270,7 @@ def test_unavailable_model_preserves_context_without_fake_answer(clients, monkey
 def test_user_notes_and_recall_use_conversation_not_empty_monitoring_evidence(clients, monkeypatch, name):
     alice, _, _ = clients
     received = []
-    def model(system, messages, timeout=0):
+    def model(system, messages, timeout=0, **kwargs):
         current = messages[-1]['content']
         if system == agents.PLANNER:
             return {'intent': 'general', 'query': current, 'queries': [], 'sources': []}
@@ -307,3 +307,9 @@ def test_explicit_notes_survive_unrelated_topics_without_lexical_overlap():
     history.extend({'role': 'user' if index % 2 == 0 else 'assistant', 'content': 'Unrelated discussion of sorting algorithms.'} for index in range(40))
     context, _ = agents.context_messages('What did I ask you to retain?', history)
     assert any(item['role'] == 'user' and 'Lantern-92' in item['content'] for item in context)
+
+
+def test_same_day_clock_math_preserves_scope():
+    assert agents.clock_difference('At 09:57 and 10:04, how many minutes elapsed?').endswith('7 minutes.')
+    assert agents.clock_difference('At 23:58 and 00:05 the next day, how many minutes elapsed?') is None
+    assert agents.clock_difference('Use 08:00 on 11/8 and 09:00 on 11/9. How many minutes elapsed?') is None

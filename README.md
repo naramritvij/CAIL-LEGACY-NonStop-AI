@@ -171,6 +171,24 @@ On macOS or Linux, use `.venv/bin/python` for the same commands. The full run ma
 | Source transport | Controlled Prognosis and ASAP HTTPS reads and read-only MOMI export with scope, freshness, and blocked redirect checks. |
 | Code regression | Backend suite, frontend contracts, dense graph readability and production frontend build. See the repository's **Actions → CAIL integration quality gates** run for the commit you are reviewing. |
 
+### Run the regression checks
+
+Run from the repo root with the virtual environment activated and the frontend dependencies installed.
+
+~~~bash
+cd backend
+python -m pytest -q
+cd ..
+python scripts/verify_graph_http.py
+python scripts/verify_knowledge_transfer.py
+python scripts/verify_source_transport.py
+npm --prefix frontend run test:contract
+npm --prefix frontend run test:graph
+npm --prefix frontend run build
+~~~
+
+`verify_source_transport.py` needs OpenSSL for its local test certificate. The same checks run on Linux in **CAIL integration quality gates**. For graph and retrieval timings on the fixed fixture, run `python scripts/benchmark_workspace.py`. To compare two revisions on the same machine, add `--baseline <path-to-other-checkout>`.
+
 ## Shut down or troubleshoot
 
 - Stop the isolated demo with `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. Stop the regular workspace with `docker compose down`. These commands retain the respective volumes.

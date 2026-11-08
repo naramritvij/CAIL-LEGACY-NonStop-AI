@@ -21,7 +21,7 @@ from uuid import uuid4
 from verify_knowledge_transfer import ROOT, fixture_users, workspace_api
 from app.transfer_demo import OperatorSession, require, review_document
 
-SCORING_VERSION = 1
+SCORING_VERSION = 2
 MODEL = 'qwen3:4b-instruct'
 PLANS = {
     'INC-DISK-001': [('sample_disk', (101,)), ('verify_retention', (101, 102)), ('disk_handoff', (101, 103))],
@@ -294,6 +294,18 @@ def main():
             expert, reviewer, learner = [OperatorSession(address, user['key'], timeout=240) for user in users]
             notes, draft, stale = seed_guidance(expert, reviewer, include_model_fixtures=args.suite == 'model')
             threads, completed = prepare_rehearsals(learner, expert) if args.suite == 'offline' else ({}, {})
+            if args.suite == 'offline':
+                thread = learner.call('/conversations', {}, status=201)['id']
+                named = ask(learner, thread, 'Use the reviewed note Evaluation guidance disk. What is its scope?')['metadata']
+                require(named['route'] == 'knowledge' and named['sources']
+                        and all(item['document_id'] == notes['disk'] for item in named['sources']),
+                        'A request naming reviewed guidance must use that exact current note.')
+                for hidden in ('draft', 'retired'):
+                    denied = ask(learner, thread, f'Use the reviewed note Evaluation guidance {hidden}. What does it say?')['metadata']
+                    require(denied['status'] == 'guidance_unavailable' and not denied['sources'],
+                            'A draft or superseded note entered named guidance retrieval.')
+                print('PASS: named guidance is scoped to the exact current approved note.')
+
             if completed:
                 print('PASS: four private rehearsals, 12 evidence decisions, blocked writes, idempotent retry and frozen checkpoints.')
             results = evaluate(cases, learner, threads, notes, {draft, stale}, args.suite)
