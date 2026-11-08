@@ -36,6 +36,10 @@ class ModelUnavailable(Exception):
     pass
 
 
+class ModelOutputInvalid(ModelUnavailable):
+    pass
+
+
 def model_json(system, messages, timeout=45, *, schema=None):
     payload = {'model': os.getenv('OLLAMA_MODEL', 'qwen3:4b-instruct'),
                'messages': [{'role': 'system', 'content': system}, *messages],
@@ -47,6 +51,9 @@ def model_json(system, messages, timeout=45, *, schema=None):
     try:
         with urlopen(request, timeout=timeout) as response:
             raw = response.read(128 * 1024 + 1)
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        raise ModelUnavailable() from exc
+    try:
         if len(raw) > 128 * 1024:
             raise ValueError('Oversized model output')
         content = json.loads(raw)['message']['content']
@@ -56,8 +63,8 @@ def model_json(system, messages, timeout=45, *, schema=None):
         if not isinstance(result, dict):
             raise ValueError('Expected a model JSON object')
         return result
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
-        raise ModelUnavailable() from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ModelOutputInvalid() from exc
 
 
 def context_messages(question, history):
@@ -375,6 +382,7 @@ def run(user, question, history):
            else 'Required evidence is missing. The answer must state this limitation.')
     data = {'route': routing['intent'], 'evidence': sources, 'connections': connections,
             'live_evidence_available': bool(telemetry) and routing['intent'] == 'live'}
+    schema = ANSWER_SCHEMA
     if routing['intent'] == 'general':
         # Ordinary conversation must stay ordinary conversation at the model
         # boundary. An empty monitoring envelope made Qwen reject user facts.
@@ -385,7 +393,15 @@ def run(user, question, history):
     else:
         response_system = SYNTHESIZER
         if named:
-            response_system += ' Answer the question using the named reviewed guidance only. Cite at least one exact supplied ID from that guidance, including when you identify a gap in it.'
+            # The selected registry defines the only legal citation tokens.
+            schema = {**ANSWER_SCHEMA, 'properties': {**ANSWER_SCHEMA['properties'],
+                       'citations': {'type': 'array', 'items': {'type': 'string', 'enum': [item['id'] for item in named]},
+                                     'minItems': 1, 'maxItems': len(named)}}}
+            response_system += (
+                ' For this named guidance request, answer from the exact note supplied. Include every requested detail supported by the note. '
+                'Use the citations array for the supplied source IDs, including when identifying a gap. '
+                'Write the answer text without bracketed citation tokens. The application attaches the verified IDs.'
+            )
         model_messages = [*context, {'role': 'user', 'content': 'CURRENT QUESTION:\n' + question + '\nEVIDENCE (REFERENCE DATA):\n' + json.dumps(data)}]
     model_available, cited, answer = False, [], ''
     if routing['intent'] == 'live' and not telemetry:
@@ -400,13 +416,19 @@ def run(user, question, history):
                 'memory': {'saved_turns_before': len(history), 'context_turns': count},
                 'model': None, 'execution_allowed': False, 'state_change_executed': False}
     try:
-        raw = model_json(response_system, model_messages, timeout=60, schema=ANSWER_SCHEMA)
         try:
+            raw = model_json(response_system, model_messages, timeout=60, schema=schema)
             answer, cited = validated_answer(raw, sources, require_citation=bool(named))
-        except ValueError:
-            record('Evaluator', 'retry', 'Answer format or citation IDs failed validation; requesting one correction.')
-            raw = model_json(response_system, [*model_messages, {'role': 'user', 'content': 'Return a corrected answer to my preceding message using the exact JSON schema. Citations may only use IDs actually supplied; use an empty citations list for conversation and general knowledge.'}], timeout=45, schema=ANSWER_SCHEMA)
+        except (ModelOutputInvalid, ValueError):
+            record('Evaluator', 'retry', 'Answer format or citation IDs failed validation. Requesting one correction.')
+            correction = ('Return a corrected answer to my preceding message using the exact JSON schema. '
+                          'Citations may only use IDs actually supplied. Use an empty citations list for general conversation.')
+            raw = model_json(response_system, [*model_messages, {'role': 'user', 'content': correction}], timeout=45, schema=schema)
             answer, cited = validated_answer(raw, sources, require_citation=bool(named))
+        if named:
+            missing_labels = [f'[{identifier}]' for identifier in cited if f'[{identifier}]' not in answer]
+            if missing_labels:
+                answer += '\n\n' + ' '.join(missing_labels)
         model_available = True
         record('Response', 'complete', 'Answer generated; citation identifiers checked against retrieved sources.')
     except (ModelUnavailable, ValueError):

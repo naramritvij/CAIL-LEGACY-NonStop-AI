@@ -207,6 +207,8 @@ def evaluate(cases, learner, threads, notes, hidden, mode):
                       'latency_ms': elapsed, 'expected_status': case['status'],
                       'actual_status': turn['metadata'].get('status'), 'model': turn['metadata'].get('model'),
                       'question': case['question'], 'answer': turn['content'],
+                      'route': turn['metadata'].get('route'),
+                      'trace': turn['metadata'].get('trace', []),
                       'citations': turn['metadata'].get('citations', []),
                       'prelude': [{'question': prompt, 'answer': reply['content']}
                                   for prompt, reply in zip(case.get('prelude', []), prelude)]}

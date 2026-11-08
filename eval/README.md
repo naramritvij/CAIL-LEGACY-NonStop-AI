@@ -29,7 +29,7 @@ The three focused cases cover a definition, a cited reviewed answer, and recall 
 
 ## Scoring and interpretation
 
-Rubric v2 accepts equivalent wording in four cases after inspecting the first run's answers. The grounded questions and their required note citations stayed the same. Compare whole-suite scores only under the same rubric. The first run revealed that naming an approved note could skip retrieval. The assistant now selects the named current note before generation and requires an exact citation.
+Rubric v2 accepts equivalent wording in four cases after inspecting the first run's answers. The grounded questions and their required note citations stayed the same. Compare whole-suite scores only under the same rubric. The first run revealed that naming an approved note could skip retrieval. The assistant now selects the named current note before generation and constrains the citation field to that note’s evidence IDs.
 
 - **Observed facts.** Cases assert answer content and the intended status. Replay questions specify the exact evidence IDs visible at the checkpoint. A case fails if the answer cites a different observation or leaks a later one.
 - **Reviewed evidence.** Positive cases require the intended current, signed note. Direct lookup reproduces its text. Boundary cases keep draft or superseded material out of evidence. Model cases require a registered citation to the relevant signed note and check required concepts in the response.

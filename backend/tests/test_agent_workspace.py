@@ -313,3 +313,41 @@ def test_same_day_clock_math_preserves_scope():
     assert agents.clock_difference('At 09:57 and 10:04, how many minutes elapsed?').endswith('7 minutes.')
     assert agents.clock_difference('At 23:58 and 00:05 the next day, how many minutes elapsed?') is None
     assert agents.clock_difference('Use 08:00 on 11/8 and 09:00 on 11/9. How many minutes elapsed?') is None
+
+
+def test_named_guidance_citations_are_constrained_and_retried(clients, monkeypatch):
+    alice, bob, reviewer = clients
+    text = 'TMFCOM STATUS TMF. Confirm the training observation time before escalation.'
+    source = alice.post(BASE + '/documents', json={'title': 'Source for handoff', 'content': text, 'topic': 'TMF'}).json()
+    approve(alice, reviewer, source['id'])
+    catalog = alice.get(BASE + '/knowledge/catalog?q=TMFCOM').json()
+    concept = next(item['id'] for item in catalog['concepts'] if item['label'] == 'TMFCOM STATUS TMF')
+    citation = next(item['id'] for item in catalog['citations'] if item['document_id'] == source['id'])
+    note = alice.post(BASE + '/knowledge/notes', json={
+        'title': 'Training handoff procedure', 'content': text, 'category': 'procedure',
+        'concept_ids': [concept], 'citations': [{'citation_id': citation, 'relation': 'cites'}],
+        'sign_as_current_user': True,
+    }).json()
+    approve(alice, reviewer, note['id'])
+    calls = []
+
+    def model(system, messages, timeout=0, *, schema=None):
+        assert system != agents.PLANNER
+        allowed = schema['properties']['citations']
+        assert allowed['minItems'] == 1
+        identifier = allowed['items']['enum'][0]
+        assert identifier.startswith('DOC-' + note['id'][:8])
+        calls.append(identifier)
+        if len(calls) == 1:
+            raise agents.ModelOutputInvalid()
+        return {'answer': 'Confirm the training observation time before escalation.', 'citations': [identifier]}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    thread = bob.post(BASE + '/conversations').json()['id']
+    response = bob.post(f'{BASE}/conversations/{thread}/messages', json={
+        'question': 'Use the reviewed note Training handoff procedure. Which time should I confirm?',
+        'request_id': 'named_guidance_schema',
+    }).json()['metadata']
+    assert len(calls) == 2
+    assert response['status'] == 'answered' and response['citations'] == [calls[-1]]
+    assert '[' + calls[-1] + ']' in response['answer']
