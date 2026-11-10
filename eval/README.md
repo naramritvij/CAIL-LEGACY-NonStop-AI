@@ -5,7 +5,7 @@ The manifests are checked in as JSON Lines. [The runner](../scripts/evaluate_wor
 | Set | Cases | What runs |
 | --- | ---: | --- |
 | [Workspace offline](workspace.jsonl) | **120** | 96 questions across four staged incidents, plus 24 checks of reviewed guidance, source availability and action safety in the ordinary assistant. |
-| [Local model](model.jsonl) | **100** | 20 general questions, 24 grounded answers, 20 memory cases, 12 observation readings, 12 timeline reasoning cases and 12 operator-judgment cases. Every scored reply must come from the local model. |
+| [Local model](model.jsonl) | **104** | 20 general questions, 24 grounded answers, 20 memory cases, 4 conversation context cases, 12 observation readings, 12 timeline reasoning cases and 12 operator-judgment cases. Expected clarifications can come from the application. Other replies must come from the local model. |
 
 ## Run and inspect
 
@@ -25,7 +25,7 @@ python scripts/evaluate_workspace.py --suite model --case qwen-01 --case qwen-09
 python scripts/evaluate_workspace.py --suite model --report eval/model-results.local.json
 ~~~
 
-The three focused cases cover a definition, a cited reviewed answer, and recall after a topic change. A missing service or tag stops the model run. The runner checks that every scored answer identifies a model and records the local tag digest in the report. The **CAIL local model evaluation** workflow runs the same set in ten isolated shards with a loopback Ollama process on each standard Linux runner. It checks that the reports cover all 100 cases on the same commit and model digest. Open the workflow summary for the measured pass counts and the shard artifacts for individual answers.
+The three focused cases cover a definition, a cited reviewed answer, and recall after a topic change. Cases qwen-101 through qwen-104 exercise an indirect follow-up, a correction, an ambiguous reference and a short reply that resolves it. A missing service or tag stops the model run. The runner records the local model digest and checks that every reply requiring a model was generated. The **CAIL local model evaluation** workflow runs the same set in ten isolated shards with a loopback Ollama process on each standard Linux runner. It checks that the reports cover all 104 cases on the same commit and model digest. Open the workflow summary for the measured pass counts and the shard artifacts for individual answers.
 
 ## Scoring and interpretation
 

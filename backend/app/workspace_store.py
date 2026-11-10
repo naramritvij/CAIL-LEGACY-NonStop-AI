@@ -213,9 +213,16 @@ def messages(principal, conversation_id):
         thread['rehearsal_label'] = replay['label'] if replay else None
         # A crashed inference must be recoverable without losing the user's turn.
         if thread['active_request'] and (thread['lease_until'] or '') < now():
-            db.execute("UPDATE ws_messages SET status='interrupted',content='This response was interrupted. Send a follow-up to continue; your earlier messages are saved.' WHERE conversation_id=? AND status='pending'",
-                       (conversation_id,))
-            db.execute('UPDATE ws_conversations SET active_request=NULL,lease_until=NULL WHERE id=?', (conversation_id,))
+            db.execute('BEGIN IMMEDIATE')
+            cleared = db.execute('UPDATE ws_conversations SET active_request=NULL,lease_until=NULL '
+                                 'WHERE id=? AND active_request=? AND lease_until IS ?',
+                                 (conversation_id, thread['active_request'], thread['lease_until'])).rowcount
+            if cleared:
+                db.execute("UPDATE ws_messages SET status='interrupted',content='This response was interrupted. Send a follow-up to continue; your earlier messages are saved.' "
+                           "WHERE conversation_id=? AND request_id=? AND status='pending'",
+                           (conversation_id, thread['active_request']))
+                thread.update(active_request=None, lease_until=None)
+            db.execute('COMMIT')
         rows = db.execute('SELECT * FROM ws_messages WHERE conversation_id=? ORDER BY sequence', (conversation_id,)).fetchall()
     return {'conversation': thread, 'messages': [message(row) for row in rows]}
 
@@ -231,36 +238,48 @@ def begin_turn(principal, conversation_id, request_id, question):
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
         thread = owned_thread(db, conversation_id, principal)
+        timestamp = now()
+        active = thread['active_request'] and (thread['lease_until'] or '') > timestamp
         previous = db.execute("SELECT * FROM ws_messages WHERE conversation_id=? AND request_id=? AND role='assistant'",
                               (conversation_id, request_id)).fetchone()
         if previous:
-            previous_question = db.execute("SELECT content FROM ws_messages WHERE conversation_id=? AND request_id=? AND role='user'", (conversation_id, request_id)).fetchone()
+            previous_question = db.execute("SELECT id,content FROM ws_messages WHERE conversation_id=? AND request_id=? AND role='user'",
+                                           (conversation_id, request_id)).fetchone()
             if not previous_question or previous_question['content'] != question:
                 raise HTTPException(409, 'This request ID was already used for a different question.')
-            db.execute('COMMIT')
-            return {'existing': message(previous)}
-        if thread['active_request'] and (thread['lease_until'] or '') > now():
+            newer = db.execute('SELECT 1 FROM ws_messages WHERE conversation_id=? AND sequence>? LIMIT 1',
+                               (conversation_id, previous['sequence'])).fetchone()
+            if previous['status'] not in ('pending', 'interrupted') or active or newer:
+                db.execute('COMMIT')
+                return {'existing': message(previous)}
+        elif active:
             raise HTTPException(409, 'This conversation is responding. Wait for the current response.')
-        db.execute("UPDATE ws_messages SET status='interrupted',content='Response interrupted; your question is saved.' WHERE conversation_id=? AND status='pending'", (conversation_id,))
+        db.execute("UPDATE ws_messages SET status='interrupted',content='Response interrupted; your question is saved.' "
+                   "WHERE conversation_id=? AND request_id!=? AND status='pending'", (conversation_id, request_id))
         scoped = db.execute('SELECT snapshot FROM ws_rehearsal_threads WHERE conversation_id=?', (conversation_id,)).fetchone()
-        history = [message(row) for row in db.execute("SELECT * FROM ws_messages WHERE conversation_id=? AND status='complete' ORDER BY sequence", (conversation_id,))]
-        timestamp = now()
+        history = [message(row) for row in db.execute("SELECT * FROM ws_messages WHERE conversation_id=? AND request_id!=? "
+                                                     "AND status='complete' ORDER BY sequence", (conversation_id, request_id))]
         lease = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
         db.execute('UPDATE ws_conversations SET active_request=?,lease_until=?,updated_at=?,title=CASE WHEN title=? THEN ? ELSE title END WHERE id=?',
                    (request_id, lease, timestamp, 'New conversation', question[:70], conversation_id))
-        user_id, answer_id = str(uuid4()), str(uuid4())
-        for identifier, role, content, status in ((user_id, 'user', question, 'complete'), (answer_id, 'assistant', '', 'pending')):
-            db.execute('INSERT INTO ws_messages(id,conversation_id,role,content,status,request_id,created_at) VALUES (?,?,?,?,?,?,?)',
-                       (identifier, conversation_id, role, content, status, request_id, timestamp))
+        if previous:
+            user_id, answer_id = previous_question['id'], previous['id']
+            db.execute("UPDATE ws_messages SET status='pending',content='' WHERE id=?", (answer_id,))
+        else:
+            user_id, answer_id = str(uuid4()), str(uuid4())
+            for identifier, role, content, status in ((user_id, 'user', question, 'complete'), (answer_id, 'assistant', '', 'pending')):
+                db.execute('INSERT INTO ws_messages(id,conversation_id,role,content,status,request_id,created_at) VALUES (?,?,?,?,?,?,?)',
+                           (identifier, conversation_id, role, content, status, request_id, timestamp))
         db.execute('COMMIT')
-    return {'history': history, 'rehearsal': json.loads(scoped['snapshot']) if scoped else None, 'answer_id': answer_id, 'user_id': user_id}
+    return {'history': history, 'rehearsal': json.loads(scoped['snapshot']) if scoped else None,
+            'answer_id': answer_id, 'user_id': user_id, 'lease_until': lease}
 
 
-def finish_turn(conversation_id, request_id, answer_id, result):
+def finish_turn(conversation_id, request_id, answer_id, result, *, lease_until):
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
-        thread = db.execute('SELECT active_request FROM ws_conversations WHERE id=?', (conversation_id,)).fetchone()
-        if not thread or thread['active_request'] != request_id:
+        thread = db.execute('SELECT active_request,lease_until FROM ws_conversations WHERE id=?', (conversation_id,)).fetchone()
+        if not thread or thread['active_request'] != request_id or thread['lease_until'] != lease_until:
             raise HTTPException(409, 'Response lease expired; reload this conversation.')
         db.execute("UPDATE ws_messages SET content=?,status='complete',metadata=? WHERE id=?",
                    (result['answer'], json.dumps(result), answer_id))

@@ -146,6 +146,12 @@ The smoke test creates a conversation, saves a fresh checklist name, asks an unr
 
 On Docker Desktop, the main backend uses `http://host.docker.internal:11434`. If Docker cannot reach the host model, check that Ollama is running and the configured model appears in `ollama list`. The [local development route](#local-development) runs the backend beside Ollama on the host.
 
+### Try a natural follow-up
+
+In the regular Assistant, say **The training disk was at 72% before the batch and 81% after.** Then ask **How much did it go up?** CAIL uses the earlier message to understand what “it” means. You can correct a detail in plain language and keep going. **Behind the answer** shows how CAIL interpreted a follow-up when it supplied missing context.
+
+If two readings could fit your question, CAIL asks which one you mean. Readings you type are treated as observations you supplied. For an independent live check, CAIL uses authorized source data.
+
 ### Configure separate operators
 
 The regular workspace initially has one **Local operator** identity. To run actual team handoffs there, set `CAIL_WORKSPACE_LOCAL_DEMO=false` and configure `CAIL_WORKSPACE_USERS` in a private local `.env` using the format in [`.env.example`](.env.example). Give each operator a stable ID, display name and unique key of at least 32 characters. Set `can_review` for an independent reviewer and `can_manage_members` for the manager. Grant `can_read_live` only to authorized readers.
@@ -193,7 +199,7 @@ python3 -m venv .venv
 
 Expect **120/120 offline answer cases passed** and four debriefs recovered after an API restart. The runner starts an isolated HTTP backend and temporary database. It seeds synthetic reviewed sources, checks all 12 rehearsal decisions and their evidence boundaries, and scores each answer against expected behavior, required facts, allowed citations and read-only flags. GitHub Actions runs the same suite and retains the per-case report.
 
-The separate **100-question model suite** exercises the normal local Ollama assistant. It covers reviewed guidance, saved user and assistant turns, general questions, observation reading, chronology, and operator judgment. Start Ollama with `qwen3:4b-instruct`, then run:
+The separate **104-question model suite** exercises the normal local Ollama assistant. It covers reviewed guidance, conversation memory and context, general questions, observation reading, chronology, and operator judgment. Start Ollama with `qwen3:4b-instruct`, then run:
 
 ~~~powershell
 .\.venv\Scripts\python.exe scripts/evaluate_workspace.py --suite model --case qwen-01 --case qwen-09 --case qwen-17 --report eval/model-smoke.local.json

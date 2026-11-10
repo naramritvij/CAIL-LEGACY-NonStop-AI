@@ -50,6 +50,7 @@ export interface AnswerMeta {
   citations?: string[];
   trace?: AgentStep[];
   memory?: { saved_turns_before: number; context_turns: number };
+  interpretation?: string;
   model?: string | null;
 }
 export interface Message {

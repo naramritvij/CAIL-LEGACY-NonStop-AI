@@ -373,6 +373,9 @@ function ActivityPanel({
             answer.
           </span>
         )}
+        {metadata?.interpretation && (
+          <p><strong>How CAIL understood you</strong><br />{metadata.interpretation}</p>
+        )}
       </section>
       <section className="evidence-section">
         <div className="section-heading">

@@ -2,6 +2,7 @@
 import json
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
@@ -80,6 +81,100 @@ def test_history_contains_both_roles_after_topic_changes(clients, monkeypatch):
     assert agents.fallback_plan('Explain photosynthesis.', [{'role': 'user', 'content': 'Which ATM is broken?'}])['intent'] == 'general'
 
 
+def test_normal_chat_clarifies_then_uses_the_corrected_context(clients, monkeypatch):
+    alice, _, _ = clients
+    opening = 'We had a disk alert on NODE-A and a CPU warning on NODE-B.'
+    ambiguous = 'Can you find what I should check for that?'
+    clarification = 'Which do you mean, the disk alert or the CPU warning?'
+    correction = 'The disk. Actually, that was NODE-C.'
+    interpretation = 'Find the reviewed next check for the disk alert on NODE-C.'
+    evidence = {'id': 'DOC-context-C01', 'title': 'Disk alert check',
+                'text': 'Compare the disk readings from the same node.', 'synthetic': True}
+    queries = []
+
+    def model(system, messages, timeout=0, *, schema=None):
+        message = messages[-1]['content']
+        if system == agents.PLANNER:
+            assert schema == agents.PLAN_SCHEMA
+            if message == opening:
+                return {'intent': 'general', 'query': opening}
+            if message == ambiguous:
+                assert messages[0]['content'] == opening
+                return {'intent': 'general', 'ambiguity_options': ['the disk alert', 'the CPU warning']}
+            assert message == correction and messages[-2]['content'] == clarification
+            return {'intent': 'knowledge', 'query': interpretation, 'follow_up': True}
+        if system == agents.EVALUATOR:
+            assert json.loads(message)['question'] == interpretation
+            return {'relevant_ids': [evidence['id']], 'sufficient': True}
+        if system == agents.SYNTHESIZER:
+            assert correction in message and interpretation in message
+            return {'answer': 'For NODE-C, compare readings from the same node. [DOC-context-C01]',
+                    'citations': [evidence['id']]}
+        assert system == agents.CONVERSATIONAL
+        return {'answer': 'I understand there were two separate alerts.', 'citations': []}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'knowledge_agent', lambda user, query: queries.append(query) or [evidence])
+    monkeypatch.setattr(agents, 'telemetry_agent', lambda *args: pytest.fail('Unrequested live read'))
+    conversation = alice.post(BASE + '/conversations').json()['id']
+    for index, question in enumerate((opening, ambiguous, correction)):
+        response = alice.post(f'{BASE}/conversations/{conversation}/messages',
+                              json={'question': question, 'request_id': f'normal_chat_{index}'})
+        assert response.status_code == 200, response.text
+        reply = response.json()['metadata']
+        if question == ambiguous:
+            assert reply['status'] == 'needs_clarification' and reply['answer'] == clarification
+            assert reply['sources'] == [] and queries == []
+    assert queries == [interpretation]
+    assert reply['status'] == 'answered' and reply['interpretation'] == interpretation
+    assert reply['citations'] == [evidence['id']] and reply['state_change_executed'] is False
+    saved = alice.get(f'{BASE}/conversations/{conversation}').json()['messages']
+    assert saved[-2]['content'] == correction
+
+
+def test_singular_follow_up_to_two_observations_asks_before_model_or_tools(clients, monkeypatch):
+    alice, _, _ = clients
+    monkeypatch.setattr(agents, 'model_json', lambda *args, **kwargs: pytest.fail('Ambiguous read went to inference'))
+    history = [{'role': 'user', 'content': 'Disk usage went from 62% to 67%, and CPU usage rose from 54% to 73%.'},
+               {'role': 'assistant', 'content': 'Got it. You supplied two readings for each metric.'}]
+    result = agents.run(alice.get(BASE + '/session').json(), 'How big was that jump?', history)
+    assert result['status'] == 'needs_clarification'
+    assert result['answer'] == 'Which reading do you mean, disk or CPU?'
+    assert result['sources'] == [] and result['model'] is None
+    assert agents.competing_readings('How much did disk usage change?', history) == []
+    assert agents.competing_readings('How much did they both go up?', history) == []
+    history += [{'role': 'user', 'content': 'How big was that jump?'},
+                {'role': 'assistant', 'content': result['answer'], 'metadata': result}]
+
+    def model(system, messages, timeout=0, *, schema=None):
+        assert system == agents.CONVERSATIONAL
+        assert 'pending question about disk using the readings the user supplied' in messages[-1]['content']
+        return {'answer': 'Disk usage increased by 5 percentage points.', 'citations': []}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'knowledge_agent', lambda *args: pytest.fail('Unexpected document search'))
+    reply = agents.run(alice.get(BASE + '/session').json(), 'The disk, I mean.', history)
+    assert reply['route'] == 'general' and reply['status'] == 'answered' and not reply['sources']
+
+
+@pytest.mark.parametrize('intent', ['state_change', 'general'])
+def test_indirect_change_request_still_hits_read_only_boundary(clients, monkeypatch, intent):
+    alice, _, _ = clients
+
+    def model(system, messages, timeout=0, *, schema=None):
+        assert system == agents.PLANNER
+        return {'intent': intent, 'query': 'Restart the Pathway service', 'follow_up': True}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'knowledge_agent', lambda *args: pytest.fail('Read after blocked request'))
+    monkeypatch.setattr(agents, 'telemetry_agent', lambda *args: pytest.fail('Read after blocked request'))
+    history = [{'role': 'user', 'content': 'We were discussing restarting the Pathway service.'},
+               {'role': 'assistant', 'content': 'The restart requires operator authorization.'}]
+    result = agents.run(alice.get(BASE + '/session').json(), 'Go ahead with that.', history)
+    assert result['status'] == 'unsafe_request'
+    assert result['sources'] == [] and result['execution_allowed'] is False
+
+
 def test_idempotent_turns_and_database_lease(clients, monkeypatch):
     alice, _, _ = clients
     calls = []
@@ -94,6 +189,62 @@ def test_idempotent_turns_and_database_lease(clients, monkeypatch):
     principal = alice.get(BASE + '/session').json()
     store.begin_turn(principal, identifier, 'running_request', 'Pending question')
     assert alice.post(f'{BASE}/conversations/{identifier}/messages', json={'question': 'Concurrent question', 'request_id': 'next_request_1'}).status_code == 409
+
+
+@pytest.mark.parametrize('reloaded', [False, True])
+def test_retry_resumes_latest_expired_turn_without_duplication(clients, monkeypatch, reloaded):
+    alice, _, _ = clients
+    principal = alice.get(BASE + '/session').json()
+    conversation = alice.post(BASE + '/conversations').json()['id']
+    path = f'{BASE}/conversations/{conversation}'
+    earlier = store.begin_turn(principal, conversation, 'earlier_request', 'There was a disk alert.')
+    store.finish_turn(conversation, 'earlier_request', earlier['answer_id'],
+                      {'answer': 'I have the disk alert in context.'}, lease_until=earlier['lease_until'])
+    body = {'request_id': 'expired_request', 'question': 'What about that alert?'}
+    stalled = store.begin_turn(principal, conversation, body['request_id'], body['question'])
+    pending = alice.post(path + '/messages', json=body).json()
+    assert pending['id'] == stalled['answer_id'] and pending['status'] == 'pending'
+    with store.database() as db:
+        db.execute('UPDATE ws_conversations SET lease_until=? WHERE id=?', ('2000-01-01', conversation))
+    if reloaded:
+        assert alice.get(path).json()['messages'][-1]['status'] == 'interrupted'
+    calls = []
+
+    def run(user, question, history):
+        calls.append(question)
+        assert [turn['content'] for turn in history] == ['There was a disk alert.', 'I have the disk alert in context.']
+        with pytest.raises(HTTPException) as failure:
+            store.finish_turn(conversation, body['request_id'], stalled['answer_id'],
+                              {'answer': 'Stale reply'}, lease_until=stalled['lease_until'])
+        assert failure.value.status_code == 409
+        return {'answer': 'Check the disk alert evidence.', 'sources': [], 'trace': []}
+
+    monkeypatch.setattr(agents, 'run', run)
+    response = alice.post(path + '/messages', json=body)
+    assert response.status_code == 200, response.text
+    reply = response.json()
+    assert reply['id'] == stalled['answer_id'] and reply['content'] == 'Check the disk alert evidence.'
+    assert alice.post(path + '/messages', json=body).json() == reply
+    assert calls == [body['question']]
+    saved = alice.get(path).json()['messages']
+    assert len(saved) == 4 and saved[-2]['id'] == stalled['user_id'] and saved[-1] == reply
+
+
+def test_retry_keeps_a_later_turn_intact(clients, monkeypatch):
+    alice, _, _ = clients
+    principal = alice.get(BASE + '/session').json()
+    conversation = alice.post(BASE + '/conversations').json()['id']
+    path = f'{BASE}/conversations/{conversation}/messages'
+    old = {'request_id': 'expired_older_request', 'question': 'First question'}
+    store.begin_turn(principal, conversation, old['request_id'], old['question'])
+    with store.database() as db:
+        db.execute('UPDATE ws_conversations SET lease_until=? WHERE id=?', ('2000-01-01', conversation))
+    calls = []
+    monkeypatch.setattr(agents, 'run', lambda user, question, history: calls.append(question) or {'answer': 'New reply'})
+    new = {'request_id': 'later_request', 'question': 'New question'}
+    assert alice.post(path, json=new).json()['content'] == 'New reply'
+    assert alice.post(path, json=old).json()['status'] == 'interrupted'
+    assert calls == [new['question']]
 
 
 def test_run_failure_preserves_both_turns(clients, monkeypatch):
@@ -332,7 +483,10 @@ def test_named_guidance_citations_are_constrained_and_retried(clients, monkeypat
     calls = []
 
     def model(system, messages, timeout=0, *, schema=None):
-        assert system != agents.PLANNER
+        if system == agents.PLANNER:
+            assert messages[-1]['content'] == 'Why does that time matter?'
+            return {'intent': 'knowledge', 'follow_up': True,
+                    'query': 'Explain the time check in the reviewed note Training handoff procedure.'}
         allowed = schema['properties']['citations']
         assert allowed['minItems'] == 1
         identifier = allowed['items']['enum'][0]
@@ -351,3 +505,8 @@ def test_named_guidance_citations_are_constrained_and_retried(clients, monkeypat
     assert len(calls) == 2
     assert response['status'] == 'answered' and response['citations'] == [calls[-1]]
     assert '[' + calls[-1] + ']' in response['answer']
+    follow_up = bob.post(f'{BASE}/conversations/{thread}/messages', json={
+        'question': 'Why does that time matter?', 'request_id': 'named_guidance_follow_up',
+    }).json()['metadata']
+    assert follow_up['citations'] == response['citations']
+    assert 'Training handoff procedure' in follow_up['interpretation']

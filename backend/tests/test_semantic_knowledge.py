@@ -1,4 +1,6 @@
 """Semantic meaning, real provenance, privacy and honest learning claims."""
+import pytest
+
 from app import semantic_graph as knowledge, workspace_store as store
 from test_agent_workspace import clients, approve
 
@@ -139,16 +141,21 @@ def test_paths_use_stored_relationships_and_refuse_private_targets(clients):
     assert not any(n['id'] == 'document:' + guidance['id'] for n in bob.get(BASE + '/graph').json()['nodes'])
 
 
-def test_question_links_do_not_publish_private_conversation_text(clients, monkeypatch):
+@pytest.mark.parametrize('interpreted', [False, True])
+def test_question_links_do_not_publish_private_conversation_text(clients, monkeypatch, interpreted):
     from app import agent_orchestrator
     alice, bob, reviewer = clients
     doc, command, citation_id = source(alice, reviewer)
-    monkeypatch.setattr(agent_orchestrator, 'run', lambda *a: {
-        'answer': 'Consult the source.', 'sources': [{'id': citation_id, 'document_id': doc['id']}], 'trace': []})
+    result = {'answer': 'Consult the source.', 'sources': [{'id': citation_id, 'document_id': doc['id']}], 'trace': []}
+    if interpreted:
+        result['interpretation'] = 'Explain what TMFCOM STATUS TMF reports for my private-case-phrase.'
+    monkeypatch.setattr(agent_orchestrator, 'run', lambda *a: result)
     thread = bob.post(BASE + '/conversations').json()['id']
-    payload = {'question': 'Does TMFCOM STATUS TMF include my private-case-phrase?', 'request_id': 'semantic_request_001'}
+    question = 'What about it for my private-case-phrase?' if interpreted else 'Does TMFCOM STATUS TMF include my private-case-phrase?'
+    payload = {'question': question, 'request_id': 'semantic_request_001'}
     response = bob.post(f'{BASE}/conversations/{thread}/messages', json=payload)
     assert response.status_code == 200
+    assert bob.get(f'{BASE}/conversations/{thread}').json()['messages'][0]['content'] == question
     assert 'asked_about' in kinds(bob) and 'knows' not in kinds(bob)
     assert 'asked_about' not in kinds(alice)
     assert 'private-case-phrase' not in bob.get(BASE + '/graph').text
