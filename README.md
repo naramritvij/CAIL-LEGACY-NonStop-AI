@@ -233,6 +233,7 @@ npm --prefix frontend run build
 
 - Press **Ctrl+C** to stop the local reviewer demo. For Docker, run `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. Stop the regular Compose workspace with `docker compose down`.
 - If Docker Desktop or its WSL engine fails to start, use the [local reviewer launcher](#run-locally-with-python-and-nodejs).
+- If a CAIL backend is already listening on **8000**, stop the older frontend on **5173** and run `npm.cmd run dev -- --host 127.0.0.1 --port 5173 --reuse-api` from the repo root. The frontend connects to the existing workspace API and starts its own fictional walkthrough service.
 - If port **5180** is in use, add `--port 5181` to your launch command and open the URL it prints. The local launcher keeps a separate database for each frontend port.
 - Open **Knowledge graph → Fictional walkthrough** on **5173** to see the seeded guidance requests and named operator switcher.
 - If the normal frontend opens before the API is ready, run `docker compose ps`, check `docker compose logs --tail=60 backend frontend`, and refresh when the health endpoint responds.
