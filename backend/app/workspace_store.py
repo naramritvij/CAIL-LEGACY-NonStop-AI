@@ -14,7 +14,6 @@ import re
 from uuid import uuid4
 
 from fastapi import HTTPException
-from .operator_language import LanguageEdit, phrase_key
 from .storage import connect, now
 
 
@@ -46,10 +45,6 @@ SCHEMA = (
         role TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL,
         request_id TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
         UNIQUE(conversation_id,request_id,role))""",
-    """CREATE TABLE IF NOT EXISTS ws_operator_language (
-        owner_id TEXT NOT NULL REFERENCES ws_people(id), phrase_key TEXT NOT NULL,
-        phrase TEXT NOT NULL, meaning TEXT NOT NULL,
-        PRIMARY KEY(owner_id,phrase_key))""",
     """CREATE TABLE IF NOT EXISTS ws_documents (
         id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL,
         filename TEXT NOT NULL, content TEXT NOT NULL, sha256 TEXT NOT NULL,
@@ -261,30 +256,12 @@ def begin_turn(principal, conversation_id, request_id, question):
     return {'history': history, 'rehearsal': json.loads(scoped['snapshot']) if scoped else None, 'answer_id': answer_id, 'user_id': user_id}
 
 
-def learned_wording(principal, question):
-    key = phrase_key(question)
-    if not 3 <= len(key) <= 120:
-        return None
-    with database() as db:
-        row = db.execute('SELECT phrase,meaning FROM ws_operator_language WHERE owner_id=? AND phrase_key=?',
-                         (principal['id'], key)).fetchone()
-    return dict(row) if row else None
-
-
-def finish_turn(conversation_id, request_id, answer_id, result, *, language_edit: LanguageEdit | None = None):
+def finish_turn(conversation_id, request_id, answer_id, result):
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
-        thread = db.execute('SELECT active_request,owner_id FROM ws_conversations WHERE id=?', (conversation_id,)).fetchone()
+        thread = db.execute('SELECT active_request FROM ws_conversations WHERE id=?', (conversation_id,)).fetchone()
         if not thread or thread['active_request'] != request_id:
             raise HTTPException(409, 'Response lease expired; reload this conversation.')
-        if language_edit is not None:
-            if language_edit.meaning is None:
-                db.execute('DELETE FROM ws_operator_language WHERE owner_id=? AND phrase_key=?',
-                           (thread['owner_id'], language_edit.key))
-            else:
-                db.execute('INSERT INTO ws_operator_language VALUES (?,?,?,?) ON CONFLICT(owner_id,phrase_key) '
-                           'DO UPDATE SET phrase=excluded.phrase,meaning=excluded.meaning',
-                           (thread['owner_id'], language_edit.key, language_edit.phrase, language_edit.meaning))
         db.execute("UPDATE ws_messages SET content=?,status='complete',metadata=? WHERE id=?",
                    (result['answer'], json.dumps(result), answer_id))
         db.execute('UPDATE ws_conversations SET active_request=NULL,lease_until=NULL,updated_at=? WHERE id=?', (now(), conversation_id))

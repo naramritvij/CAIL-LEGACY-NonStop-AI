@@ -146,13 +146,11 @@ The smoke test creates a conversation, saves a fresh checklist name, asks an unr
 
 On Docker Desktop, the main backend uses `http://host.docker.internal:11434`. If Docker cannot reach the host model, check that Ollama is running and the configured model appears in `ollama list`. The [local development route](#local-development) runs the backend beside Ollama on the host.
 
-### Teach CAIL your wording
+### Try a natural follow-up
 
-1. In the regular **Assistant** chat, select **Teach CAIL my wording** and send **When I say "morning pulse", I mean "Show approved guidance about disk growth".**
-2. Start a new conversation and ask **Could you check the morning pulse, please?** The answer shows the request CAIL understood. An empty workspace will report that no matching reviewed guidance is available.
-3. To correct a misunderstanding in the chat, say **I meant show approved guidance about disk retention. Remember that for next time.** To remove the saved wording, send **Forget what I mean by "morning pulse".**
+In the regular Assistant, say **The training disk was at 72% before the batch and 81% after.** Then ask **How much did it go up?** CAIL uses the earlier message to understand what “it” means. You can correct a detail in plain language and keep going. **Behind the answer** shows how CAIL interpreted a follow-up when it supplied missing context.
 
-Saved wording belongs to the current operator. CAIL applies it to the same phrase and common ways of asking for it. Qualifiers such as a different system or time go through normal interpretation. The saved meaning is a request. Evidence still comes from approved documents or authorized observations.
+If two readings could fit your question, CAIL asks which one you mean. Readings you type are treated as observations you supplied. For an independent live check, CAIL uses authorized source data.
 
 ### Configure separate operators
 
@@ -201,7 +199,7 @@ python3 -m venv .venv
 
 Expect **120/120 offline answer cases passed** and four debriefs recovered after an API restart. The runner starts an isolated HTTP backend and temporary database. It seeds synthetic reviewed sources, checks all 12 rehearsal decisions and their evidence boundaries, and scores each answer against expected behavior, required facts, allowed citations and read-only flags. GitHub Actions runs the same suite and retains the per-case report.
 
-The separate **100-question model suite** exercises the normal local Ollama assistant. It covers reviewed guidance, saved user and assistant turns, general questions, observation reading, chronology, and operator judgment. Start Ollama with `qwen3:4b-instruct`, then run:
+The separate **104-question model suite** exercises the normal local Ollama assistant. It covers reviewed guidance, conversation memory and context, general questions, observation reading, chronology, and operator judgment. Start Ollama with `qwen3:4b-instruct`, then run:
 
 ~~~powershell
 .\.venv\Scripts\python.exe scripts/evaluate_workspace.py --suite model --case qwen-01 --case qwen-09 --case qwen-17 --report eval/model-smoke.local.json

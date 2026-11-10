@@ -1,7 +1,6 @@
 """Memory, ownership, orchestration and source authorization regressions."""
 import json
 from datetime import datetime, timezone
-from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
@@ -46,116 +45,6 @@ def approve(alice, reviewer, identifier):
     assert response.status_code == 200, response.text
 
 
-def ask_workspace(client, question, conversation_id=None, request_id=None):
-    if conversation_id is None:
-        conversation_id = client.post(BASE + '/conversations').json()['id']
-    reply = client.post(f'{BASE}/conversations/{conversation_id}/messages',
-                        json={'question': question, 'request_id': request_id or uuid4().hex})
-    assert reply.status_code == 200, reply.text
-    return reply.json()
-
-
-def test_learned_wording_follows_the_operator_and_uses_reviewed_evidence(clients, monkeypatch):
-    alice, bob, reviewer = clients
-    content = 'TMFCOM STATUS TMF. For this disk growth exercise, check the timestamp and compare a second reading.'
-    source = alice.post(BASE + '/documents', json={'title': 'Disk growth training source', 'content': content}).json()
-    approve(alice, reviewer, source['id'])
-    catalog = alice.get(BASE + '/knowledge/catalog?q=TMFCOM').json()
-    concept = next(item['id'] for item in catalog['concepts'] if item['label'] == 'TMFCOM STATUS TMF')
-    citation = next(item['id'] for item in catalog['citations'] if item['document_id'] == source['id'])
-    note = alice.post(BASE + '/knowledge/notes', json={
-        'title': 'Disk growth check', 'content': content, 'category': 'procedure',
-        'concept_ids': [concept], 'citations': [{'citation_id': citation, 'relation': 'cites'}],
-        'sign_as_current_user': True,
-    }).json()
-    approve(alice, reviewer, note['id'])
-
-    def unavailable(*args, **kwargs):
-        raise agents.ModelUnavailable()
-
-    monkeypatch.setattr(agents, 'model_json', unavailable)
-    meaning = 'Show approved guidance about disk growth'
-    taught = ask_workspace(alice, f'When I say "morning pulse", I mean "{meaning}".')
-    assert taught['metadata']['status'] == 'language_learned'
-    reopened = TestClient(app)
-    reopened.cookies.update(alice.cookies)
-    question = 'Could you check the morning pulse, please?'
-    answer = ask_workspace(reopened, question)
-    assert answer['metadata']['learned_wording'] == {'phrase': 'morning pulse', 'meaning': meaning}
-    assert answer['metadata']['status'] == 'cited_guidance'
-    assert answer['metadata']['sources'][0]['document_id'] == note['id']
-    assert answer['metadata']['citations'] == [answer['metadata']['sources'][0]['id']]
-    assert answer['metadata']['execution_allowed'] is False
-    saved = reopened.get(f'{BASE}/conversations/{answer["conversation_id"]}').json()['messages']
-    assert saved[0]['content'] == question
-    assert 'learned_wording' not in ask_workspace(bob, question)['metadata']
-    for different_request in ('Could you check the morning pulse on NODE-B?', 'Check the morning pulse from yesterday.'):
-        assert 'learned_wording' not in ask_workspace(reopened, different_request)['metadata']
-
-
-def test_explicit_correction_updates_and_forgetting_removes_wording(clients, monkeypatch):
-    alice, _, _ = clients
-    monkeypatch.setattr(agents, 'model_json', lambda *args, **kwargs: {
-        'intent': 'general', 'answer': 'I need more detail.', 'citations': [],
-    })
-    first = ask_workspace(alice, 'night watch')
-    conversation = first['conversation_id']
-    principal = alice.get(BASE + '/session').json()
-    ask_workspace(alice, 'I meant current system health.', conversation)
-    assert store.learned_wording(principal, 'night watch') is None
-    ask_workspace(alice, 'night watch', conversation)
-    question = 'I meant show approved guidance about system health. Remember that for next time.'
-    taught = ask_workspace(alice, question, conversation, 'teach_night_watch')
-    assert taught['metadata']['status'] == 'language_learned'
-    assert ask_workspace(alice, 'night watch')['metadata']['route'] == 'knowledge'
-    replacement = 'show approved guidance about disk growth'
-    ask_workspace(alice, f'When I ask night watch, I mean {replacement}.')
-    assert ask_workspace(alice, question, conversation, 'teach_night_watch')['id'] == taught['id']
-    assert ask_workspace(alice, 'night watch')['metadata']['learned_wording']['meaning'] == replacement + '.'
-    forgot = ask_workspace(alice, 'Forget what I mean by "night watch".')
-    assert forgot['metadata']['status'] == 'language_forgotten'
-    assert 'learned_wording' not in ask_workspace(alice, 'night watch')['metadata']
-
-
-def test_learned_wording_respects_read_only_and_rehearsal_boundaries(clients, monkeypatch):
-    alice, _, _ = clients
-    principal = alice.get(BASE + '/session').json()
-    monkeypatch.setattr(agents, 'model_json', lambda *args, **kwargs: pytest.fail('Unexpected model call'))
-    teach = 'When I say "morning pulse", I mean "show approved guidance about disk growth".'
-    assert ask_workspace(alice, teach)['metadata']['status'] == 'language_learned'
-    unsafe = ask_workspace(alice, 'When I say "morning pulse", I mean "restart the affected service".')
-    assert unsafe['metadata']['status'] == 'unsafe_request'
-    blocked = ask_workspace(alice, 'Restart the service; then check the morning pulse.')
-    assert blocked['metadata']['status'] == 'unsafe_request'
-    assert blocked['metadata']['state_change_executed'] is False
-    assert 'learned_wording' not in blocked['metadata']
-    assert store.learned_wording(principal, 'morning pulse')['meaning'] == 'show approved guidance about disk growth'
-    generic = ask_workspace(alice, 'When I say "why?", I mean "show the observed timeline".')
-    assert generic['metadata']['status'] == 'language_needs_detail'
-
-    response = alice.post(BASE + '/rehearsals', json={'case_id': 'INC-DISK-001', 'request_id': 'test_wording_lab'})
-    assert response.status_code == 201, response.text
-    run_id = response.json()['run_id']
-    response = alice.post(f'{BASE}/rehearsals/{run_id}/conversation', json={'checkpoint': 1})
-    assert response.status_code == 201, response.text
-    conversation = response.json()['id']
-    assert 'learned_wording' not in ask_workspace(alice, 'morning pulse', conversation)['metadata']
-    teach_in_lab = 'When I say "lab pulse", I mean "show the observed timeline".'
-    assert ask_workspace(alice, teach_in_lab, conversation)['metadata']['status'] != 'language_learned'
-    assert store.learned_wording(principal, 'lab pulse') is None
-
-    def unavailable(*args, **kwargs):
-        raise agents.ModelUnavailable()
-
-    monkeypatch.setattr(agents, 'model_json', unavailable)
-    monkeypatch.setattr(live_sources, 'read_source', lambda *args: pytest.fail('Unauthorized connector call'))
-    ask_workspace(alice, 'When I say "status sweep", I mean "Check the current live system status".')
-    live = ask_workspace(alice, 'status sweep')['metadata']
-    assert live['status'] == 'live_unavailable'
-    assert live['sources'] == []
-    assert live['execution_allowed'] is False
-
-
 def test_private_durable_conversations_and_revoked_sessions(clients, monkeypatch):
     alice, bob, _ = clients
     thread = alice.post(BASE + '/conversations').json()
@@ -189,6 +78,88 @@ def test_history_contains_both_roles_after_topic_changes(clients, monkeypatch):
     assert len(saved) == 6
     assert saved[-1]['metadata']['memory']['saved_turns_before'] == 4
     assert agents.fallback_plan('Explain photosynthesis.', [{'role': 'user', 'content': 'Which ATM is broken?'}])['intent'] == 'general'
+
+
+def test_normal_chat_clarifies_then_uses_the_corrected_context(clients, monkeypatch):
+    alice, _, _ = clients
+    opening = 'We had a disk alert on NODE-A and a CPU warning on NODE-B.'
+    ambiguous = 'Can you find what I should check for that?'
+    clarification = 'Which do you mean, the disk alert or the CPU warning?'
+    correction = 'The disk. Actually, that was NODE-C.'
+    interpretation = 'Find the reviewed next check for the disk alert on NODE-C.'
+    evidence = {'id': 'DOC-context-C01', 'title': 'Disk alert check',
+                'text': 'Compare the disk readings from the same node.', 'synthetic': True}
+    queries = []
+
+    def model(system, messages, timeout=0, *, schema=None):
+        message = messages[-1]['content']
+        if system == agents.PLANNER:
+            assert schema == agents.PLAN_SCHEMA
+            if message == opening:
+                return {'intent': 'general', 'query': opening}
+            if message == ambiguous:
+                assert messages[0]['content'] == opening
+                return {'intent': 'general', 'ambiguity_options': ['the disk alert', 'the CPU warning']}
+            assert message == correction and messages[-2]['content'] == clarification
+            return {'intent': 'knowledge', 'query': interpretation, 'follow_up': True}
+        if system == agents.EVALUATOR:
+            assert json.loads(message)['question'] == interpretation
+            return {'relevant_ids': [evidence['id']], 'sufficient': True}
+        if system == agents.SYNTHESIZER:
+            assert correction in message and interpretation in message
+            return {'answer': 'For NODE-C, compare readings from the same node. [DOC-context-C01]',
+                    'citations': [evidence['id']]}
+        assert system == agents.CONVERSATIONAL
+        return {'answer': 'I understand there were two separate alerts.', 'citations': []}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'knowledge_agent', lambda user, query: queries.append(query) or [evidence])
+    monkeypatch.setattr(agents, 'telemetry_agent', lambda *args: pytest.fail('Unrequested live read'))
+    conversation = alice.post(BASE + '/conversations').json()['id']
+    for index, question in enumerate((opening, ambiguous, correction)):
+        response = alice.post(f'{BASE}/conversations/{conversation}/messages',
+                              json={'question': question, 'request_id': f'normal_chat_{index}'})
+        assert response.status_code == 200, response.text
+        reply = response.json()['metadata']
+        if question == ambiguous:
+            assert reply['status'] == 'needs_clarification' and reply['answer'] == clarification
+            assert reply['sources'] == [] and queries == []
+    assert queries == [interpretation]
+    assert reply['status'] == 'answered' and reply['interpretation'] == interpretation
+    assert reply['citations'] == [evidence['id']] and reply['state_change_executed'] is False
+    saved = alice.get(f'{BASE}/conversations/{conversation}').json()['messages']
+    assert saved[-2]['content'] == correction
+
+
+def test_singular_follow_up_to_two_observations_asks_before_model_or_tools(clients, monkeypatch):
+    alice, _, _ = clients
+    monkeypatch.setattr(agents, 'model_json', lambda *args, **kwargs: pytest.fail('Ambiguous read went to inference'))
+    history = [{'role': 'user', 'content': 'Disk usage went from 62% to 67%, and CPU usage rose from 54% to 73%.'},
+               {'role': 'assistant', 'content': 'Got it. You supplied two readings for each metric.'}]
+    result = agents.run(alice.get(BASE + '/session').json(), 'How big was that jump?', history)
+    assert result['status'] == 'needs_clarification'
+    assert result['answer'] == 'Which reading do you mean, disk or CPU?'
+    assert result['sources'] == [] and result['model'] is None
+    assert agents.competing_readings('How much did disk usage change?', history) == []
+    assert agents.competing_readings('How much did they both go up?', history) == []
+
+
+@pytest.mark.parametrize('intent', ['state_change', 'general'])
+def test_indirect_change_request_still_hits_read_only_boundary(clients, monkeypatch, intent):
+    alice, _, _ = clients
+
+    def model(system, messages, timeout=0, *, schema=None):
+        assert system == agents.PLANNER
+        return {'intent': intent, 'query': 'Restart the Pathway service', 'follow_up': True}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'knowledge_agent', lambda *args: pytest.fail('Read after blocked request'))
+    monkeypatch.setattr(agents, 'telemetry_agent', lambda *args: pytest.fail('Read after blocked request'))
+    history = [{'role': 'user', 'content': 'We were discussing restarting the Pathway service.'},
+               {'role': 'assistant', 'content': 'The restart requires operator authorization.'}]
+    result = agents.run(alice.get(BASE + '/session').json(), 'Go ahead with that.', history)
+    assert result['status'] == 'unsafe_request'
+    assert result['sources'] == [] and result['execution_allowed'] is False
 
 
 def test_idempotent_turns_and_database_lease(clients, monkeypatch):
@@ -443,7 +414,10 @@ def test_named_guidance_citations_are_constrained_and_retried(clients, monkeypat
     calls = []
 
     def model(system, messages, timeout=0, *, schema=None):
-        assert system != agents.PLANNER
+        if system == agents.PLANNER:
+            assert messages[-1]['content'] == 'Why does that time matter?'
+            return {'intent': 'knowledge', 'follow_up': True,
+                    'query': 'Explain the time check in the reviewed note Training handoff procedure.'}
         allowed = schema['properties']['citations']
         assert allowed['minItems'] == 1
         identifier = allowed['items']['enum'][0]
@@ -462,3 +436,8 @@ def test_named_guidance_citations_are_constrained_and_retried(clients, monkeypat
     assert len(calls) == 2
     assert response['status'] == 'answered' and response['citations'] == [calls[-1]]
     assert '[' + calls[-1] + ']' in response['answer']
+    follow_up = bob.post(f'{BASE}/conversations/{thread}/messages', json={
+        'question': 'Why does that time matter?', 'request_id': 'named_guidance_follow_up',
+    }).json()['metadata']
+    assert follow_up['citations'] == response['citations']
+    assert 'Training handoff procedure' in follow_up['interpretation']

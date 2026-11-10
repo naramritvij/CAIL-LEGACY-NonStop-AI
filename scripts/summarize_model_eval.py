@@ -25,7 +25,7 @@ def main():
     if sorted(case['id'] for case in results) != sorted(case['id'] for case in expected):
         raise SystemExit('Missing or duplicate model cases in the shard reports.')
     stats = summarize(results)
-    generated = sum(bool(case.get('checks', {}).get('generated')) for case in results)
+    generated = sum(bool(case.get('model')) for case in results)
     print(f'# CAIL model evaluation · {stats["passed"]}/{stats["total"]} passed')
     print(f'\nModel `{model}` · {generated}/{stats["total"]} final answers generated · rubric v{scoring}')
     print(f'\nCommit `{commit}` · suite SHA-256 `{digest}` · model digest `{model_digest}`')
@@ -33,7 +33,7 @@ def main():
     for name, result in stats['buckets'].items():
         print(f'| {name.replace("_", " ")} | {result["passed"]} | {result["total"]} |')
     if generated < len(results):
-        print('\nCases without an accepted model reply are included in the denominator.')
+        print('\nThe denominator includes application clarifications and cases that lacked a required model reply.')
     print('\nDownload the shard reports to inspect the questions, generated answers, citations and per-case checks.')
 
 

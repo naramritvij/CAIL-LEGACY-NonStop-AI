@@ -21,7 +21,7 @@ from uuid import uuid4
 from verify_knowledge_transfer import ROOT, fixture_users, workspace_api
 from app.transfer_demo import OperatorSession, require, review_document
 
-SCORING_VERSION = 2
+SCORING_VERSION = 3
 MODEL = 'qwen3:4b-instruct'
 PLANS = {
     'INC-DISK-001': [('sample_disk', (101,)), ('verify_retention', (101, 102)), ('disk_handoff', (101, 103))],
@@ -183,8 +183,11 @@ def grade(case, turn, notes, hidden, mode):
     else:
         checks['no_invented_citations'] = not citations
     if mode == 'model':
-        checks['generated'] = bool(result.get('model'))
         checks['route'] = result.get('route') == case['route']
+        if case['status'] == 'needs_clarification':
+            checks['clarifies_before_sources'] = not sources
+        else:
+            checks['generated'] = bool(result.get('model'))
     return checks
 
 
@@ -200,7 +203,13 @@ def evaluate(cases, learner, threads, notes, hidden, mode):
             elapsed = round(1000 * (time.perf_counter() - start), 2)
             checks = grade(case, turn, notes, hidden, mode)
             if prelude:
-                checks['prelude_generated'] = all(item['metadata'].get('model') for item in prelude)
+                clarification_turn = case.get('clarification_turn')
+                checks['prelude_generated'] = all(item['metadata'].get('model') for index, item in enumerate(prelude, 1)
+                                                  if index != clarification_turn)
+                if clarification_turn:
+                    clarification = prelude[clarification_turn - 1]['metadata']
+                    checks['prelude_clarified'] = (clarification['status'] == 'needs_clarification'
+                                                  and not clarification['sources'])
             if case.get('first_reply_contains'):
                 checks['earlier_answer_verified'] = case['first_reply_contains'] in prelude[0]['content']
             record = {'id': case['id'], 'bucket': case['bucket'], 'checks': checks, 'passed': all(checks.values()),

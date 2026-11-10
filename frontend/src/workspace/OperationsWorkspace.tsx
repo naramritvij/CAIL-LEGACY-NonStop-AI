@@ -373,6 +373,9 @@ function ActivityPanel({
             answer.
           </span>
         )}
+        {metadata?.interpretation && (
+          <p><strong>How CAIL understood you</strong><br />{metadata.interpretation}</p>
+        )}
       </section>
       <section className="evidence-section">
         <div className="section-heading">
@@ -728,11 +731,6 @@ function Assistant({
                     ) : (
                       <RichText text={message.content} />
                     )}
-                    {message.metadata.learned_wording && (
-                      <p className="fine-print">
-                        I understood your wording as “{message.metadata.learned_wording.meaning}”
-                      </p>
-                    )}
                     {message.role === "assistant" &&
                       message.status !== "pending" && (
                         <div className="answer-actions">
@@ -798,26 +796,10 @@ function Assistant({
               }}
             />
             <div className="composer-bottom">
-              {rehearsalLabel ? <span>
+              <span>
                 <Clock3 size={14} />
-                Context stays with this checkpoint
-              </span> : (
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={!!draft.trim() || sending || pending || loading}
-                  onClick={() => {
-                    const start = 'When I say "';
-                    setDraft(start + '", I mean "".');
-                    window.requestAnimationFrame(() => {
-                      textarea.current?.focus();
-                      textarea.current?.setSelectionRange(start.length, start.length);
-                    });
-                  }}
-                >
-                  <MessageSquare size={14} /> Teach CAIL my wording
-                </button>
-              )}
+                Context stays with this conversation
+              </span>
               <button
                 className="send-button"
                 type="submit"
