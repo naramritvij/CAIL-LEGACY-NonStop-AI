@@ -1,6 +1,7 @@
 // One development entry point for the existing FastAPI + Vite application.
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
@@ -23,20 +24,28 @@ function stop(code = 0) {
   children.forEach(child => child.kill('SIGTERM'))
   process.exitCode = code
 }
-function start(command, args, cwd, env = process.env, oneShot = false) {
+function start(command, args, cwd, env = process.env, { oneShot = false, optional = false } = {}) {
   const child = spawn(command, args, { cwd, env, stdio: 'inherit' })
   children.push(child)
-  child.on('error', error => { console.error(`Development service failed: ${error.message}`); stop(1) })
-  child.on('exit', code => { if (!closing && (!oneShot || code !== 0)) stop(code ?? 1) })
+  child.on('error', error => {
+    console.error(`Development service failed: ${error.message}`)
+    if (!optional) stop(1)
+  })
+  child.on('exit', code => {
+    if (closing || (oneShot && code === 0)) return
+    if (optional) console.error('Knowledge Tree practice is unavailable. Check the service error above.')
+    else stop(code ?? 1)
+  })
   return child
 }
 process.on('SIGINT', () => stop())
 process.on('SIGTERM', () => stop())
 
 const address = `http://127.0.0.1:${apiPort}`
-function startFrontend() {
+function startFrontend(practiceTarget = '') {
   start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', host, '--port', port, '--strictPort'],
-        resolve(root, 'frontend'), { ...process.env, LEGACY_API_PROXY_TARGET: address })
+        resolve(root, 'frontend'),
+        { ...process.env, LEGACY_API_PROXY_TARGET: address, CAIL_PRACTICE_PROXY_TARGET: practiceTarget })
 }
 async function ready(url) {
   const deadline = Date.now() + 15000
@@ -55,12 +64,28 @@ async function startReviewerDemo() {
   startFrontend()
   if (!await ready(frontend + '/api/v1/health') || closing) return
   const seed = start(python, ['-m', 'app.transfer_demo'], resolve(root, 'backend'),
-                     { ...process.env, CAIL_TRANSFER_DEMO_URL: address }, true)
+                     { ...process.env, CAIL_TRANSFER_DEMO_URL: address }, { oneShot: true })
   seed.on('exit', code => {
     if (code === 0 && !closing)
       console.log(`\nReviewer demo ready. Open ${frontend}/#/graph\nPress Ctrl+C here to stop the local demo.\n`)
   })
   return true
+}
+async function startGraphPractice() {
+  // Ask the OS for a loopback port so another local workspace can run alongside this one.
+  const portForPractice = await new Promise((resolvePort, reject) => {
+    const probe = createServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const available = probe.address().port
+      probe.close(error => error ? reject(error) : resolvePort(String(available)))
+    })
+  })
+  if (closing) return ''
+  start(python, ['-m', 'app.graph_practice', '--port', portForPractice, '--data-dir',
+                resolve(root, 'data/transfer-demo', `workspace-${port}`)],
+        resolve(root, 'backend'), process.env, { optional: true })
+  return `http://127.0.0.1:${portForPractice}`
 }
 
 const apiArgs = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', apiPort]
@@ -72,5 +97,9 @@ if (seedDemo) {
     stop(1)
   }
 } else {
-  startFrontend()
+  const practiceTarget = await startGraphPractice().catch(error => {
+    console.error(`Knowledge Tree practice is unavailable: ${error.message}`)
+    return ''
+  })
+  if (!closing) startFrontend(practiceTarget)
 }

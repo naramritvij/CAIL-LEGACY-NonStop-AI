@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Plus, Upload, X } from "lucide-react";
+import { useWorkspaceRequest } from "./workspaceRequest";
 import {
   errorMessage,
-  request,
   type GraphNode,
   type KnowledgeDocument,
 } from "./types";
@@ -18,6 +18,7 @@ export function KnowledgeUpload({
   onError: (text: string) => void;
   target?: GraphNode | null;
 }) {
+  const request = useWorkspaceRequest();
   const [mode, setMode] = useState<"file" | "text" | "reference">("file");
   const [topic, setTopic] = useState("NonStop operations");
   const [title, setTitle] = useState("");
@@ -48,7 +49,7 @@ export function KnowledgeUpload({
     return () => {
       active = false;
     };
-  }, [mode, onError]);
+  }, [mode, onError, request]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);

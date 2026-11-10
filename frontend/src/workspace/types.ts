@@ -261,8 +261,9 @@ export class WorkspaceError extends Error {
 export async function request<T>(
   path: string,
   options: RequestInit = {},
+  apiBase: string = import.meta.env.VITE_API_BASE || "/api/v1",
 ): Promise<T> {
-  const base = (import.meta.env.VITE_API_BASE || "/api/v1").replace(/\/$/, "");
+  const base = apiBase.replace(/\/$/, "");
   const response = await fetch(`${base}/workspace${path}`, {
     ...options,
     credentials: "same-origin",

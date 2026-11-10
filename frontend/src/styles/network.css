@@ -1,6 +1,25 @@
 .network-page .page-intro {
   margin-bottom: 22px;
 }
+.graph-mode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.graph-mode-bar > a {
+  padding: 8px 12px;
+  border: 1px solid #dce7dc;
+  border-radius: 7px;
+  color: #365a47;
+  font-size: 13px;
+  text-decoration: none;
+}
+.graph-mode-bar > a[aria-current="page"] {
+  background: #e9f3eb;
+  border-color: #a8c9b5;
+  font-weight: 600;
+}
 .knowledge-lenses {
   display: flex;
   flex-wrap: wrap;

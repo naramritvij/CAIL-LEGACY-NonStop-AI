@@ -37,6 +37,7 @@ import {
   X,
 } from "lucide-react";
 import { Connections } from "./Connections";
+import { practiceRequest, useWorkspaceRequest, WorkspaceRequestContext } from "./workspaceRequest";
 const KnowledgeGraph = lazy(() => import("./KnowledgeGraph").then((module) => ({ default: module.KnowledgeGraph })));
 import {
   DEMO_ROLE_LABELS,
@@ -53,6 +54,8 @@ import {
 const IncidentLab = lazy(() => import("./IncidentLab").then((module) => ({ default: module.IncidentLab })));
 
 type View = "assistant" | "graph" | "connections" | "rehearsals";
+const PRACTICE_HASH = "#/graph/practice";
+const PRACTICE_ENABLED = import.meta.env.VITE_CAIL_GRAPH_PRACTICE === "true";
 const AGENTS = [
   {
     name: "Memory",
@@ -99,6 +102,7 @@ function Login({
   demoRoles?: Operator["demo_roles"];
   currentId?: string;
 }) {
+  const request = useWorkspaceRequest();
   const [key, setKey] = useState("");
   const [failure, setFailure] = useState(error || "");
   const [busy, setBusy] = useState(false);
@@ -836,6 +840,66 @@ function initialView(): View {
       : "assistant";
 }
 
+function PracticeGraph({ onError }: { onError: (message: string) => void }) {
+  const [operator, setOperator] = useState<Operator | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [failure, setFailure] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const deadline = Date.now() + 20000;
+    let timer: number;
+    async function open() {
+      try {
+        const { status } = await practiceRequest<{ status: "starting" | "ready" | "failed" }>("/practice-ready", { signal });
+        if (signal.aborted) return;
+        if (status === "ready") {
+          const user = await practiceRequest<Operator>("/session", { signal });
+          if (!signal.aborted) setOperator(user);
+          return;
+        }
+        if (status === "failed") {
+          setFailure("The fictional walkthrough could not be prepared. Restart the workspace to try again.");
+          return;
+        }
+      } catch {
+        // The sample service may still be starting behind the workspace frontend.
+      }
+      if (signal.aborted) return;
+      if (Date.now() < deadline) timer = window.setTimeout(() => void open(), 500);
+      else setFailure("The fictional walkthrough is unavailable. Check that the workspace has finished starting.");
+    }
+    void open();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [attempt]);
+  if (!operator) return (
+    <div className="loading-panel" role="status">
+      {failure || "Loading the fictional Knowledge Tree…"}
+      {failure && (
+        <button className="secondary" onClick={() => {
+          setFailure("");
+          setAttempt((value) => value + 1);
+        }}>Retry</button>
+      )}
+    </div>
+  );
+  return (
+    <WorkspaceRequestContext.Provider value={practiceRequest}>
+      <KnowledgeGraph key={operator.id} operator={operator} onError={onError} onSwitch={() => setSwitching(true)} />
+      {switching && <Login
+        onSignedIn={(user) => { setOperator(user); setSwitching(false); }}
+        onClose={() => setSwitching(false)}
+        demoRoles={operator.demo_roles}
+        currentId={operator.id}
+      />}
+    </WorkspaceRequestContext.Provider>
+  );
+}
+
 export function OperationsWorkspace() {
   const [operator, setOperator] = useState<Operator | null>(null);
   const [authState, setAuthState] = useState<
@@ -843,6 +907,7 @@ export function OperationsWorkspace() {
   >("loading");
   const [failure, setFailure] = useState("");
   const [view, setView] = useState<View>(initialView);
+  const [practiceRequested, setPracticeRequested] = useState(() => window.location.hash.toLowerCase() === PRACTICE_HASH);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
@@ -907,11 +972,15 @@ export function OperationsWorkspace() {
   }
   function navigate(next: View) {
     setView(next);
+    setPracticeRequested(false);
     setMobileNav(false);
     window.location.hash = "/" + next;
   }
   useEffect(() => {
-    const listener = () => setView(initialView());
+    const listener = () => {
+      setView(initialView());
+      setPracticeRequested(window.location.hash.toLowerCase() === PRACTICE_HASH);
+    };
     window.addEventListener("hashchange", listener);
     return () => window.removeEventListener("hashchange", listener);
   }, []);
@@ -960,6 +1029,8 @@ export function OperationsWorkspace() {
     { id: "rehearsals" as const, label: "Incident lab", icon: Activity },
     { id: "connections" as const, label: "Connections", icon: Database },
   ];
+  const showGraphModes = PRACTICE_ENABLED && !operator.transfer_demo;
+  const practiceGraph = showGraphModes && view === "graph" && practiceRequested;
   return (
     <div className="workspace-shell">
       <a href="#workspace-main" className="skip-link">
@@ -1091,7 +1162,9 @@ export function OperationsWorkspace() {
           <div className="topbar-actions">
             <span className="environment-label">
               <i />
-              {operator.transfer_demo
+              {practiceGraph
+                ? "Fictional walkthrough"
+                : operator.transfer_demo
                 ? "Synthetic demo"
                 : operator.local_demo
                 ? "Local demonstration"
@@ -1126,9 +1199,19 @@ export function OperationsWorkspace() {
               onDetails={setDetailsOpen}
             />
           ) : view === "graph" ? (
-            <Suspense fallback={<div className="loading-panel">Loading the knowledge graph…</div>}>
-              <KnowledgeGraph key={operator.id} operator={operator} onError={notify} onSwitch={() => setSwitchLogin(true)} />
-            </Suspense>
+            <>
+              {showGraphModes && (
+                <nav className="graph-mode-bar" aria-label="Knowledge graph view">
+                  <a href="#/graph" aria-current={!practiceGraph ? "page" : undefined}>Workspace graph</a>
+                  <a href={PRACTICE_HASH} aria-current={practiceGraph ? "page" : undefined}>Fictional walkthrough</a>
+                </nav>
+              )}
+              <Suspense fallback={<div className="loading-panel">Loading the knowledge graph…</div>}>
+                {practiceGraph
+                  ? <PracticeGraph key={operator.id} onError={notify} />
+                  : <KnowledgeGraph key={operator.id} operator={operator} onError={notify} onSwitch={() => setSwitchLogin(true)} />}
+              </Suspense>
+            </>
           ) : view === "rehearsals" ? (
             <Suspense fallback={<div className="loading-panel">Loading incident lab…</div>}>
               <IncidentLab key={operator.id} onError={notify} onConversation={(conversation) => {
