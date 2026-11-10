@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Database, FileJson, Upload, X } from "lucide-react";
-import { errorMessage, request } from "./types";
+import { errorMessage } from "./types";
+import { useWorkspaceRequest } from "./workspaceRequest";
 
 export function TopologyImport({
   onClose,
@@ -11,6 +12,7 @@ export function TopologyImport({
   onAdded: (documentId: string) => void;
   onError: (text: string) => void;
 }) {
+  const request = useWorkspaceRequest();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);

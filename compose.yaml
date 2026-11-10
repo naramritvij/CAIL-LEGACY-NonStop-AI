@@ -48,15 +48,23 @@ services:
       - ${CAIL_MOMI_EXPORT_HOST_DIR:-./data/momi-inbox}:/readonly-momi:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  practice:
+    build: ./backend
+    command: ["python", "-m", "app.graph_practice", "--host", "0.0.0.0", "--port", "8000", "--data-dir", "/practice-data"]
+    volumes:
+      - practice_knowledge:/practice-data
   frontend:
     build: ./frontend
     environment:
       VITE_LEGACY_DATA_MODE: http
       VITE_API_BASE: /api/v1
       LEGACY_API_PROXY_TARGET: http://backend:8000
+      CAIL_PRACTICE_PROXY_TARGET: http://practice:8000
     depends_on:
       - backend
+      - practice
     ports:
       - "127.0.0.1:5173:5173"
 volumes:
   legacy_knowledge:
+  practice_knowledge:

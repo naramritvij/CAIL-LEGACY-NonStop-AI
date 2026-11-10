@@ -28,6 +28,7 @@ import {
 import { GraphCanvas } from "./GraphCanvas";
 import { KnowledgeUpload } from "./KnowledgeUpload";
 import { TopologyImport } from "./TopologyImport";
+import { useWorkspaceRequest } from "./workspaceRequest";
 import {
   mergeGraphSnapshot,
   reconcileExpansion,
@@ -45,7 +46,6 @@ const KnowledgeStudio = lazy(() =>
 import {
   DEMO_ROLE_LABELS,
   errorMessage,
-  request,
   shortTime,
   type GraphData,
   type GraphEntityDetail,
@@ -95,6 +95,7 @@ export function KnowledgeGraph({
   onError: (text: string) => void;
   onSwitch: () => void;
 }) {
+  const request = useWorkspaceRequest();
   const juniorCount = operator.demo_roles?.filter((role) => role.role === "junior").length || 0;
   const walkthrough = juniorCount > 1;
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -179,7 +180,7 @@ export function KnowledgeGraph({
     } finally {
       if (sequence === refreshSequence.current) inFlight.current = false;
     }
-  }, []);
+  }, [request]);
 
   useEffect(() => {
     void refresh(true);
@@ -213,7 +214,7 @@ export function KnowledgeGraph({
       syncFlight.current = false;
       setSyncing(false);
     }
-  }, [refresh]);
+  }, [refresh, request]);
   const canSync = Boolean(graph?.sources.some((source) => source.can_sync));
   useEffect(() => {
     if (!live || !canSync) return;
@@ -291,7 +292,7 @@ export function KnowledgeGraph({
     return () => {
       current = false;
     };
-  }, [selected, operator.id, onError, refresh]);
+  }, [selected, operator.id, onError, refresh, request]);
   useEffect(() => {
     if (!selected?.startsWith("document:") || !graph?.revision) return;
     const controller = new AbortController();
@@ -305,7 +306,7 @@ export function KnowledgeGraph({
       }
     });
     return () => controller.abort();
-  }, [graph?.revision, selected, onError]);
+  }, [graph?.revision, selected, onError, request]);
   useEffect(() => {
     if (!selected?.startsWith("entity:") && !selected?.startsWith("concept:"))
       return;
@@ -333,7 +334,7 @@ export function KnowledgeGraph({
     return () => {
       current = false;
     };
-  }, [selected, graph?.cursor, onError]);
+  }, [selected, graph?.cursor, onError, request]);
 
   useEffect(() => {
     setRemoteResults([]);
@@ -356,7 +357,7 @@ export function KnowledgeGraph({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [search]);
+  }, [search, request]);
 
   const results = useMemo(() => {
     if (!search.trim()) return [];

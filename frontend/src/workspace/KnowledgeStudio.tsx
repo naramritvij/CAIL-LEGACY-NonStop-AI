@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Handoff, TransferAction } from "./TransferDesk";
 import { ArrowRight, Check, GraduationCap, PenLine, X } from "lucide-react";
+import { useWorkspaceRequest } from "./workspaceRequest";
 import {
-  request,
   errorMessage,
   type GraphData,
   type GraphNode,
@@ -94,6 +94,7 @@ export function KnowledgeStudio({
   transferAction?: TransferAction | null;
   onTransferHandled?: () => void;
 }) {
+  const request = useWorkspaceRequest();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -129,7 +130,7 @@ export function KnowledgeStudio({
     return () => {
       current = false;
     };
-  }, [graph?.cursor, onError]);
+  }, [graph?.cursor, onError, request]);
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(
@@ -154,7 +155,7 @@ export function KnowledgeStudio({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [query, graph?.cursor, onError, profileLoaded]);
+  }, [query, graph?.cursor, onError, profileLoaded, request]);
 
   function editGuidance(revise = false, handoff?: Handoff) {
     setPinnedCitations([]);

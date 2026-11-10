@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, CheckCircle2, FileText, KeyRound, Search, Users } from "lucide-react";
-import { DEMO_ROLE_LABELS, errorMessage, request, type DemoRole, type Operator } from "./types";
+import { DEMO_ROLE_LABELS, errorMessage, type DemoRole, type Operator } from "./types";
+import { useWorkspaceRequest } from "./workspaceRequest";
 import "../styles/transfer.css";
 
 export interface Handoff {
@@ -86,6 +87,7 @@ export function TransferDesk({
   onRefresh: () => Promise<void>;
   onError: (text: string) => void;
 }) {
+  const request = useWorkspaceRequest();
   const [people, setPeople] = useState<Contributor[]>([]);
   const [total, setTotal] = useState(0);
   const [nextPeople, setNextPeople] = useState<number | null>(null);
@@ -113,14 +115,14 @@ export function TransferDesk({
     setPeople((previous) => offset ? [...previous, ...result.contributors] : result.contributors);
     setTotal(result.total);
     setNextPeople(result.next_offset);
-  }, [query, seniorOnly]);
+  }, [query, seniorOnly, request]);
 
   const loadRequests = useCallback(async (offset = 0, signal?: AbortSignal) => {
     const result = await request<{ requests: Handoff[]; next_offset: number | null }>("/knowledge/handoffs?offset=" + offset, { signal });
     if (signal?.aborted) return;
     setHandoffs((previous) => offset ? [...previous, ...result.requests] : result.requests);
     setNextRequests(result.next_offset);
-  }, []);
+  }, [request]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -140,7 +142,7 @@ export function TransferDesk({
     ]).then(() => { if (!controller.signal.aborted) setLoaded(true); })
       .catch((error) => { if (!controller.signal.aborted) onError(errorMessage(error)); });
     return () => controller.abort();
-  }, [revision, loadRequests, onError]);
+  }, [revision, loadRequests, onError, request]);
 
   useEffect(() => {
     setDetail(null);
@@ -155,7 +157,7 @@ export function TransferDesk({
       .then((result) => { if (!controller.signal.aborted) setDetail(result); })
       .catch((error) => { if (!controller.signal.aborted) onError(errorMessage(error)); });
     return () => controller.abort();
-  }, [personId, revision, onError]);
+  }, [personId, revision, onError, request]);
 
   async function moreDocuments() {
     if (!detail || detail.next_offset === null) return;

@@ -2,11 +2,23 @@
 
 CAIL helps an operator investigate a NonStop incident, keep the supporting evidence with the decision, and pass reviewed guidance to the next operator. The application has one assistant, a staged incident lab, an interactive knowledge graph, and a page for authorized read-only source connections.
 
-**Start with the reviewer demo.** It includes four fictional incidents, 40 named Senior Contributors and 80 switchable junior operators. The incident lab, Knowledge Tree, and handoff work without an Ollama model or a customer account.
+The main portal on **5173** includes a fictional Knowledge Tree walkthrough with 40 named Senior Contributors and 80 switchable junior operators. The standalone reviewer demo also includes four fictional incident rehearsals. The seeded graph, incident lab, and handoff work without an Ollama model or a customer account.
 
 ![CAIL incident lab showing three TMF audit samples, a conditional threshold estimate and the verified rehearsal debrief](docs/assets/incident-lab.jpg)
 
 *Completed TMF rehearsal captured from the app. The readings and 80% threshold belong to this training case.*
+
+## Open the Knowledge Tree on the main portal
+
+From your checkout, start the workspace with [Docker Compose](#run-the-regular-workspace) or run the local launcher. For a first local run, install Python 3.12 or later and Node.js 22.12 or later, then install the Python and frontend dependencies.
+
+~~~powershell
+python -m pip install -r backend/requirements.txt
+npm.cmd --prefix frontend ci
+npm.cmd run dev -- --host 127.0.0.1
+~~~
+
+On macOS and Linux, use `npm` in place of `npm.cmd`. Open **Knowledge graph → Fictional walkthrough** on the main portal. Use **Workspace graph** to return to your own documents and contributions. The practice tab has its own operator session and SQLite database. [Open the walkthrough on 5173](http://localhost:5173/#/graph/practice)
 
 ## Run the reviewer demo
 
@@ -43,11 +55,11 @@ python scripts/start_transfer_demo.py
 | Address | Use it for | Storage |
 | --- | --- | --- |
 | [127.0.0.1:5180](http://127.0.0.1:5180/#/graph) | Self-guided Knowledge Tree, fictional operator switching, incident rehearsals, and verified handoffs | Separate local SQLite database or `cail-transfer-demo` Docker volume |
-| [localhost:5173](http://localhost:5173/#/assistant) | The regular workspace, your saved conversations and documents, local Ollama, and authorized source access | Main Compose project and `legacy_knowledge` volume |
+| [localhost:5173](http://localhost:5173/#/assistant) | Main workspace, saved conversations and documents, local Ollama, authorized sources, and the fictional Knowledge Tree tab | Separate workspace and practice databases |
 
 ### Follow a senior’s decision in the Knowledge Tree
 
-1. Open [Knowledge Tree](http://localhost:5180/#/graph). A fresh session starts as **Alex Chen**, one of the 80 fictional junior operators. Click **Open Priya’s case**. Read the problem, decision, reasoning, when she used it, when it applies and what happened in the fictional case.
+1. Open the **Fictional walkthrough** tab on the main portal or the standalone reviewer graph. A fresh practice session starts as **Alex Chen**, one of the 80 fictional junior operators. Click **Open Priya’s case**. Read the problem, decision, reasoning, when she used it, when it applies and what happened in the fictional case. [Main portal](http://localhost:5173/#/graph/practice) · [Standalone reviewer graph](http://localhost:5180/#/graph)
 2. Watch the 3D graph for about five seconds. Alex’s node enters the scene and an **Accessed** link draws to the exact guidance he opened. The graph then highlights the existing contribution from **Priya Shah**. The guidance opens immediately. A reduced-motion setting shows the saved path directly.
 3. Click **Switch demo operator**, choose **Maya Patel** or any other named junior, and click **Switch junior operator**. Open Priya’s case again. Maya gets her own **Accessed** link. Switch back to Alex and reopen it to see his existing link. Reload the page to verify the recorded access persists. Access records describe what someone opened.
 4. Open **Miguel’s case**. Both cases begin at 81% in this exercise. Priya escalated when fresh readings kept rising after the batch ended. Miguel monitored when fresh readings fell. Compare **When to reuse** and the outcomes to see what changed the decision.
@@ -85,7 +97,7 @@ Each rehearsal is saved under its operator. The final debrief records what the o
 
 ## Demonstrate knowledge transfer
 
-Open [the demo graph](http://localhost:5180/#/graph). In **People & handoffs**, the completed request has a **Learning verified** badge. **View learning receipt** shows the assessor, four criteria, citations and guidance version. To create a second receipt, use the practice request about an unclear TMF observation.
+Open the **Fictional walkthrough** and select **People & handoffs**. The completed request has a **Learning verified** badge. **View learning receipt** shows the assessor, four criteria, citations and guidance version. To create a second receipt, use the practice request about an unclear TMF observation. [Open the walkthrough](http://localhost:5173/#/graph/practice)
 
 | Who | What to click | What to verify |
 | --- | --- | --- |
@@ -118,7 +130,7 @@ docker compose up -d --build
 docker compose ps
 ~~~
 
-Open [the regular workspace](http://localhost:5173/#/assistant). The backend health endpoint is [localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) and should return `"status":"ok"`. To rebuild an existing checkout, use `git switch main`, `git pull --ff-only origin main`, then the same Compose command. Normal workspace records live in its Docker volume.
+Open [the regular workspace](http://localhost:5173/#/assistant). The backend health endpoint is [localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) and should return `"status":"ok"`. To rebuild an existing checkout, use `git switch main`, `git pull --ff-only origin main`, then the same Compose command. Workspace and practice records use separate Docker volumes.
 
 ### Test conversation memory with Ollama
 
@@ -222,7 +234,7 @@ npm --prefix frontend run build
 - Press **Ctrl+C** to stop the local reviewer demo. For Docker, run `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. Stop the regular Compose workspace with `docker compose down`.
 - If Docker Desktop or its WSL engine fails to start, use the [local reviewer launcher](#run-locally-with-python-and-nodejs).
 - If port **5180** is in use, add `--port 5181` to your launch command and open the URL it prints. The local launcher keeps a separate database for each frontend port.
-- If **Guidance requests** is empty on **5173**, check the signed-in account. The completed example and role switcher are in the isolated **5180** workspace.
+- Open **Knowledge graph → Fictional walkthrough** on **5173** to see the seeded guidance requests and named operator switcher.
 - If the normal frontend opens before the API is ready, run `docker compose ps`, check `docker compose logs --tail=60 backend frontend`, and refresh when the health endpoint responds.
 - If the graph shows few nodes, select **Knowledge map** or **All relationships**, check the source and review filters, and enable **Manual passages** when inspecting imported evidence.
 
