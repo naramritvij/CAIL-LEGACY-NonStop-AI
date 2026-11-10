@@ -2,6 +2,7 @@
 import json
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
@@ -188,6 +189,62 @@ def test_idempotent_turns_and_database_lease(clients, monkeypatch):
     principal = alice.get(BASE + '/session').json()
     store.begin_turn(principal, identifier, 'running_request', 'Pending question')
     assert alice.post(f'{BASE}/conversations/{identifier}/messages', json={'question': 'Concurrent question', 'request_id': 'next_request_1'}).status_code == 409
+
+
+@pytest.mark.parametrize('reloaded', [False, True])
+def test_retry_resumes_latest_expired_turn_without_duplication(clients, monkeypatch, reloaded):
+    alice, _, _ = clients
+    principal = alice.get(BASE + '/session').json()
+    conversation = alice.post(BASE + '/conversations').json()['id']
+    path = f'{BASE}/conversations/{conversation}'
+    earlier = store.begin_turn(principal, conversation, 'earlier_request', 'There was a disk alert.')
+    store.finish_turn(conversation, 'earlier_request', earlier['answer_id'],
+                      {'answer': 'I have the disk alert in context.'}, lease_until=earlier['lease_until'])
+    body = {'request_id': 'expired_request', 'question': 'What about that alert?'}
+    stalled = store.begin_turn(principal, conversation, body['request_id'], body['question'])
+    pending = alice.post(path + '/messages', json=body).json()
+    assert pending['id'] == stalled['answer_id'] and pending['status'] == 'pending'
+    with store.database() as db:
+        db.execute('UPDATE ws_conversations SET lease_until=? WHERE id=?', ('2000-01-01', conversation))
+    if reloaded:
+        assert alice.get(path).json()['messages'][-1]['status'] == 'interrupted'
+    calls = []
+
+    def run(user, question, history):
+        calls.append(question)
+        assert [turn['content'] for turn in history] == ['There was a disk alert.', 'I have the disk alert in context.']
+        with pytest.raises(HTTPException) as failure:
+            store.finish_turn(conversation, body['request_id'], stalled['answer_id'],
+                              {'answer': 'Stale reply'}, lease_until=stalled['lease_until'])
+        assert failure.value.status_code == 409
+        return {'answer': 'Check the disk alert evidence.', 'sources': [], 'trace': []}
+
+    monkeypatch.setattr(agents, 'run', run)
+    response = alice.post(path + '/messages', json=body)
+    assert response.status_code == 200, response.text
+    reply = response.json()
+    assert reply['id'] == stalled['answer_id'] and reply['content'] == 'Check the disk alert evidence.'
+    assert alice.post(path + '/messages', json=body).json() == reply
+    assert calls == [body['question']]
+    saved = alice.get(path).json()['messages']
+    assert len(saved) == 4 and saved[-2]['id'] == stalled['user_id'] and saved[-1] == reply
+
+
+def test_retry_keeps_a_later_turn_intact(clients, monkeypatch):
+    alice, _, _ = clients
+    principal = alice.get(BASE + '/session').json()
+    conversation = alice.post(BASE + '/conversations').json()['id']
+    path = f'{BASE}/conversations/{conversation}/messages'
+    old = {'request_id': 'expired_older_request', 'question': 'First question'}
+    store.begin_turn(principal, conversation, old['request_id'], old['question'])
+    with store.database() as db:
+        db.execute('UPDATE ws_conversations SET lease_until=? WHERE id=?', ('2000-01-01', conversation))
+    calls = []
+    monkeypatch.setattr(agents, 'run', lambda user, question, history: calls.append(question) or {'answer': 'New reply'})
+    new = {'request_id': 'later_request', 'question': 'New question'}
+    assert alice.post(path, json=new).json()['content'] == 'New reply'
+    assert alice.post(path, json=old).json()['status'] == 'interrupted'
+    assert calls == [new['question']]
 
 
 def test_run_failure_preserves_both_turns(clients, monkeypatch):

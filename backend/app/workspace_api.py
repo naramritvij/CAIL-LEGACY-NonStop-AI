@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Literal
 import hashlib
+import logging
 import os
 import zipfile
 
@@ -126,30 +127,31 @@ def conversation_turn(conversation_id: str, body: TurnBody, user=Depends(princip
         raise HTTPException(422, 'Enter a question.')
     turn = store.begin_turn(user, conversation_id, body.request_id, question)
     if 'existing' in turn:
-        return turn['existing']
-    from .agent_orchestrator import run
-    try:
-        if turn['rehearsal']:
-            from .rehearsal_answers import answer
-            result = answer(turn['rehearsal'], question, turn['history'])
-        else:
-            result = run(user, question, turn['history'])
-    except Exception:
-        # Preserve both turns even if a tool or model fails unexpectedly. Never leak an exception/secret.
-        import logging
-        logging.getLogger(__name__).exception('Workspace agent run failed')
-        result = {'answer': 'The investigation was interrupted. Your question and earlier conversation are saved. Try a follow-up.',
-                  'status': 'failed', 'sources': [], 'trace': [], 'execution_allowed': False}
-    from .semantic_graph import record_question
-    try:
-        record_question(user, question, result.get('sources', []), body.request_id)
-    except Exception:
-        # Optional graph bookkeeping must never lose a completed conversation turn.
-        import logging
-        logging.getLogger(__name__).warning('Learning-link bookkeeping was deferred.')
-        result.setdefault('trace', []).append({'agent': 'Learning links', 'status': 'deferred',
-                                               'detail': 'The answer is saved; learning links were unavailable.', 'elapsed_ms': 0})
-    return store.finish_turn(conversation_id, body.request_id, turn['answer_id'], result)
+        reply = turn['existing']
+    else:
+        from .agent_orchestrator import run
+        try:
+            if turn['rehearsal']:
+                from .rehearsal_answers import answer
+                result = answer(turn['rehearsal'], question, turn['history'])
+            else:
+                result = run(user, question, turn['history'])
+        except Exception:
+            # Preserve both turns even if a tool or model fails unexpectedly. Never leak an exception/secret.
+            logging.getLogger(__name__).exception('Workspace agent run failed')
+            result = {'answer': 'The investigation was interrupted. Your question and earlier conversation are saved. Try a follow-up.',
+                      'status': 'failed', 'sources': [], 'trace': [], 'execution_allowed': False}
+        reply = store.finish_turn(conversation_id, body.request_id, turn['answer_id'], result,
+                                 lease_until=turn['lease_until'])
+    if reply['status'] == 'complete':
+        from .semantic_graph import record_question
+        result = reply['metadata']
+        try:
+            record_question(user, result.get('interpretation') or question, result.get('sources', []), body.request_id)
+        except Exception:
+            # Graph activity is best effort and can be recovered by retrying the saved turn.
+            logging.getLogger(__name__).warning('Learning-link bookkeeping was deferred.')
+    return reply
 
 
 @router.get('/graph')
