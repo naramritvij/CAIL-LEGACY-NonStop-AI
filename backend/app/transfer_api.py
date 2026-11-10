@@ -28,8 +28,9 @@ class GuidanceLink(BaseModel):
 
 @router.get('/contributors')
 def contributors(q: str = Query(default='', max_length=100),
-                 offset: int = Query(default=0, ge=0, le=10000), user=Depends(principal)):
-    return transfer.directory(user, q, offset)
+                 offset: int = Query(default=0, ge=0, le=10000), senior_only: bool = False,
+                 user=Depends(principal)):
+    return transfer.directory(user, q, offset, senior_only=senior_only)
 
 
 @router.post('/contributors', status_code=201)

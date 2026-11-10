@@ -1,3 +1,11 @@
+export type DemoRole = "junior" | "senior" | "reviewer";
+
+export const DEMO_ROLE_LABELS: Record<DemoRole, string> = {
+  junior: "Junior Operator",
+  senior: "Senior Contributor",
+  reviewer: "Independent Reviewer",
+};
+
 export interface Operator {
   id: string;
   name: string;
@@ -6,7 +14,7 @@ export interface Operator {
   can_read_live: boolean;
   can_manage_members?: boolean;
   transfer_demo?: boolean;
-  demo_roles?: { id: string; name: string }[];
+  demo_roles?: { id: string; name: string; role?: DemoRole }[];
   auth_method: string;
 }
 export interface Conversation {
@@ -67,6 +75,7 @@ export interface GraphNode {
   stale?: boolean;
   subsystem?: string;
   person_role?: string;
+  demo_role?: DemoRole;
   needs_review?: boolean;
   superseded?: boolean;
   category?: string;
@@ -87,6 +96,11 @@ export interface GraphEdge {
   basis?: string;
   assertion_status?: string;
   created_at?: string;
+}
+export interface GraphAccessPath {
+  edgeId: string;
+  contributorEdgeId: string;
+  firstAccess: boolean;
 }
 export interface TopologyDataset {
   id: string;
@@ -180,6 +194,7 @@ export interface KnowledgeDocument {
   can_submit: boolean;
   review_notes?: string;
   sha256: string;
+  access?: { edge_id: string; first_access: boolean };
   expert_note?: {
     category: string;
     signed_at: string;

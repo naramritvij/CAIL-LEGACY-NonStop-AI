@@ -34,7 +34,7 @@ class LoginBody(BaseModel):
 
 
 class DemoRoleBody(BaseModel):
-    person_id: Literal['transfer-learner', 'transfer-expert', 'transfer-reviewer']
+    person_id: str = Field(min_length=1, max_length=100)
 
 
 class TurnBody(BaseModel):

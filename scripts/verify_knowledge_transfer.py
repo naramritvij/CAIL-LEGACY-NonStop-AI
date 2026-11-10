@@ -16,6 +16,8 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from app import transfer_demo as demo
+from app.demo_knowledge import SAMPLES
+from app.demo_roster import JUNIORS, SENIORS, demo_users
 
 
 @contextmanager
@@ -71,6 +73,57 @@ def benchmark(label, call, samples=25):
     print(f'{label}: p50 {times[samples // 2]:.1f} ms, p95 {times[(95 * samples + 99) // 100 - 1]:.1f} ms, n={samples}', flush=True)
 
 
+def verify_operator_roster(env, temporary):
+    users = demo_users()
+    env = {**env, 'LEGACY_DATABASE_PATH': str(Path(temporary) / 'knowledge-transfer-demo.sqlite3'),
+           'CAIL_WORKSPACE_USERS': json.dumps(users)}
+    with workspace_api(env) as address:
+        _, reviewer, learner, *_ = demo.run(address, users)
+        demo.seed_contributor_knowledge(address, users, reviewer)
+        demo.seed_contributor_knowledge(address, users, reviewer)
+        junior_roles = [(role['id'], role['name']) for role in learner.identity['demo_roles'] if role['role'] == 'junior']
+        demo.require(junior_roles == list(JUNIORS) and len(junior_roles) == 80,
+                     'The demo switcher must list every named junior operator.')
+        directory = learner.call('/knowledge/contributors?senior_only=true')
+        demo.require(directory['total'] == len(SENIORS) == 40 and all(
+            person['demo_role'] == 'senior' and person['approved_documents'] == (3 if person['id'] == demo.EXPERT else 1)
+            for person in directory['contributors']), 'Senior contributions are missing, unapproved or duplicated.')
+        initial = learner.call('/graph')
+        document = next(node for node in initial['nodes'] if node['label'] == SAMPLES[0].title)
+        path = '/documents/' + document['entity_id']
+        operator = 'person:' + demo.LEARNER
+        demo.require('access' not in learner.call(path + '?record_access=false'), 'A preview recorded an access.')
+        first = learner.call(path)['access']
+        demo.require(first['first_access'], 'The first open should introduce a new Accessed edge.')
+        thread = learner.call('/conversations', {}, status=201)
+        switched = learner.call('/session/demo-role', {'person_id': JUNIORS[1][0]})
+        demo.require(switched['name'] == JUNIORS[1][1] and not switched['can_review']
+                     and not switched['can_manage_members'] and not switched['can_read_live'],
+                     'Switching should use the named junior’s scoped session.')
+        demo.require(not any(row['id'] == thread['id'] for row in learner.call('/conversations')),
+                     'A switched operator could see the previous operator’s conversation.')
+        second = learner.call(path)['access']
+        repeated = learner.call(path)['access']
+        demo.require(second['first_access'] and second['edge_id'] != first['edge_id'] and
+                     repeated == {**second, 'first_access': False}, 'Repeat and distinct opens produced the wrong edge.')
+        graph = learner.call('/graph')
+        edges = {edge['id']: edge for edge in graph['edges']}
+        demo.require(edges[first['edge_id']]['source'] == operator and edges[second['edge_id']]['count'] == 2 and
+                     edges[second['edge_id']]['target'] == document['id'] and any(
+                         edge['kind'] == 'contributed' and edge['source'] == 'person:' + demo.EXPERT and
+                         edge['target'] == document['id'] for edge in edges.values()),
+                     'The exact item is missing its contributor or per-operator Accessed edges.')
+        learner.call('/session/demo-role', {'person_id': SENIORS[1][0]}, status=404)
+        learner.call('/session/demo-role', {'person_id': 'unconfigured-operator'}, status=404)
+        demo.require(learner.call('/session/demo-role', {'person_id': JUNIORS[-1][0]})['name'] == JUNIORS[-1][1],
+                     'The last named junior is not switchable.')
+    with workspace_api(env) as address:
+        _, _, learner = demo.sign_ins(address, users)
+        demo.require(learner.call(path)['access'] == {**first, 'first_access': False},
+                     'An Accessed edge was lost after the API restarted.')
+    print('PASS: 40 senior contributors, 80 switchable juniors, separate histories and durable Accessed edges.', flush=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='cail-transfer-http-') as temporary:
         users = fixture_users()
@@ -119,6 +172,7 @@ def main():
                          'Verified receipt changed after backend restart.')
             print('PASS: evidence-bound receipt recovered after backend process restart.', flush=True)
             demo.check_quality(expert, reviewer, learner, source, note, request)
+        verify_operator_roster(env, temporary)
 
 
 if __name__ == '__main__':

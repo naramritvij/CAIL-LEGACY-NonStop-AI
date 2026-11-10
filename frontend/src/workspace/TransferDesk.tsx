@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, CheckCircle2, FileText, KeyRound, Search, Users } from "lucide-react";
-import { errorMessage, request, type Operator } from "./types";
+import { DEMO_ROLE_LABELS, errorMessage, request, type DemoRole, type Operator } from "./types";
 import "../styles/transfer.css";
 
 export interface Handoff {
@@ -30,6 +30,7 @@ interface Contributor {
   active: boolean;
   managed: boolean;
   can_review: boolean;
+  demo_role?: DemoRole;
 }
 
 interface Contributions {
@@ -68,6 +69,7 @@ export function TransferDesk({
   operator,
   revision,
   personId,
+  seniorOnly,
   onPerson,
   onOpenNode,
   onAction,
@@ -77,6 +79,7 @@ export function TransferDesk({
   operator: Operator;
   revision?: number;
   personId: string | null;
+  seniorOnly: boolean;
   onPerson: (id: string | null) => void;
   onOpenNode: (id: string) => void;
   onAction: (action: TransferAction) => void;
@@ -103,14 +106,14 @@ export function TransferDesk({
 
   const load = useCallback(async (offset = 0, signal?: AbortSignal) => {
     const result = await request<{ contributors: Contributor[]; total: number; next_offset: number | null }>(
-      "/knowledge/contributors?q=" + encodeURIComponent(query) + "&offset=" + offset,
+      "/knowledge/contributors?q=" + encodeURIComponent(query) + "&offset=" + offset + (seniorOnly ? "&senior_only=true" : ""),
       { signal },
     );
     if (signal?.aborted) return;
     setPeople((previous) => offset ? [...previous, ...result.contributors] : result.contributors);
     setTotal(result.total);
     setNextPeople(result.next_offset);
-  }, [query]);
+  }, [query, seniorOnly]);
 
   const loadRequests = useCallback(async (offset = 0, signal?: AbortSignal) => {
     const result = await request<{ requests: Handoff[]; next_offset: number | null }>("/knowledge/handoffs?offset=" + offset, { signal });
@@ -220,7 +223,7 @@ export function TransferDesk({
       )}
       <div className="transfer-grid">
         <section aria-label="Contributor directory">
-          <h3><Users size={17} /> Contributors · {total}</h3>
+          <h3><Users size={17} /> {seniorOnly ? "Senior Contributors" : "Contributors"} · {total}</h3>
           <label className="transfer-search">
             <Search size={15} />
             <input aria-label="Search contributors" placeholder="Find a contributor" maxLength={100} value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -229,7 +232,7 @@ export function TransferDesk({
             {people.map((person) => (
               <button key={person.id} className={personId === person.id ? "active" : ""} onClick={() => onPerson(person.id)}>
                 <span><strong>{person.name}{person.id === operator.id ? " · You" : ""}</strong>
-                  <small>{person.role}{person.can_review ? " · can review" : ""} · {person.documents} visible documents · {person.approved_guidance} approved guidance</small>
+                  <small>{person.demo_role ? DEMO_ROLE_LABELS[person.demo_role] : person.role}{person.can_review ? " · can review" : ""} · {person.documents} visible documents · {person.approved_guidance} signed guidance</small>
                   <small>{person.accessed_documents ? "You accessed " + person.accessed_documents + " documents" : person.active ? "Available in the workspace" : "Archived contributor"}</small>
                 </span>
                 <ArrowRight size={16} />

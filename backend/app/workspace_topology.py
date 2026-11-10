@@ -385,6 +385,7 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
     with store.database() as db:
         db.execute('BEGIN')
         from . import semantic_graph as semantic
+        from .demo_roster import ROSTER_ROLES
         from .graph_navigation import attachment_edge, collection_edge
         from .knowledge_transfer import graph_connections
         semantic_nodes, semantic_edges, semantic_meta = semantic.project(db, user)
@@ -407,6 +408,10 @@ def graph(user, node_limit=VIEW_NODES, edge_limit=VIEW_EDGES):
         for node in nodes:
             if node['kind'] == 'person':
                 node['person_role'] = profiles.get(node['entity_id'], {}).get('role', 'contributor')
+                if node['entity_id'] == user['id']:
+                    node['status'] = 'you'
+                if user.get('transfer_demo') and node['entity_id'] in ROSTER_ROLES:
+                    node['demo_role'] = ROSTER_ROLES[node['entity_id']]
         concept_ids = {n['id'] for n in semantic_nodes if n['id'].startswith('concept:')}
         datasets = visible_datasets(db, user)
         for dataset in datasets:
