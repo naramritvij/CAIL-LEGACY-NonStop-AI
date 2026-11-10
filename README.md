@@ -10,21 +10,39 @@ CAIL helps an operator investigate a NonStop incident, keep the supporting evide
 
 ## Run the reviewer demo
 
-Install Git, Python 3.12 or later, and Docker with Compose v2. On Windows, start Docker Desktop with the Linux engine before running the commands. Run the following from PowerShell on Windows or a terminal on macOS or Linux. Use `python3` where that is your Python executable.
+Clone the repository and choose either launch option. Both seed the fictional people, knowledge, completed handoff, and practice request. After the launcher reports that the seed is complete, open the URL it prints and follow the Knowledge Tree walkthrough below.
 
 ~~~powershell
 git clone https://github.com/naramritvij/CAIL-LEGACY-NonStop-AI.git
 cd CAIL-LEGACY-NonStop-AI
+~~~
+
+### Run locally with Python and Node.js
+
+Install Python 3.12 or later and Node.js 22.12 or later. Run these commands in PowerShell.
+
+~~~powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+npm.cmd --prefix frontend ci
+.\.venv\Scripts\python.exe scripts/start_transfer_demo.py --local
+~~~
+
+On macOS and Linux, use `npm` and your virtual environment’s `python`. The local demo uses loopback and saves its own database under `data/transfer-demo/5180/`. Keep the terminal open while using the demo.
+
+### Run with Docker Compose
+
+Install Python 3.12 or later and Docker with Compose v2. On Windows, start Docker Desktop with the Linux engine before running the commands.
+
+~~~powershell
 docker version
 docker compose version
 python scripts/start_transfer_demo.py
 ~~~
 
-Wait for the seed command to report a completed cited guidance handoff and 40 named Senior Contributors. Open [the reviewer Knowledge Tree](http://localhost:5180/#/graph) and try the walkthrough below. The launcher creates its own loopback Compose project and database volume. It seeds the fictional people, knowledge, completed handoff, and practice request on the first launch.
-
 | Address | Use it for | Storage |
 | --- | --- | --- |
-| [localhost:5180](http://localhost:5180/#/graph) | Self-guided Knowledge Tree, fictional operator switching, incident rehearsals, and verified handoffs | `cail-transfer-demo` project and dedicated volume |
+| [127.0.0.1:5180](http://127.0.0.1:5180/#/graph) | Self-guided Knowledge Tree, fictional operator switching, incident rehearsals, and verified handoffs | Separate local SQLite database or `cail-transfer-demo` Docker volume |
 | [localhost:5173](http://localhost:5173/#/assistant) | The regular workspace, your saved conversations and documents, local Ollama, and authorized source access | Main Compose project and `legacy_knowledge` volume |
 
 ### Follow a senior’s decision in the Knowledge Tree
@@ -201,23 +219,23 @@ npm --prefix frontend run build
 
 ## Shut down or troubleshoot
 
-- Stop the isolated demo with `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. Stop the regular workspace with `docker compose down`. These commands retain the respective volumes.
-- If Docker reports a missing Linux engine pipe on Windows, start Docker Desktop and wait for `docker version` to show a **Server** section. Repeat the launch command.
-- If port **5180** is in use, run `python scripts/start_transfer_demo.py --port 5181` and open the URL printed by the launcher.
+- Press **Ctrl+C** to stop the local reviewer demo. For Docker, run `docker compose -p cail-transfer-demo -f compose.transfer-demo.yaml down`. Stop the regular Compose workspace with `docker compose down`.
+- If Docker Desktop or its WSL engine fails to start, use the [local reviewer launcher](#run-locally-with-python-and-nodejs).
+- If port **5180** is in use, add `--port 5181` to your launch command and open the URL it prints. The local launcher keeps a separate database for each frontend port.
 - If **Guidance requests** is empty on **5173**, check the signed-in account. The completed example and role switcher are in the isolated **5180** workspace.
 - If the normal frontend opens before the API is ready, run `docker compose ps`, check `docker compose logs --tail=60 backend frontend`, and refresh when the health endpoint responds.
 - If the graph shows few nodes, select **Knowledge map** or **All relationships**, check the source and review filters, and enable **Manual passages** when inspecting imported evidence.
 
 ### Local development
 
-Install Python 3.12+ and Node 22+. Use the virtual environment and backend dependencies above, then run:
+Install Python 3.12+ and Node.js 22.12+. Use the virtual environment and backend dependencies above, then run:
 
 ~~~bash
 npm --prefix frontend ci
 npm run dev
 ~~~
 
-The launcher starts Vite and FastAPI locally. It uses Ollama at `http://localhost:11434` by default. Pass `--host` or `--port` to the launcher as needed. Keep the default loopback setup for local review. The older public funnel demonstration is a separate deployment.
+The launcher starts Vite and FastAPI locally. It uses Ollama at `http://localhost:11434` by default. Pass `--host 127.0.0.1` to bind Vite to loopback, or `--port` to choose a different frontend port. The older public funnel demonstration is a separate deployment.
 
 ## Technical references
 
