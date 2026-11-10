@@ -15,6 +15,7 @@ function argument(name, fallback) {
 }
 const port = argument('--port', process.env.PORT || '5173')
 const host = argument('--host', '0.0.0.0')
+const reuseApi = process.argv.includes('--reuse-api')
 const seedDemo = process.env.CAIL_TRANSFER_DEMO === 'true' && process.env.CAIL_TRANSFER_DEMO_SEED === 'true'
 const children = []
 let closing = false
@@ -42,6 +43,35 @@ process.on('SIGINT', () => stop())
 process.on('SIGTERM', () => stop())
 
 const address = `http://127.0.0.1:${apiPort}`
+function probePort(host, port) {
+  return new Promise((resolvePort, reject) => {
+    const probe = createServer()
+    probe.once('error', error => {
+      if (error.code === 'EADDRINUSE') resolvePort(null)
+      else reject(error)
+    })
+    probe.listen(Number(port), host, () => {
+      const available = probe.address().port
+      probe.close(error => error ? reject(error) : resolvePort(available))
+    })
+  })
+}
+async function isWorkspaceApi() {
+  try {
+    const options = { signal: AbortSignal.timeout(2000), redirect: 'error' }
+    const health = await fetch(address + '/api/v1/health', options)
+    if (!health.ok) return false
+    const { status, mode } = await health.json()
+    if (status !== 'ok' || mode !== 'synthetic_read_only') return false
+    const session = await fetch(address + '/api/v1/workspace/session', options)
+    if (session.status === 401) return true
+    if (!session.ok) return false
+    const operator = await session.json()
+    return typeof operator.id === 'string' && typeof operator.name === 'string' && operator.transfer_demo !== true
+  } catch {
+    return false
+  }
+}
 function startFrontend(practiceTarget = '') {
   start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', host, '--port', port, '--strictPort'],
         resolve(root, 'frontend'),
@@ -73,33 +103,54 @@ async function startReviewerDemo() {
 }
 async function startGraphPractice() {
   // Ask the OS for a loopback port so another local workspace can run alongside this one.
-  const portForPractice = await new Promise((resolvePort, reject) => {
-    const probe = createServer()
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', () => {
-      const available = probe.address().port
-      probe.close(error => error ? reject(error) : resolvePort(String(available)))
-    })
-  })
+  const portForPractice = await probePort('127.0.0.1', 0)
+  if (portForPractice === null) throw new Error('A loopback port could not be allocated.')
   if (closing) return ''
-  start(python, ['-m', 'app.graph_practice', '--port', portForPractice, '--data-dir',
+  start(python, ['-m', 'app.graph_practice', '--port', String(portForPractice), '--data-dir',
                 resolve(root, 'data/transfer-demo', `workspace-${port}`)],
         resolve(root, 'backend'), process.env, { optional: true })
   return `http://127.0.0.1:${portForPractice}`
 }
 
-const apiArgs = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', apiPort]
-if (seedDemo) apiArgs.push('--no-access-log')
-start(python, apiArgs, resolve(root, 'backend'))
-if (seedDemo) {
-  if (!await startReviewerDemo() && !closing) {
-    console.error('The local reviewer demo did not become ready.')
-    stop(1)
+async function run() {
+  if (await probePort(host, port) === null) {
+    throw new Error(`Frontend port ${port} is in use. Stop the previous frontend before starting this one.`)
   }
-} else {
+  const availableApi = await probePort('127.0.0.1', apiPort)
+  if (closing) return
+  if (availableApi === null) {
+    if (seedDemo) throw new Error(`The reviewer demo requires a free backend port. Port ${apiPort} is in use.`)
+    if (!reuseApi) {
+      throw new Error(`Backend port ${apiPort} is in use. To use a running CAIL workspace API, rerun with --reuse-api.`)
+    }
+    if (!await isWorkspaceApi()) {
+      throw new Error(`Port ${apiPort} is in use. Choose a free CAIL_API_PORT or point it at a running CAIL workspace API.`)
+    }
+    console.log(`Using the existing CAIL workspace API at ${address}.`)
+  } else {
+    const apiArgs = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', apiPort]
+    if (seedDemo) apiArgs.push('--no-access-log')
+    start(python, apiArgs, resolve(root, 'backend'))
+  }
+  if (closing) return
+  if (seedDemo) {
+    if (!await startReviewerDemo() && !closing) {
+      throw new Error('The local reviewer demo did not become ready.')
+    }
+    return
+  }
   const practiceTarget = await startGraphPractice().catch(error => {
     console.error(`Knowledge Tree practice is unavailable: ${error.message}`)
     return ''
   })
   if (!closing) startFrontend(practiceTarget)
+}
+
+try {
+  await run()
+} catch (error) {
+  if (!closing) {
+    console.error(error.message)
+    stop(1)
+  }
 }
