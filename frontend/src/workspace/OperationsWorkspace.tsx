@@ -728,6 +728,11 @@ function Assistant({
                     ) : (
                       <RichText text={message.content} />
                     )}
+                    {message.metadata.learned_wording && (
+                      <p className="fine-print">
+                        I understood your wording as “{message.metadata.learned_wording.meaning}”
+                      </p>
+                    )}
                     {message.role === "assistant" &&
                       message.status !== "pending" && (
                         <div className="answer-actions">
@@ -793,10 +798,26 @@ function Assistant({
               }}
             />
             <div className="composer-bottom">
-              <span>
+              {rehearsalLabel ? <span>
                 <Clock3 size={14} />
-                Context stays with this conversation
-              </span>
+                Context stays with this checkpoint
+              </span> : (
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={!!draft.trim() || sending || pending || loading}
+                  onClick={() => {
+                    const start = 'When I say "';
+                    setDraft(start + '", I mean "".');
+                    window.requestAnimationFrame(() => {
+                      textarea.current?.focus();
+                      textarea.current?.setSelectionRange(start.length, start.length);
+                    });
+                  }}
+                >
+                  <MessageSquare size={14} /> Teach CAIL my wording
+                </button>
+              )}
               <button
                 className="send-button"
                 type="submit"

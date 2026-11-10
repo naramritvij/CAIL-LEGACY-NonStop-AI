@@ -146,6 +146,14 @@ The smoke test creates a conversation, saves a fresh checklist name, asks an unr
 
 On Docker Desktop, the main backend uses `http://host.docker.internal:11434`. If Docker cannot reach the host model, check that Ollama is running and the configured model appears in `ollama list`. The [local development route](#local-development) runs the backend beside Ollama on the host.
 
+### Teach CAIL your wording
+
+1. In the regular **Assistant** chat, select **Teach CAIL my wording** and send **When I say "morning pulse", I mean "Show approved guidance about disk growth".**
+2. Start a new conversation and ask **Could you check the morning pulse, please?** The answer shows the request CAIL understood. An empty workspace will report that no matching reviewed guidance is available.
+3. To correct a misunderstanding in the chat, say **I meant show approved guidance about disk retention. Remember that for next time.** To remove the saved wording, send **Forget what I mean by "morning pulse".**
+
+Saved wording belongs to the current operator. CAIL applies it to the same phrase and common ways of asking for it. Qualifiers such as a different system or time go through normal interpretation. The saved meaning is a request. Evidence still comes from approved documents or authorized observations.
+
 ### Configure separate operators
 
 The regular workspace initially has one **Local operator** identity. To run actual team handoffs there, set `CAIL_WORKSPACE_LOCAL_DEMO=false` and configure `CAIL_WORKSPACE_USERS` in a private local `.env` using the format in [`.env.example`](.env.example). Give each operator a stable ID, display name and unique key of at least 32 characters. Set `can_review` for an independent reviewer and `can_manage_members` for the manager. Grant `can_read_live` only to authorized readers.

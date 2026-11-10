@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from pydantic import BaseModel, Field
 
 from . import workspace_store as store
+from .operator_language import instruction
+from .policy import requests_state_change
 from .workspace_identity import COOKIE, configured_users, demo_roles, login, principal
 from . import live_sources
 
@@ -128,12 +130,20 @@ def conversation_turn(conversation_id: str, body: TurnBody, user=Depends(princip
     if 'existing' in turn:
         return turn['existing']
     from .agent_orchestrator import run
+    language_edit = None
     try:
         if turn['rehearsal']:
             from .rehearsal_answers import answer
             result = answer(turn['rehearsal'], question, turn['history'])
         else:
-            result = run(user, question, turn['history'])
+            lesson = instruction(question, turn['history'])
+            if lesson:
+                result, language_edit = lesson
+            else:
+                wording = None if requests_state_change(question) else store.learned_wording(user, question)
+                result = run(user, wording['meaning'] if wording else question, turn['history'])
+                if wording:
+                    result['learned_wording'] = wording
     except Exception:
         # Preserve both turns even if a tool or model fails unexpectedly. Never leak an exception/secret.
         import logging
@@ -149,7 +159,7 @@ def conversation_turn(conversation_id: str, body: TurnBody, user=Depends(princip
         logging.getLogger(__name__).warning('Learning-link bookkeeping was deferred.')
         result.setdefault('trace', []).append({'agent': 'Learning links', 'status': 'deferred',
                                                'detail': 'The answer is saved; learning links were unavailable.', 'elapsed_ms': 0})
-    return store.finish_turn(conversation_id, body.request_id, turn['answer_id'], result)
+    return store.finish_turn(conversation_id, body.request_id, turn['answer_id'], result, language_edit=language_edit)
 
 
 @router.get('/graph')

@@ -1,6 +1,7 @@
 """Memory, ownership, orchestration and source authorization regressions."""
 import json
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
@@ -43,6 +44,116 @@ def approve(alice, reviewer, identifier):
     assert alice.post(f'{BASE}/documents/{identifier}/review', json={'decision': 'submitted'}).status_code == 200
     response = reviewer.post(f'{BASE}/documents/{identifier}/review', json={'decision': 'approved', 'notes': 'Reviewed the source.'})
     assert response.status_code == 200, response.text
+
+
+def ask_workspace(client, question, conversation_id=None, request_id=None):
+    if conversation_id is None:
+        conversation_id = client.post(BASE + '/conversations').json()['id']
+    reply = client.post(f'{BASE}/conversations/{conversation_id}/messages',
+                        json={'question': question, 'request_id': request_id or uuid4().hex})
+    assert reply.status_code == 200, reply.text
+    return reply.json()
+
+
+def test_learned_wording_follows_the_operator_and_uses_reviewed_evidence(clients, monkeypatch):
+    alice, bob, reviewer = clients
+    content = 'TMFCOM STATUS TMF. For this disk growth exercise, check the timestamp and compare a second reading.'
+    source = alice.post(BASE + '/documents', json={'title': 'Disk growth training source', 'content': content}).json()
+    approve(alice, reviewer, source['id'])
+    catalog = alice.get(BASE + '/knowledge/catalog?q=TMFCOM').json()
+    concept = next(item['id'] for item in catalog['concepts'] if item['label'] == 'TMFCOM STATUS TMF')
+    citation = next(item['id'] for item in catalog['citations'] if item['document_id'] == source['id'])
+    note = alice.post(BASE + '/knowledge/notes', json={
+        'title': 'Disk growth check', 'content': content, 'category': 'procedure',
+        'concept_ids': [concept], 'citations': [{'citation_id': citation, 'relation': 'cites'}],
+        'sign_as_current_user': True,
+    }).json()
+    approve(alice, reviewer, note['id'])
+
+    def unavailable(*args, **kwargs):
+        raise agents.ModelUnavailable()
+
+    monkeypatch.setattr(agents, 'model_json', unavailable)
+    meaning = 'Show approved guidance about disk growth'
+    taught = ask_workspace(alice, f'When I say "morning pulse", I mean "{meaning}".')
+    assert taught['metadata']['status'] == 'language_learned'
+    reopened = TestClient(app)
+    reopened.cookies.update(alice.cookies)
+    question = 'Could you check the morning pulse, please?'
+    answer = ask_workspace(reopened, question)
+    assert answer['metadata']['learned_wording'] == {'phrase': 'morning pulse', 'meaning': meaning}
+    assert answer['metadata']['status'] == 'cited_guidance'
+    assert answer['metadata']['sources'][0]['document_id'] == note['id']
+    assert answer['metadata']['citations'] == [answer['metadata']['sources'][0]['id']]
+    assert answer['metadata']['execution_allowed'] is False
+    saved = reopened.get(f'{BASE}/conversations/{answer["conversation_id"]}').json()['messages']
+    assert saved[0]['content'] == question
+    assert 'learned_wording' not in ask_workspace(bob, question)['metadata']
+    for different_request in ('Could you check the morning pulse on NODE-B?', 'Check the morning pulse from yesterday.'):
+        assert 'learned_wording' not in ask_workspace(reopened, different_request)['metadata']
+
+
+def test_explicit_correction_updates_and_forgetting_removes_wording(clients, monkeypatch):
+    alice, _, _ = clients
+    monkeypatch.setattr(agents, 'model_json', lambda *args, **kwargs: {
+        'intent': 'general', 'answer': 'I need more detail.', 'citations': [],
+    })
+    first = ask_workspace(alice, 'night watch')
+    conversation = first['conversation_id']
+    principal = alice.get(BASE + '/session').json()
+    ask_workspace(alice, 'I meant current system health.', conversation)
+    assert store.learned_wording(principal, 'night watch') is None
+    ask_workspace(alice, 'night watch', conversation)
+    question = 'I meant show approved guidance about system health. Remember that for next time.'
+    taught = ask_workspace(alice, question, conversation, 'teach_night_watch')
+    assert taught['metadata']['status'] == 'language_learned'
+    assert ask_workspace(alice, 'night watch')['metadata']['route'] == 'knowledge'
+    replacement = 'show approved guidance about disk growth'
+    ask_workspace(alice, f'When I ask night watch, I mean {replacement}.')
+    assert ask_workspace(alice, question, conversation, 'teach_night_watch')['id'] == taught['id']
+    assert ask_workspace(alice, 'night watch')['metadata']['learned_wording']['meaning'] == replacement + '.'
+    forgot = ask_workspace(alice, 'Forget what I mean by "night watch".')
+    assert forgot['metadata']['status'] == 'language_forgotten'
+    assert 'learned_wording' not in ask_workspace(alice, 'night watch')['metadata']
+
+
+def test_learned_wording_respects_read_only_and_rehearsal_boundaries(clients, monkeypatch):
+    alice, _, _ = clients
+    principal = alice.get(BASE + '/session').json()
+    monkeypatch.setattr(agents, 'model_json', lambda *args, **kwargs: pytest.fail('Unexpected model call'))
+    teach = 'When I say "morning pulse", I mean "show approved guidance about disk growth".'
+    assert ask_workspace(alice, teach)['metadata']['status'] == 'language_learned'
+    unsafe = ask_workspace(alice, 'When I say "morning pulse", I mean "restart the affected service".')
+    assert unsafe['metadata']['status'] == 'unsafe_request'
+    blocked = ask_workspace(alice, 'Restart the service; then check the morning pulse.')
+    assert blocked['metadata']['status'] == 'unsafe_request'
+    assert blocked['metadata']['state_change_executed'] is False
+    assert 'learned_wording' not in blocked['metadata']
+    assert store.learned_wording(principal, 'morning pulse')['meaning'] == 'show approved guidance about disk growth'
+    generic = ask_workspace(alice, 'When I say "why?", I mean "show the observed timeline".')
+    assert generic['metadata']['status'] == 'language_needs_detail'
+
+    response = alice.post(BASE + '/rehearsals', json={'case_id': 'INC-DISK-001', 'request_id': 'test_wording_lab'})
+    assert response.status_code == 201, response.text
+    run_id = response.json()['run_id']
+    response = alice.post(f'{BASE}/rehearsals/{run_id}/conversation', json={'checkpoint': 1})
+    assert response.status_code == 201, response.text
+    conversation = response.json()['id']
+    assert 'learned_wording' not in ask_workspace(alice, 'morning pulse', conversation)['metadata']
+    teach_in_lab = 'When I say "lab pulse", I mean "show the observed timeline".'
+    assert ask_workspace(alice, teach_in_lab, conversation)['metadata']['status'] != 'language_learned'
+    assert store.learned_wording(principal, 'lab pulse') is None
+
+    def unavailable(*args, **kwargs):
+        raise agents.ModelUnavailable()
+
+    monkeypatch.setattr(agents, 'model_json', unavailable)
+    monkeypatch.setattr(live_sources, 'read_source', lambda *args: pytest.fail('Unauthorized connector call'))
+    ask_workspace(alice, 'When I say "status sweep", I mean "Check the current live system status".')
+    live = ask_workspace(alice, 'status sweep')['metadata']
+    assert live['status'] == 'live_unavailable'
+    assert live['sources'] == []
+    assert live['execution_allowed'] is False
 
 
 def test_private_durable_conversations_and_revoked_sessions(clients, monkeypatch):
