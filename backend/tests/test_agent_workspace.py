@@ -142,6 +142,18 @@ def test_singular_follow_up_to_two_observations_asks_before_model_or_tools(clien
     assert result['sources'] == [] and result['model'] is None
     assert agents.competing_readings('How much did disk usage change?', history) == []
     assert agents.competing_readings('How much did they both go up?', history) == []
+    history += [{'role': 'user', 'content': 'How big was that jump?'},
+                {'role': 'assistant', 'content': result['answer'], 'metadata': result}]
+
+    def model(system, messages, timeout=0, *, schema=None):
+        assert system == agents.CONVERSATIONAL
+        assert 'pending question about disk using the readings the user supplied' in messages[-1]['content']
+        return {'answer': 'Disk usage increased by 5 percentage points.', 'citations': []}
+
+    monkeypatch.setattr(agents, 'model_json', model)
+    monkeypatch.setattr(agents, 'knowledge_agent', lambda *args: pytest.fail('Unexpected document search'))
+    reply = agents.run(alice.get(BASE + '/session').json(), 'The disk, I mean.', history)
+    assert reply['route'] == 'general' and reply['status'] == 'answered' and not reply['sources']
 
 
 @pytest.mark.parametrize('intent', ['state_change', 'general'])
