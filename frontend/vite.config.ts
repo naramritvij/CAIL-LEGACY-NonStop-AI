@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // Discover the layout worker's dependency before a fresh demo opens the graph.
+    optimizeDeps: { include: ['d3-force-3d'] },
     resolve: {
       alias: { '@': '/src' },
     },
