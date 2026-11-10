@@ -15,6 +15,8 @@ export function relationshipColor(kind: string) {
     (
       {
         wrote: "#b28b55",
+        contributed: "#8a6938",
+        accessed: "#08795f",
         expert_in: "#9170b2",
         knows: "#329a79",
         learned_from: "#329a79",

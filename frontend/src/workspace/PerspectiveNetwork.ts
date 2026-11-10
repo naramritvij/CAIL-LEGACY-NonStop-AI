@@ -6,6 +6,7 @@ import {
   type GraphSelection,
 } from "./graphReadability";
 import { relationshipColor } from "./semanticPresentation";
+import type { GraphAccessPath } from "./types";
 
 type Point = { x: number; y: number; z: number };
 type ScreenPoint = {
@@ -17,6 +18,11 @@ type ScreenPoint = {
 };
 type EdgePath = { id: string; source: string; target: string };
 const ENTRY_MS = 1350;
+const ACCESS_MS = 5000;
+const OPERATOR_ENTRY_DELAY = 900;
+const OPERATOR_ENTRY_MS = 2000;
+const ACCESS_DRAW_DELAY = 1650;
+const ACCESS_DRAW_MS = 2000;
 const ORBIT_EDGE_LIMIT = 1800;
 const EMPHASIZED = new Set(["wrote", "expert_in", "knows", "learned_from", "guidance_requested", "supports", "contradicts", "supersedes"]);
 
@@ -45,6 +51,7 @@ export class PerspectiveNetwork {
   private arrivals = new Map<string, { at: number; side: number }>();
   private arrivalEdges = new Set<string>();
   private edgeArrivals = new Map<string, number>();
+  private access: (GraphAccessPath & { operator: string; at: number; selection: GraphSelection }) | null = null;
   private arrivalSequence = 0;
   private autoOrbit = false;
   private inView = true;
@@ -216,6 +223,20 @@ export class PerspectiveNetwork {
     }
     this.refresh();
   }
+  showAccessPath(path?: GraphAccessPath) {
+    this.access = null;
+    if (path && this.graph.hasEdge(path.edgeId) && this.graph.hasEdge(path.contributorEdgeId)) {
+      const [operator, document] = this.graph.extremities(path.edgeId);
+      const contributor = this.graph.source(path.contributorEdgeId);
+      const nodes = [operator, document, contributor];
+      this.access = {
+        ...path, operator, at: performance.now(),
+        selection: { nodes: new Set(nodes), edges: new Set([path.edgeId, path.contributorEdgeId]), total: 2 },
+      };
+      this.focusNodes(nodes, this.reduced ? 0 : path.firstAccess ? 900 : 400);
+    }
+    this.refresh();
+  }
   private updateArrivalEdges() {
     this.arrivalEdges.clear();
     // Keep one primary connection per arriving document before filling the budget.
@@ -285,7 +306,10 @@ export class PerspectiveNetwork {
     if (!this.graph.hasNode(id) || !this.visible.has(id)) return;
     const selection = graphSelection(this.graph, id, this.visible);
     if (!selection) return;
-    const points = (single ? [id] : [...selection.nodes]).map((key) => {
+    this.focusNodes(single ? [id] : [...selection.nodes], reduced ? 0 : 550);
+  }
+  private focusNodes(ids: string[], duration: number) {
+    const points = ids.map((key) => {
       const a = this.graph.getNodeAttributes(key);
       return { x: Number(a.x), y: Number(a.y), z: Number(a.z || 0) };
     });
@@ -316,7 +340,7 @@ export class PerspectiveNetwork {
     this.animate(
       center,
       Math.max(0.025, distance / this.fitDistance),
-      reduced ? 0 : 550,
+      duration,
     );
   }
   private animate(target: Point, targetRatio: number, duration: number) {
@@ -349,7 +373,12 @@ export class PerspectiveNetwork {
     const ctx = this.ctx,
       data = this.graph,
       selected = this.selected;
-    const selection = this.selection,
+    const access = this.access && data.hasEdge(this.access.edgeId) &&
+      data.hasEdge(this.access.contributorEdgeId) ? this.access : null;
+    const accessElapsed = access ? now - access.at : Infinity;
+    const animatingAccess = access && !this.reduced &&
+      accessElapsed < (access.firstAccess ? ACCESS_MS : 900);
+    const selection = access?.selection || this.selection,
       neighbors = selection?.nodes;
     const focal = Math.min(this.width, this.height) * 1.4,
       distance = this.fitDistance * this.ratio;
@@ -384,9 +413,11 @@ export class PerspectiveNetwork {
       let x = this.width / 2 + (point.x * focal) / depth,
         y = this.height / 2 - (point.y * focal) / depth,
         alpha = 1;
-      const arrival = this.arrivals.get(id);
+      const operatorArrival = animatingAccess && access.firstAccess && access.operator === id &&
+        accessElapsed < OPERATOR_ENTRY_DELAY + OPERATOR_ENTRY_MS;
+      const arrival = operatorArrival ? { at: access.at + OPERATOR_ENTRY_DELAY, side: -1 } : this.arrivals.get(id);
       if (arrival) {
-        const t = Math.max(0, Math.min(1, (now - arrival.at) / ENTRY_MS)),
+        const t = Math.max(0, Math.min(1, (now - arrival.at) / (operatorArrival ? OPERATOR_ENTRY_MS : ENTRY_MS))),
           p = 1 - Math.pow(1 - t, 3);
         x = (arrival.side < 0 ? -40 : this.width + 40) * (1 - p) + x * p;
         y = this.height * (arrival.side < 0 ? 0.36 : 0.62) * (1 - p) + y * p;
@@ -409,7 +440,12 @@ export class PerspectiveNetwork {
         if (
           !a ||
           !b ||
+          !a.alpha ||
+          !b.alpha ||
           selection?.edges.has(id) ||
+          (animatingAccess && access.firstAccess &&
+            accessElapsed < OPERATOR_ENTRY_DELAY + OPERATOR_ENTRY_MS &&
+            (source === access.operator || target === access.operator)) ||
           (this.arrivalEdges.has(id) &&
             (this.arrivals.has(source) || this.arrivals.has(target)))
         )
@@ -437,7 +473,12 @@ export class PerspectiveNetwork {
       const introduced = this.edgeArrivals.get(id);
       const meaningful = !selection && EMPHASIZED.has(String(attributes.kind));
       if (!a || !b || (!incident && !arrival && introduced === undefined && !meaningful)) continue;
-      const progress = arrival
+      const accessEdge = id === access?.edgeId;
+      const contributorEdge = id === access?.contributorEdgeId;
+      const drawingAccess = accessEdge && animatingAccess && access.firstAccess;
+      const progress = drawingAccess
+        ? Math.min(1, Math.max(0, (accessElapsed - ACCESS_DRAW_DELAY) / ACCESS_DRAW_MS))
+        : arrival
         ? Math.min(1, Math.max(0, (now - arrival.at - 480) / 850))
         : introduced !== undefined
           ? Math.min(1, Math.max(0, (now - introduced) / 850))
@@ -448,9 +489,12 @@ export class PerspectiveNetwork {
         incident && selection?.trail
           ? "#9073b1"
           : relationshipColor(String(attributes.kind));
-      ctx.globalAlpha = incident || arrival ? 0.94 : 0.7;
+      const contributorHighlighted = contributorEdge &&
+        (!animatingAccess || !access.firstAccess || accessElapsed >= ACCESS_DRAW_DELAY + ACCESS_DRAW_MS);
+      ctx.globalAlpha = contributorEdge && !contributorHighlighted ? 0.44 : incident || arrival ? 0.94 : 0.7;
       ctx.strokeStyle = edgeColor;
-      ctx.lineWidth = incident && selection?.trail ? 2.4 : incident ? 1.6 : 1.1;
+      ctx.lineWidth = accessEdge ? (animatingAccess ? 3.2 : 2.4)
+        : contributorHighlighted ? 2.6 : incident && selection?.trail ? 2.4 : incident ? 1.6 : 1.1;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(
@@ -475,6 +519,18 @@ export class PerspectiveNetwork {
         );
         ctx.closePath();
         ctx.fill();
+      }
+      if ((accessEdge || contributorHighlighted) && progress === 1 &&
+          Math.hypot(b.x - a.x, b.y - a.y) > 74) {
+        const label = accessEdge ? "Accessed" : "Contributed";
+        ctx.font = "600 11px Inter, sans-serif";
+        const width = ctx.measureText(label).width + 10;
+        const left = (a.x + b.x - width) / 2;
+        const top = (a.y + b.y) / 2 - 20;
+        ctx.fillStyle = "#fcfefb";
+        ctx.fillRect(left, top, width, 16);
+        ctx.fillStyle = edgeColor;
+        ctx.fillText(label, left + 5, top + 12);
       }
     }
     const sorted = [...this.screen.entries()].sort(
@@ -545,7 +601,7 @@ export class PerspectiveNetwork {
       height: this.height,
     });
     ctx.globalAlpha = 1;
-    if (this.arrivals.size || this.edgeArrivals.size) this.refresh();
+    if (this.arrivals.size || this.edgeArrivals.size || animatingAccess) this.refresh();
     this.scheduleOrbit(now);
   };
   private point(event: MouseEvent) {

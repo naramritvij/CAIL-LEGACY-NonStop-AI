@@ -9,7 +9,7 @@ import { graphLabelPriority, graphSelection } from "./graphReadability";
 import { syncGraphEdges } from "./syncGraphEdges";
 import { clusterTarget, CONCEPT_COLORS } from "./semanticPresentation";
 import { Focus, Maximize2, Minus, Pause, Play, Plus, RotateCw } from "lucide-react";
-import type { GraphEdge, GraphNode } from "./types";
+import type { GraphAccessPath, GraphEdge, GraphNode } from "./types";
 
 interface Props {
   nodes: GraphNode[];
@@ -23,6 +23,7 @@ interface Props {
   spotlight?: string | null;
   viewKey?: string;
   newDocumentIds?: string[];
+  accessPath?: GraphAccessPath;
 }
 const COLORS: Record<GraphNode["kind"], string> = {
   person: "#72a269",
@@ -52,6 +53,7 @@ export function GraphCanvas({
   spotlight = null,
   viewKey = "",
   newDocumentIds = EMPTY_TRAIL,
+  accessPath,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<MultiDirectedGraph | null>(null);
@@ -75,6 +77,11 @@ export function GraphCanvas({
   );
   const [autoOrbit, setAutoOrbit] = useState(!reduced.current);
   const [reduceMotion, setReduceMotion] = useState(reduced.current);
+  const accessEdgeId = accessPath?.edgeId;
+  const contributorEdgeId = accessPath?.contributorEdgeId;
+  const firstAccess = accessPath?.firstAccess;
+  const showingAccessPath = dimension === "3d" && Boolean(accessPath);
+  const highlightedRelationships = showingAccessPath ? 2 : selectionSummary.shown;
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => {
@@ -262,7 +269,7 @@ export function GraphCanvas({
                 ? entitySize
                 : SIZE[node.kind];
       const values = {
-        label: node.label,
+        label: node.status === "you" ? node.label + " (you)" : node.label,
         kind: node.kind,
         entity_type: node.entity_type,
         ...clusterTarget(node),
@@ -324,7 +331,7 @@ export function GraphCanvas({
       }
     }
     const addedEdges = edges
-      .filter((edge) => !data.hasEdge(edge.id))
+      .filter((edge) => edge.kind !== "accessed" && !data.hasEdge(edge.id))
       .map((edge) => edge.id);
     changed = syncGraphEdges(data, edges) || changed;
     if (positionCache.current.size > 25000) positionCache.current.clear();
@@ -438,6 +445,17 @@ export function GraphCanvas({
     sigma.setSetting("renderEdgeLabels", false);
     sigma.refresh();
   }, [selected, visible, focusOnly, nodes, edges, dimension, trailEdges]);
+
+  useEffect(() => {
+    const perspective = fallback.current;
+    if (!(perspective instanceof PerspectiveNetwork)) return;
+    if (accessEdgeId && contributorEdgeId && firstAccess !== undefined) {
+      window.clearTimeout(layoutTimer.current);
+      layout.current?.stop();
+      setRunning(false);
+      perspective.showAccessPath({ edgeId: accessEdgeId, contributorEdgeId, firstAccess });
+    } else perspective.showAccessPath();
+  }, [accessEdgeId, contributorEdgeId, firstAccess, dimension]);
 
   useEffect(() => {
     if (!viewKey) return;
@@ -618,17 +636,19 @@ export function GraphCanvas({
       {selected && selectionSummary.total > 0 && (
         <div className="network-selection-summary" role="status">
           <strong>
-            {trailEdges.length
+            {showingAccessPath
+              ? "Access path"
+              : trailEdges.length
               ? "Evidence trail"
               : focusOnly
                 ? "Connection focus"
                 : "Selected connections"}
           </strong>
           <span>
-            {selectionSummary.shown.toLocaleString()} of{" "}
+            {highlightedRelationships.toLocaleString()} of{" "}
             {selectionSummary.total.toLocaleString()} loaded relationships
             highlighted
-            {selectionSummary.total > selectionSummary.shown
+            {selectionSummary.total > highlightedRelationships
               ? " · Browse Connected nodes for all loaded relationships"
               : ""}
           </span>

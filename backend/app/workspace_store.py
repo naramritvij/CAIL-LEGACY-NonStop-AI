@@ -159,8 +159,12 @@ def person(principal):
 
 
 def event(db, principal, kind, document_id=None, detail=None):
-    db.execute('INSERT INTO ws_events(person_id,document_id,kind,detail,created_at) VALUES (?,?,?,?,?)',
-               (principal['id'], document_id, kind, json.dumps(detail or {}), now()))
+    return db.execute('INSERT INTO ws_events(person_id,document_id,kind,detail,created_at) VALUES (?,?,?,?,?)',
+                      (principal['id'], document_id, kind, json.dumps(detail or {}), now())).lastrowid
+
+
+def access_edge_id(person_id, document_id):
+    return f'access:{person_id}:{document_id}'
 
 
 def owned_thread(db, conversation_id, principal):
@@ -312,7 +316,11 @@ def document(principal, identifier, record_access=True):
         from .semantic_graph import note_metadata
         result['expert_note'] = note_metadata(db, identifier)
         if record_access:
-            event(db, principal, 'viewed', identifier)
+            sequence = event(db, principal, 'viewed', identifier)
+            previous = db.execute(
+                "SELECT 1 FROM ws_events WHERE document_id=? AND person_id=? AND sequence<? "
+                "AND kind IN ('viewed','retrieved') LIMIT 1", (identifier, principal['id'], sequence)).fetchone()
+            result['access'] = {'edge_id': access_edge_id(principal['id'], identifier), 'first_access': previous is None}
         result['can_review'] = bool(principal['can_review'] and result['owner_id'] != principal['id'] and result['status'] == 'submitted')
         result['can_submit'] = result['owner_id'] == principal['id'] and result['status'] in ('draft', 'rejected')
         return result
@@ -437,7 +445,7 @@ def knowledge_graph(principal, document_limit=3000):
             topics.add(tid)
         edges.append({'id': did + tid, 'source': did, 'target': tid, 'kind': 'about', 'label': 'about'})
     for item in access_rows:
-        edges.append({'id': f'access:{item["person_id"]}:{item["document_id"]}',
+        edges.append({'id': access_edge_id(item['person_id'], item['document_id']),
                       'source': 'person:' + item['person_id'], 'target': 'document:' + item['document_id'],
                       'kind': 'accessed', 'label': 'accessed', 'last_accessed': item['last_accessed'], 'count': item['access_count']})
     return {'nodes': nodes, 'edges': edges, 'events': [dict(item, detail=json.loads(item['detail'])) for item in events[:20]],

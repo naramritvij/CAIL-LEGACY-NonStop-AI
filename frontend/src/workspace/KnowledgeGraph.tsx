@@ -43,6 +43,7 @@ const KnowledgeStudio = lazy(() =>
   })),
 );
 import {
+  DEMO_ROLE_LABELS,
   errorMessage,
   request,
   shortTime,
@@ -52,6 +53,28 @@ import {
   type KnowledgeDocument,
   type Operator,
 } from "./types";
+
+const WALKTHROUGH_CASES = [
+  { title: "Disk growth continued after the batch", contributor: "Priya Shah", label: "Open Priya’s case" },
+  { title: "Disk growth reversed after the batch", contributor: "Miguel Torres", label: "Open Miguel’s case" },
+];
+const FICTIONAL_SAMPLE_PREFIX = "Fictional Knowledge Tree sample · ";
+
+function SampleDetails({ content }: { content: string }) {
+  const [sample, ...sections] = content.split("\n\n");
+  return (
+    <section className="tree-sample" aria-label="Fictional sample details">
+      <strong>{sample}</strong>
+      <dl>{sections.map((section) => {
+        const line = section.indexOf("\n");
+        return <div key={section.slice(0, line)}>
+          <dt>{section.slice(0, line)}</dt>
+          <dd>{section.slice(line + 1)}</dd>
+        </div>;
+      })}</dl>
+    </section>
+  );
+}
 
 function originLabel(kind: string) {
   return kind === "document_evidence"
@@ -66,10 +89,14 @@ function originLabel(kind: string) {
 export function KnowledgeGraph({
   operator,
   onError,
+  onSwitch,
 }: {
   operator: Operator;
   onError: (text: string) => void;
+  onSwitch: () => void;
 }) {
+  const juniorCount = operator.demo_roles?.filter((role) => role.role === "junior").length || 0;
+  const walkthrough = juniorCount > 1;
   const [graph, setGraph] = useState<GraphData | null>(null);
   const graphRef = useRef<GraphData | null>(null);
   const [failure, setFailure] = useState("");
@@ -97,10 +124,14 @@ export function KnowledgeGraph({
   const [citationPreview, setCitationPreview] = useState<{
     id: string; title: string; content: string; document_id: string; guidance_id: string;
   } | null>(null);
-  const [transferOpen, setTransferOpen] = useState(Boolean(operator.transfer_demo));
+  const [transferOpen, setTransferOpen] = useState(Boolean(operator.transfer_demo) && !walkthrough);
+  const [seniorOnly, setSeniorOnly] = useState(false);
   const [transferPerson, setTransferPerson] = useState<string | null>(null);
   const [transferAction, setTransferAction] = useState<TransferAction | null>(null);
   const [newDocumentIds, setNewDocumentIds] = useState<string[]>([]);
+  const [documentAccess, setDocumentAccess] = useState<{
+    documentId: string; ownerId: string; edgeId: string; firstAccess: boolean;
+  } | null>(null);
   const [listLimit, setListLimit] = useState(80);
   const [connectionLimit, setConnectionLimit] = useState(40);
   const [dimension, setDimension] = useState<"2d" | "3d">("3d");
@@ -230,6 +261,7 @@ export function KnowledgeGraph({
   useEffect(() => {
     let current = true;
     setDoc(null);
+    setDocumentAccess(null);
     setEntity(null);
     setConnectionLimit(40);
     setReviewReason("");
@@ -241,6 +273,14 @@ export function KnowledgeGraph({
         .then((document) => {
           if (current) {
             setDoc(document);
+            if (document.access && document.owner_id !== operator.id) {
+              setDocumentAccess({
+                documentId: "document:" + document.id,
+                ownerId: "person:" + document.owner_id,
+                edgeId: document.access.edge_id,
+                firstAccess: document.access.first_access,
+              });
+            }
             void refresh(true);
           }
         })
@@ -251,7 +291,7 @@ export function KnowledgeGraph({
     return () => {
       current = false;
     };
-  }, [selected, onError, refresh]);
+  }, [selected, operator.id, onError, refresh]);
   useEffect(() => {
     if (!selected?.startsWith("document:") || !graph?.revision) return;
     const controller = new AbortController();
@@ -352,15 +392,18 @@ export function KnowledgeGraph({
     }
   }
 
-  function openTransfer(personId: string | null = null) {
+  function openTransfer(personId: string | null = null, seniors = false) {
     setTransferPerson(personId);
+    setSeniorOnly(seniors);
     setTransferOpen(true);
     window.requestAnimationFrame(() => window.document.getElementById("knowledge-transfer")?.scrollIntoView({ block: "start" }));
   }
 
   function openTransferDocument(id: string) {
     choose(id);
-    window.requestAnimationFrame(() => window.document.getElementById("graph-inspector")?.scrollIntoView({ block: "start" }));
+    window.requestAnimationFrame(() => window.document.getElementById(
+      walkthrough ? "graph-network" : "graph-inspector",
+    )?.scrollIntoView({ block: walkthrough ? "nearest" : "start" }));
   }
 
   const visible = useMemo(() => {
@@ -499,6 +542,15 @@ export function KnowledgeGraph({
       view.edges.filter((e) => visible.has(e.source) && visible.has(e.target)),
     [view.edges, visible],
   );
+  const accessEdge = documentAccess?.documentId === selected
+    ? renderEdges.find((edge) => edge.id === documentAccess.edgeId)
+    : undefined;
+  const contributionEdge = accessEdge && renderEdges.find((edge) =>
+    edge.kind === "contributed" && edge.target === selected && edge.source === documentAccess?.ownerId,
+  );
+  const accessPath = accessEdge && contributionEdge && documentAccess && !trail?.found
+    ? { edgeId: accessEdge.id, contributorEdgeId: contributionEdge.id, firstAccess: documentAccess.firstAccess }
+    : undefined;
   const connections = useMemo(
     () =>
       selected
@@ -638,7 +690,7 @@ export function KnowledgeGraph({
       <div className="page-intro">
         <div>
           <div className="eyebrow">KNOWLEDGE + SOURCE NETWORKS</div>
-          <h1>Explore the connections.</h1>
+          <h1>{walkthrough ? "Knowledge Tree" : "Explore the connections."}</h1>
           <p>
             Zoom from the whole network into one system, relationship or
             contribution.
@@ -672,12 +724,50 @@ export function KnowledgeGraph({
           </button>
         </div>
       </div>
+      {walkthrough && (
+        <section className="tree-walkthrough" aria-label="Knowledge Tree walkthrough">
+          <div className="tree-walkthrough-heading">
+            <div>
+              <div className="eyebrow">FICTIONAL WALKTHROUGH</div>
+              <h2>One alert. Two different decisions.</h2>
+            </div>
+            <button className="secondary" onClick={onSwitch}>
+              <Users size={16} /> Switch demo operator
+            </button>
+          </div>
+          <p>
+            You’re exploring as <strong>{operator.name}</strong>. Both cases start at 81% disk usage.
+            Open either case to see what the senior checked and watch your access link appear.
+            Switch to another of the {juniorCount} junior operators to try it with a separate history.
+          </p>
+          <div className="tree-walkthrough-actions">
+            {WALKTHROUGH_CASES.map((sample) => {
+              const item = graph?.nodes.find((node) => node.kind === "document" &&
+                node.label === sample.title && node.owner_name === sample.contributor && node.status === "approved");
+              return <button key={sample.title} className="secondary" disabled={!item}
+                onClick={() => {
+                  if (!item) return;
+                  setScene("knowledge");
+                  setDimension("3d");
+                  choose(item.id, item);
+                  window.requestAnimationFrame(() => window.document.getElementById("graph-network")?.scrollIntoView({ block: "nearest" }));
+                }}>
+                <FileText size={15} /> {sample.label}
+              </button>;
+            })}
+            <button className="text-button" onClick={() => openTransfer(null, true)}>
+              Browse Senior Contributors <ArrowRight size={14} />
+            </button>
+          </div>
+        </section>
+      )}
       {transferOpen && (
         <Suspense fallback={<p className="muted">Loading contributor directory…</p>}>
           <TransferDesk
             operator={operator}
             revision={graph?.revision}
             personId={transferPerson}
+            seniorOnly={seniorOnly}
             onPerson={setTransferPerson}
             onOpenNode={openTransferDocument}
             onAction={setTransferAction}
@@ -893,7 +983,7 @@ export function KnowledgeGraph({
           ) : (
             <>
               <GraphCanvas
-            newDocumentIds={newDocumentIds}
+                newDocumentIds={newDocumentIds}
                 dimension={dimension}
                 nodes={renderNodes}
                 edges={renderEdges}
@@ -904,7 +994,14 @@ export function KnowledgeGraph({
                 trailEdges={trail?.found ? trail.edges.map((e) => e.id) : []}
                 spotlight={spotlight}
                 viewKey={scene + ":" + showPassages}
+                accessPath={accessPath}
               />
+              {accessPath && (
+                <p className="tree-access-note" role="status">
+                  <GitBranch size={15} />
+                  <span><strong>Accessed by {operator.name}</strong> · Contributed by {doc?.owner_name || node?.owner_name}</span>
+                </p>
+              )}
               {graph.nodes.length <= 1 && !graph.datasets.length && (
                 <div className="network-empty">
                   <GitBranch size={25} />
@@ -1115,9 +1212,10 @@ export function KnowledgeGraph({
               >
                 Start evidence trail here <Route size={14} />
               </button>
-              {node.person_role && (
+              {(node.demo_role || node.person_role) && (
                 <p className="fine-print">
-                  {node.person_role} · self-described contribution role
+                  {node.demo_role ? DEMO_ROLE_LABELS[node.demo_role] : node.person_role + " · self-described contribution role"}
+                  {node.status === "you" && " · You"}
                 </p>
               )}
               {node.kind === "person" && (
@@ -1307,10 +1405,14 @@ export function KnowledgeGraph({
                         )}
                       </div>
                     )}
-                    <details className="source-text-details">
-                      <summary>Source text</summary>
-                      <pre className="document-preview">{doc.content}</pre>
-                    </details>
+                    {walkthrough && doc.content.startsWith(FICTIONAL_SAMPLE_PREFIX) ? (
+                      <SampleDetails content={doc.content} />
+                    ) : (
+                      <details className="source-text-details">
+                        <summary>Source text</summary>
+                        <pre className="document-preview">{doc.content}</pre>
+                      </details>
+                    )}
                     <button className="secondary full" onClick={download}>
                       <ArrowDownToLine size={15} />
                       Download text

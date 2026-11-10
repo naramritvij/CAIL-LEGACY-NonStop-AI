@@ -3,8 +3,12 @@ import argparse
 import json
 import os
 from pathlib import Path
-import secrets
 import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'backend'))
+from app.demo_roster import demo_users
 
 
 def main():
@@ -13,20 +17,12 @@ def main():
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('Choose a localhost port between 1024 and 65535.')
-    root = Path(__file__).resolve().parents[1]
-    users = [
-        {'id': 'transfer-expert', 'name': 'Demo expert', 'can_manage_members': True, 'can_review': True},
-        {'id': 'transfer-reviewer', 'name': 'Demo independent reviewer', 'can_review': True},
-        {'id': 'transfer-learner', 'name': 'Demo learner'},
-    ]
-    for user in users:
-        user['key'] = secrets.token_urlsafe(36)
-    env = {**os.environ, 'CAIL_TRANSFER_DEMO_USERS': json.dumps(users), 'CAIL_TRANSFER_DEMO_PORT': str(args.port)}
+    env = {**os.environ, 'CAIL_TRANSFER_DEMO_USERS': json.dumps(demo_users()), 'CAIL_TRANSFER_DEMO_PORT': str(args.port)}
     compose = ['docker', 'compose', '-p', 'cail-transfer-demo', '-f', 'compose.transfer-demo.yaml']
-    subprocess.run([*compose, 'up', '-d', '--build', '--wait'], cwd=root, env=env, check=True)
-    subprocess.run([*compose, 'exec', '-T', 'backend', 'python', '-m', 'app.transfer_demo'], cwd=root, env=env, check=True)
+    subprocess.run([*compose, 'up', '-d', '--build', '--wait'], cwd=ROOT, env=env, check=True)
+    subprocess.run([*compose, 'exec', '-T', 'backend', 'python', '-m', 'app.transfer_demo'], cwd=ROOT, env=env, check=True)
     print(f'\nOpen http://localhost:{args.port}/#/graph')
-    print('Inspect the learner’s verified receipt, then use Switch demo role to follow the practice handoff.')
+    print('Open a sample solution in the Knowledge Tree, then switch junior operators and try it again.')
 
 
 if __name__ == '__main__':

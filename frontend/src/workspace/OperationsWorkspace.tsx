@@ -39,6 +39,7 @@ import {
 import { Connections } from "./Connections";
 const KnowledgeGraph = lazy(() => import("./KnowledgeGraph").then((module) => ({ default: module.KnowledgeGraph })));
 import {
+  DEMO_ROLE_LABELS,
   errorMessage,
   request,
   shortTime,
@@ -90,15 +91,23 @@ function Login({
   onClose,
   error,
   demoRoles = [],
+  currentId,
 }: {
   onSignedIn: (operator: Operator) => void;
   onClose?: () => void;
   error?: string;
   demoRoles?: Operator["demo_roles"];
+  currentId?: string;
 }) {
   const [key, setKey] = useState("");
   const [failure, setFailure] = useState(error || "");
   const [busy, setBusy] = useState(false);
+  const juniors = demoRoles.filter((role) => role.role === "junior")
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const namedRoster = juniors.length > 1;
+  const [juniorId, setJuniorId] = useState(
+    () => juniors.find((role) => role.id === currentId)?.id || juniors[0]?.id || "",
+  );
   async function submit(event: FormEvent) {
     event.preventDefault();
     await openSession("/session", { access_key: key });
@@ -153,12 +162,32 @@ function Login({
         </h1>
         {demoRoles.length ? (
           <div className="demo-role-options">
-            <p className="muted">Choose a role in this isolated synthetic walkthrough.</p>
-            {demoRoles.map((role) => (
-              <button className="secondary full" key={role.id} disabled={busy}
-                onClick={() => void openSession("/session/demo-role", { person_id: role.id })}>{role.name}</button>
+            <p className="muted">Choose a fictional operator to explore their own workspace and access history.</p>
+            {namedRoster && (
+              <form className="demo-role-picker" onSubmit={(event) => {
+                event.preventDefault();
+                void openSession("/session/demo-role", { person_id: juniorId });
+              }}>
+                <label>
+                  Junior operator · {juniors.length}
+                  <select autoFocus value={juniorId} disabled={busy} onChange={(event) => setJuniorId(event.target.value)}>
+                    {juniors.map((role) => <option key={role.id} value={role.id}>
+                      {role.name}{role.id === currentId ? " (current)" : ""}
+                    </option>)}
+                  </select>
+                </label>
+                <button className="primary full" disabled={busy || juniorId === currentId}>
+                  Switch junior operator
+                </button>
+              </form>
+            )}
+            {demoRoles.filter((role) => !namedRoster || role.role !== "junior").map((role) => (
+              <button type="button" className="secondary full" key={role.id} disabled={busy || role.id === currentId}
+                onClick={() => void openSession("/session/demo-role", { person_id: role.id })}>
+                {role.name}{namedRoster && role.role ? " · " + DEMO_ROLE_LABELS[role.role] : ""}
+              </button>
             ))}
-            {failure && <p className="inline-error">{failure}</p>}
+            {failure && <p className="inline-error" role="alert">{failure}</p>}
           </div>
         ) : <>
         <p className="muted">
@@ -824,6 +853,7 @@ export function OperationsWorkspace() {
   const [allThreads, setAllThreads] = useState(false);
   const [threadSearch, setThreadSearch] = useState("");
   const [toast, setToast] = useState("");
+  const conversationLoad = useRef(0);
   const notify = useCallback((text: string) => setToast(text), []);
   useEffect(() => {
     if (!toast) return;
@@ -831,7 +861,9 @@ export function OperationsWorkspace() {
     return () => window.clearTimeout(timer);
   }, [toast]);
   const loadConversations = useCallback(async () => {
-    setConversations(await request<Conversation[]>("/conversations"));
+    const sequence = ++conversationLoad.current;
+    const result = await request<Conversation[]>("/conversations");
+    if (sequence === conversationLoad.current) setConversations(result);
   }, []);
   const initialize = useCallback(async () => {
     setAuthState("loading");
@@ -884,6 +916,7 @@ export function OperationsWorkspace() {
     return () => window.removeEventListener("hashchange", listener);
   }, []);
   function signedIn(user: Operator) {
+    conversationLoad.current++;
     setOperator(user);
     setActiveId(null);
     setConversations([]);
@@ -1014,7 +1047,7 @@ export function OperationsWorkspace() {
             <ShieldCheck size={17} />
             <div>
               <strong>Observe. Understand. Decide.</strong>
-              <span>Read-only access to your environment.</span>
+              <span>{operator.transfer_demo ? "Fictional operators and training records." : "Read-only access to your environment."}</span>
             </div>
           </div>
           <button
@@ -1058,7 +1091,9 @@ export function OperationsWorkspace() {
           <div className="topbar-actions">
             <span className="environment-label">
               <i />
-              {operator.local_demo
+              {operator.transfer_demo
+                ? "Synthetic demo"
+                : operator.local_demo
                 ? "Local demonstration"
                 : "Operator workspace"}
             </span>
@@ -1092,7 +1127,7 @@ export function OperationsWorkspace() {
             />
           ) : view === "graph" ? (
             <Suspense fallback={<div className="loading-panel">Loading the knowledge graph…</div>}>
-              <KnowledgeGraph key={operator.id} operator={operator} onError={notify} />
+              <KnowledgeGraph key={operator.id} operator={operator} onError={notify} onSwitch={() => setSwitchLogin(true)} />
             </Suspense>
           ) : view === "rehearsals" ? (
             <Suspense fallback={<div className="loading-panel">Loading incident lab…</div>}>
@@ -1123,7 +1158,7 @@ export function OperationsWorkspace() {
         </div>
       )}
       {switchLogin && (
-        <Login onSignedIn={signedIn} onClose={() => setSwitchLogin(false)} demoRoles={operator.demo_roles} />
+        <Login onSignedIn={signedIn} onClose={() => setSwitchLogin(false)} demoRoles={operator.demo_roles} currentId={operator.id} />
       )}
       {allThreads && (
         <div className="modal-backdrop" onClick={() => setAllThreads(false)}>

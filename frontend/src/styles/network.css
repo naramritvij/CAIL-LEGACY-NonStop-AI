@@ -397,6 +397,54 @@
   gap: 9px;
   flex-wrap: wrap;
 }
+.tree-walkthrough {
+  margin-bottom: 18px;
+  padding: 17px 20px;
+  border: 1px solid #d8e7dc;
+  border-radius: 9px;
+  background: #f7faf5;
+  color: #355645;
+}
+.tree-walkthrough-heading,
+.tree-walkthrough-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 14px;
+}
+.tree-walkthrough-heading { justify-content: space-between; }
+.tree-walkthrough h2 { margin: 4px 0 0; font-size: 19px; font-weight: 600; }
+.tree-walkthrough p { margin: 9px 0 12px; font-size: 13px; line-height: 1.55; }
+.tree-access-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border-top: 1px solid #e1e9de;
+  color: #315c4a;
+  font-size: 12px;
+}
+.tree-access-note svg { flex-shrink: 0; }
+.tree-sample {
+  border-top: 1px solid #e1e9de;
+  margin: 12px 0;
+  padding-top: 10px;
+  color: #355645;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.network-inspector .tree-sample dl { display: block; margin: 10px 0 0; }
+.network-inspector .tree-sample dl > div { display: block; margin: 0; padding: 6px 0; }
+.network-inspector .tree-sample dt { font-weight: 600; }
+.network-inspector .tree-sample dd {
+  margin: 2px 0 0;
+  max-width: none;
+  color: #395847;
+  font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
 .network-sourcebar {
   display: flex;
   align-items: center;

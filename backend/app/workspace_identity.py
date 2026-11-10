@@ -14,10 +14,10 @@ import secrets
 
 from fastapi import HTTPException, Request
 from . import workspace_store as store
+from .demo_roster import EXPERT, HANDOFF_IDS, LEARNER, REVIEWER, ROSTER_ROLES, SWITCHABLE_IDS
 from .storage import database_path
 
 COOKIE = 'cail_workspace_session'
-DEMO_ROLES = ('transfer-learner', 'transfer-expert', 'transfer-reviewer')
 
 
 def configured_users():
@@ -40,12 +40,18 @@ def configured_users():
 
 
 def demo_roles(users):
+    by_id = {user['id']: user for user in users}
     if (os.getenv('CAIL_TRANSFER_DEMO') == 'true' and os.getenv('CAIL_TRANSFER_DEMO_ROLES') == 'true'
             and os.getenv('CAIL_LIVE_ENABLED', '').lower() == 'false'
             and database_path().name == 'knowledge-transfer-demo.sqlite3'
-            and not any(user.get('can_read_live') is True for user in users)
-            and set(user['id'] for user in users) == set(DEMO_ROLES)):
-        return {identifier: next(user for user in users if user['id'] == identifier) for identifier in DEMO_ROLES}
+            and not any(user.get('can_read_live') is True for user in users)):
+        if by_id.keys() == set(HANDOFF_IDS):
+            return {identifier: by_id[identifier] for identifier in HANDOFF_IDS}
+        if by_id.keys() == ROSTER_ROLES.keys() and all(
+                (user.get('can_review') is not True or user['id'] in (EXPERT, REVIEWER))
+                and (user.get('can_manage_members') is not True or user['id'] == EXPERT)
+                for user in users):
+            return {identifier: by_id[identifier] for identifier in SWITCHABLE_IDS}
     return {}
 
 
@@ -55,7 +61,7 @@ def public_identity(row, local=False, managed=False, roles=()):
             'can_read_live': row.get('can_read_live') is True,
             'can_manage_members': row.get('can_manage_members') is True,
             'transfer_demo': os.getenv('CAIL_TRANSFER_DEMO') == 'true',
-            'demo_roles': [{'id': role['id'], 'name': role['name']} for role in roles],
+            'demo_roles': [{'id': role['id'], 'name': role['name'], 'role': ROSTER_ROLES[role['id']]} for role in roles],
             'auth_method': 'local_demo' if local else 'member_access_key' if managed else 'configured_operator_session'}
 
 
@@ -86,7 +92,7 @@ def principal(request: Request):
                     if member:
                         result = public_identity(dict(member), managed=True)
         if result is None and roles:
-            result = public_identity(roles['transfer-learner'], roles=roles.values())
+            result = public_identity(roles[LEARNER], roles=roles.values())
         if (result is None and not users and os.getenv('CAIL_WORKSPACE_LOCAL_DEMO', 'true').lower() == 'true'
                 and not db.execute('SELECT 1 FROM ws_members LIMIT 1').fetchone()):
             result = public_identity({'id': 'local-operator', 'name': os.getenv('CAIL_WORKSPACE_LOCAL_NAME', 'Local operator')[:100]}, local=True)

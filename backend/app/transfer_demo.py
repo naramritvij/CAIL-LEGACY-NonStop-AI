@@ -10,11 +10,9 @@ from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 from uuid import uuid4
 
+from .demo_roster import EXPERT, LEARNER, REVIEWER, SENIORS, SWITCHABLE_IDS
 from .workspace_identity import configured_users
 
-EXPERT = 'transfer-expert'
-REVIEWER = 'transfer-reviewer'
-LEARNER = 'transfer-learner'
 SOURCE_TITLE = 'Synthetic TMF training source'
 GUIDANCE_TITLE = 'Synthetic training: interpret TMF status before escalation'
 SOURCE = (
@@ -68,15 +66,14 @@ def sign_ins(root, users):
     return [OperatorSession(root, keys[identifier]) for identifier in (EXPERT, REVIEWER, LEARNER)]
 
 
-def review_document(author, reviewer, document_id):
+def review_document(author, reviewer, document_id, notes='The cited training source supports the read-only decision and its stated limits.'):
     path = '/documents/' + document_id
     doc = author.call(path + '?record_access=false')
     if doc['status'] in ('draft', 'rejected'):
         doc = author.call(path + '/review', {'decision': 'submitted'})
     if doc['status'] == 'submitted':
         author.call(path + '/review', {'decision': 'approved', 'notes': 'The author cannot approve their own work.'}, status=403)
-        reviewer.call(path + '/review', {'decision': 'approved',
-                      'notes': 'The cited training source supports the read-only decision and its stated limits.'})
+        reviewer.call(path + '/review', {'decision': 'approved', 'notes': notes})
 
 
 def own_document(session, title):
@@ -88,6 +85,23 @@ def own_document(session, title):
                 return doc
         offset = result['next_offset']
     return None
+
+
+def seed_contributor_knowledge(root, users, reviewer):
+    from .demo_knowledge import SAMPLES
+
+    if tuple(role['id'] for role in reviewer.identity.get('demo_roles', [])) != SWITCHABLE_IDS:
+        return
+    keys = {row['id']: row['key'] for row in users}
+    for index, ((identifier, _), sample) in enumerate(zip(SENIORS, SAMPLES, strict=True)):
+        author = OperatorSession(root, keys[identifier])
+        doc = own_document(author, sample.title)
+        if not doc:
+            doc = author.call('/documents', {'title': sample.title, 'topic': sample.topic,
+                                             'content': sample.content(index)}, status=201)
+        review_document(author, reviewer, doc['id'],
+                        'Fictional reviewer demo. The record distinguishes the decision, its reasoning and when it applies.')
+    print(f'PASS: {len(SENIORS)} named senior contributors have approved fictional knowledge records.', flush=True)
 
 
 def handoff(session, identifier):
@@ -207,9 +221,12 @@ def main():
     options = parser.parse_args()
     require(os.getenv('CAIL_TRANSFER_DEMO') == 'true', 'Use the isolated demo configuration to run this command.')
     root = os.getenv('CAIL_TRANSFER_DEMO_URL', 'http://127.0.0.1:8000')
-    result = run(root, configured_users(), verify=options.verify)
+    users = configured_users()
+    result = run(root, users, verify=options.verify)
     if options.verify:
         check_quality(*result)
+    else:
+        seed_contributor_knowledge(root, users, result[1])
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
 
 CAIL helps an operator investigate a NonStop incident, keep the supporting evidence with the decision, and pass reviewed guidance to the next operator. The application has one assistant, a staged incident lab, an interactive knowledge graph, and a page for authorized read-only source connections.
 
-**Start with the reviewer demo.** It includes four fictional incidents and separate expert, learner, and reviewer accounts. The incident lab, graph, and handoff work without an Ollama model or a customer account.
+**Start with the reviewer demo.** It includes four fictional incidents, 40 named Senior Contributors and 80 switchable junior operators. The incident lab, Knowledge Tree, and handoff work without an Ollama model or a customer account.
 
 ![CAIL incident lab showing three TMF audit samples, a conditional threshold estimate and the verified rehearsal debrief](docs/assets/incident-lab.jpg)
 
@@ -20,12 +20,22 @@ docker compose version
 python scripts/start_transfer_demo.py
 ~~~
 
-Wait for the seed command to report a completed cited guidance handoff. Open [the reviewer demo](http://localhost:5180/#/rehearsals) and check that **Incident lab** and **Switch demo role** appear. The launcher creates its own loopback Compose project and database volume. It seeds a completed handoff and a practice request on the first launch.
+Wait for the seed command to report a completed cited guidance handoff and 40 named Senior Contributors. Open [the reviewer Knowledge Tree](http://localhost:5180/#/graph) and try the walkthrough below. The launcher creates its own loopback Compose project and database volume. It seeds the fictional people, knowledge, completed handoff, and practice request on the first launch.
 
 | Address | Use it for | Storage |
 | --- | --- | --- |
-| [localhost:5180](http://localhost:5180/#/rehearsals) | Incident rehearsals, demo-role switching, verified receipt, and synthetic uploads | `cail-transfer-demo` project and dedicated volume |
+| [localhost:5180](http://localhost:5180/#/graph) | Self-guided Knowledge Tree, fictional operator switching, incident rehearsals, and verified handoffs | `cail-transfer-demo` project and dedicated volume |
 | [localhost:5173](http://localhost:5173/#/assistant) | The regular workspace, your saved conversations and documents, local Ollama, and authorized source access | Main Compose project and `legacy_knowledge` volume |
+
+### Follow a senior’s decision in the Knowledge Tree
+
+1. Open [Knowledge Tree](http://localhost:5180/#/graph). A fresh session starts as **Alex Chen**, one of the 80 fictional junior operators. Click **Open Priya’s case**. Read the problem, decision, reasoning, when she used it, when it applies and what happened in the fictional case.
+2. Watch the 3D graph for about five seconds. Alex’s node enters the scene and an **Accessed** link draws to the exact guidance he opened. The graph then highlights the existing contribution from **Priya Shah**. The guidance opens immediately. A reduced-motion setting shows the saved path directly.
+3. Click **Switch demo operator**, choose **Maya Patel** or any other named junior, and click **Switch junior operator**. Open Priya’s case again. Maya gets her own **Accessed** link. Switch back to Alex and reopen it to see his existing link. Reload the page to verify the recorded access persists. Access records describe what someone opened.
+4. Open **Miguel’s case**. Both cases begin at 81% in this exercise. Priya escalated when fresh readings kept rising after the batch ended. Miguel monitored when fresh readings fell. Compare **When to reuse** and the outcomes to see what changed the decision.
+5. Click **Browse Senior Contributors**, search for **Noor Hassan**, then open **Choose a comparable disk baseline** from her profile. It’s a proposed reference note you can read directly. The directory also supports opening and requesting guidance from a specific contributor.
+
+![Knowledge Tree showing Alex Chen's Accessed link to the disk-growth guidance and Priya Shah's contribution](docs/assets/knowledge-tree-access.jpg)
 
 ### Reproduce the financial incident
 
@@ -61,15 +71,15 @@ Open [the demo graph](http://localhost:5180/#/graph). In **People & handoffs**, 
 
 | Who | What to click | What to verify |
 | --- | --- | --- |
-| **Demo expert** | **Switch demo role → Demo expert → Write guidance** on the practice request | Enter a title such as `Evidence before TMF escalation`. In **Find concepts and source citations**, search `TMFCOM STATUS TMF`, select that command, and cite the approved **Synthetic TMF training source** passage. Choose **Sign and add guidance → Submit for review**. |
-| **Demo independent reviewer** | **People & handoffs → Independent review → Evidence before TMF escalation** | Open the cited passage. Enter **Review reasoning** after checking the excerpt and click **Approve**. |
-| **Demo learner** | Open the same practice request and click **Explain the guidance** | Explain the decision, exact supporting evidence, limitations, and the next authorized read or escalation. Click **Submit explanation for review**. |
-| **Demo independent reviewer** | **People & handoffs → Independent review → Open explanation reviews** | Check the explanation against the guidance, confirm all four criteria, record reasoning, and approve. |
-| **Demo learner** | **View learning receipt** on the practice request | The new receipt names `Evidence before TMF escalation`. It contains the reviewer, date, four criteria, citations, and the guidance hash. |
+| **Priya Shah · Senior Contributor** | **Switch demo role → Priya Shah → People & handoffs → Write guidance** on the practice request | Enter a title such as `Evidence before TMF escalation`. In **Find concepts and source citations**, search `TMFCOM STATUS TMF`, select that command, and cite the approved **Synthetic TMF training source** passage. Choose **Sign and add guidance → Submit for review**. |
+| **Jordan Lee · Independent Reviewer** | **People & handoffs → Independent review → Evidence before TMF escalation** | Open the cited passage. Enter **Review reasoning** after checking the excerpt and click **Approve**. |
+| **Alex Chen · Junior Operator** | Open the same practice request and click **Explain the guidance** | Explain the decision, exact supporting evidence, limitations, and the next authorized read or escalation. Click **Submit explanation for review**. |
+| **Jordan Lee · Independent Reviewer** | **People & handoffs → Independent review → Open explanation reviews** | Check the explanation against the guidance, confirm all four criteria, record reasoning, and approve. |
+| **Alex Chen · Junior Operator** | **View learning receipt** on the practice request | The new receipt names `Evidence before TMF escalation`. It contains the reviewer, date, four criteria, citations, and the guidance hash. |
 
 For this fictional TMF exercise, the guidance can describe confirming the system identity and observation time, comparing a fresh authorized reading, and escalating conflicting or stale evidence. The learner should explain why those checks matter and why one observation leaves the cause uncertain.
 
-The **Contributors** directory shows visible documents, approved guidance, and your recorded document access. Use **Add a contributor** as **Demo expert** to exercise manager enrollment. In a regular workspace, the configured manager can issue, rotate, or revoke a member key. The handoff is visible to its participants, and the reviewer sees the submitted guidance and explanation through the review queues. Approval of a superseding source sends dependent guidance back for review.
+The **Contributors** directory shows visible documents, approved guidance, and your recorded document access. Use **Add a contributor** as **Priya Shah** to exercise manager enrollment. In a regular workspace, the configured manager can issue, rotate, or revoke a member key. The handoff is visible to its participants, and the reviewer sees the submitted guidance and explanation through the review queues. Approval of a superseding source sends dependent guidance back for review.
 
 ## Explore the knowledge graph
 

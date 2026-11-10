@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from . import semantic_graph as knowledge, workspace_store as store
+from .demo_roster import ROSTER_ROLES
 from .workspace_identity import active_members
 
 RUBRIC = {
@@ -53,7 +54,7 @@ def manage_member(user, *, name=None, can_review=False, person_id=None, revoke=F
     return {'id': person_id, 'active': not revoke, **({'access_key': key} if key else {})}
 
 
-def directory(user, query='', offset=0):
+def directory(user, query='', offset=0, *, senior_only=False):
     with store.database() as db:
         members = active_members(db) if not user['local_demo'] else {}
         rows = db.execute(
@@ -74,6 +75,9 @@ def directory(user, query='', offset=0):
         accessed = {row['owner_id']: row['accessed'] for row in relationships}
         people = []
         for identifier in ids:
+            demo_role = ROSTER_ROLES.get(identifier) if user.get('transfer_demo') else None
+            if senior_only and demo_role != 'senior':
+                continue
             member = members.get(identifier, {})
             name = member.get('name') or names.get(identifier) or user['name']
             if query.casefold() not in name.casefold():
@@ -84,7 +88,8 @@ def directory(user, query='', offset=0):
                            'approved_guidance': count.get('approved_guidance', 0), 'accessed_documents': accessed.get(identifier, 0),
                            'active': identifier in members or identifier == user['id'],
                            'can_request': identifier != user['id'] and identifier in members,
-                           'managed': identifier in managed, 'can_review': member.get('can_review', False)})
+                           'managed': identifier in managed, 'can_review': member.get('can_review', False),
+                           **({'demo_role': demo_role} if demo_role else {})})
     people.sort(key=lambda person: (person['name'].casefold(), person['id']))
     return {'contributors': people[offset:offset + 50], 'total': len(people),
             'next_offset': offset + 50 if offset + 50 < len(people) else None}
