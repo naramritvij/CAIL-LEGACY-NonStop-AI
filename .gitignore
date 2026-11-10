@@ -237,6 +237,7 @@ backend/.venv/
 
 # Customer exports remain local; only the read-only Docker mount sees them.
 data/momi-inbox/
+data/transfer-demo/
 frontend/local-verification/
 
 # Local reports from the checked-in answer evaluation
